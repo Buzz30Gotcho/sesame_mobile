@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "SESAME Mobile",
+    "slug": "sesame-mobile",
+    "version": "1.0.0",
+    "sdkVersion": "54.0.0",
+    "platforms": [
+      "ios",
+      "android"
+    ],
+    "orientation": "portrait",
+    "splash": {
+      "backgroundColor": "#101018"
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "extra": {
+      "SUPABASE_URL": "https://lqjgscbqznugjeykklzx.supabase.co",
+      "SUPABASE_KEY": "sb_publishable_YGXxPwOg3ANKscQo2JPZsg_NZcH3QVS",
+      "BACKEND_URL": "http://10.246.14.83:4000"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#101018"
+      }
+    },
+    "plugins": [
+      "expo-asset"
+    ]
+  }
+}

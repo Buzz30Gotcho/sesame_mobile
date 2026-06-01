@@ -1,0 +1,1226 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>SÉSAME — Toutes les interfaces — Document imprimable</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --g:#C9A84C;--txt:#1A1A2A;--muted:#777788;
+  --green:#2E8A5A;--blue:#2A6ECC;--orange:#CC6600;--red:#CC2222;
+  --bg:#FFFFFF;--card:#F5F5F8;--card2:#EEEEEE;--border:rgba(0,0,0,0.1);
+}
+body{font-family:'Inter',Arial,sans-serif;background:#F0F0F0;color:var(--txt)}
+
+/* PAGE */
+.page{width:210mm;margin:0 auto 10px;background:#FFFFFF;padding:18px 20px;page-break-after:always;min-height:297mm}
+.cover{width:210mm;margin:0 auto 10px;background:#FFFFFF;border:3px solid var(--g);padding:40px;page-break-after:always;min-height:297mm;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+
+/* SECTION HEADER */
+.sh{border-left:4px solid var(--g);padding:6px 0 6px 12px;margin-bottom:14px}
+.sh h2{font-size:16px;font-weight:800;color:var(--txt)}
+.sh p{font-size:9px;color:var(--muted);margin-top:2px}
+.sub-lbl{font-size:8px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:10px 0 7px;border-bottom:1px solid var(--border);padding-bottom:3px}
+
+/* PHONE */
+.phones{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:14px}
+.ph-col{display:flex;flex-direction:column;align-items:center;gap:5px}
+.ph-lbl{font-size:8px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;text-align:center;max-width:100px}
+.phone{width:100px;background:#DDDDEE;border-radius:14px;padding:5px 4px 6px;border:1.5px solid #BBBBCC;box-shadow:0 3px 8px rgba(0,0,0,.12)}
+.notch{width:26px;height:5px;background:#AAAAAA;border-radius:10px;margin:0 auto 4px}
+.sc{background:#F8F8FC;border-radius:9px;overflow:hidden;display:flex;flex-direction:column;min-height:190px}
+
+/* SCREEN ELEMENTS */
+.s-hd{padding:5px 7px;border-bottom:1px solid rgba(0,0,0,.08);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:#FFFFFF}
+.s-t{font-size:7px;font-weight:700;color:var(--txt)}
+.s-sub{font-size:5px;color:var(--muted)}
+.s-body{flex:1;padding:6px 7px;display:flex;flex-direction:column;gap:4px}
+.nav-b{display:flex;justify-content:space-around;padding:4px 2px 3px;border-top:1px solid rgba(0,0,0,.08);background:#FFFFFF;flex-shrink:0}
+.ni{display:flex;flex-direction:column;align-items:center;gap:1px;flex:1}
+.ni span{font-size:5px;color:var(--muted)}
+.ni.on span{color:var(--g)}
+.nd{width:11px;height:11px;border-radius:3px;background:rgba(0,0,0,.06);display:flex;align-items:center;justify-content:center;font-size:7px}
+.nd.on{background:rgba(201,168,76,.15)}
+
+/* CARD */
+.c{background:#FFFFFF;border:1px solid var(--border);border-radius:5px;padding:4px 6px;margin-bottom:3px}
+.c.gold{border-color:rgba(201,168,76,.3);background:rgba(201,168,76,.04)}
+.c.grn{border-color:rgba(46,138,90,.25);background:rgba(46,138,90,.04)}
+.c.blu{border-color:rgba(42,110,204,.25);background:rgba(42,110,204,.04)}
+.c.red{border-color:rgba(204,34,34,.25);background:rgba(204,34,34,.04)}
+.c.org{border-color:rgba(204,102,0,.25);background:rgba(204,102,0,.04)}
+
+/* ROW */
+.row{display:flex;justify-content:space-between;align-items:center;padding:2px 0;border-bottom:1px solid rgba(0,0,0,.05);font-size:6px}
+.row:last-child{border-bottom:none}
+.rl{color:var(--muted)}
+.rv{font-weight:600;color:var(--txt)}
+
+/* BADGE */
+.b{display:inline-block;font-size:5px;font-weight:700;padding:1px 4px;border-radius:8px}
+.b-g{background:rgba(201,168,76,.12);color:#8A6200}
+.b-gr{background:rgba(46,138,90,.12);color:var(--green)}
+.b-bl{background:rgba(42,110,204,.12);color:var(--blue)}
+.b-or{background:rgba(204,102,0,.12);color:var(--orange)}
+.b-rd{background:rgba(204,34,34,.12);color:var(--red)}
+.b-gy{background:rgba(0,0,0,.07);color:var(--muted)}
+
+/* BTN */
+.btn{border-radius:4px;padding:4px 6px;font-size:6px;font-weight:700;text-align:center;width:100%;display:block;margin-bottom:3px}
+.btn-g{background:var(--g);color:#09090F}
+.btn-b{background:rgba(42,110,204,.1);border:1px solid rgba(42,110,204,.25);color:var(--blue)}
+.btn-ol{background:transparent;border:1px solid rgba(0,0,0,.12);color:var(--muted)}
+.btn-lock{background:rgba(0,0,0,.04);border:1px solid rgba(0,0,0,.08);color:rgba(0,0,0,.25);cursor:not-allowed}
+.btn-rd{background:rgba(204,34,34,.08);border:1px solid rgba(204,34,34,.2);color:var(--red)}
+.btn-org{background:rgba(204,102,0,.1);border:1px solid rgba(204,102,0,.25);color:var(--orange)}
+
+/* CODE BOXES */
+.codes{display:flex;gap:2px;justify-content:center;margin:3px 0}
+.cbox{width:16px;height:20px;background:rgba(201,168,76,.08);border:1px solid var(--g);border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#8A6200}
+
+/* TOGGLE */
+.tog{width:28px;height:15px;border-radius:15px;position:relative;flex-shrink:0}
+.tog.on{background:#2E8A5A}
+.tog.off{background:#CCCCDD}
+.tog-t{width:11px;height:11px;background:#FFFFFF;border-radius:50%;position:absolute;top:2px;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.tog.on .tog-t{left:15px}
+.tog.off .tog-t{left:2px}
+
+/* CHAT BUBBLE */
+.bub{max-width:70%;padding:3px 5px;border-radius:6px;font-size:5px;line-height:1.4;margin-bottom:2px}
+.bub-s{background:rgba(201,168,76,.12);border:1px solid rgba(201,168,76,.2);color:var(--txt);margin-left:auto;border-bottom-right-radius:1px}
+.bub-r{background:#EEEEEE;color:var(--txt);border-bottom-left-radius:1px}
+.bub-a{background:rgba(46,138,90,.1);border:1px solid rgba(46,138,90,.2);color:var(--txt);border-bottom-left-radius:1px}
+
+/* BIG TOGGLE */
+.big-tog{width:44px;height:24px;border-radius:24px;position:relative;flex-shrink:0}
+.big-tog.on{background:#2E8A5A}
+.big-tog.off{background:#CCCCDD}
+.big-tog-t{width:18px;height:18px;background:#FFFFFF;border-radius:50%;position:absolute;top:3px;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.big-tog.on .big-tog-t{left:23px}
+.big-tog.off .big-tog-t{left:3px}
+
+/* DASHBOARD */
+.dash{background:#FFFFFF;border:1px solid var(--border);border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.07);margin-bottom:12px}
+.dash-hd{background:#F5F5F8;padding:8px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.dash-body{padding:10px 12px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
+.kpi{background:#FFFFFF;border:1px solid var(--border);border-radius:6px;padding:6px 8px}
+.kpi-n{font-size:14px;font-weight:800;color:var(--g)}
+.kpi-l{font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:1px}
+.dtable{width:100%;border-collapse:collapse;font-size:8px}
+.dtable th{background:#F5F5F8;color:var(--muted);font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:4px 8px;text-align:left;border-bottom:1px solid var(--border)}
+.dtable td{padding:4px 8px;color:var(--txt);border-bottom:1px solid rgba(0,0,0,.04)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.info-box{background:#F5F5F8;border:1px solid var(--border);border-radius:6px;padding:7px 9px}
+
+/* PAGE FOURNISSEUR */
+.fp{background:#F2F2F7;border-radius:8px;overflow:hidden;border:1px solid rgba(0,0,0,.1);width:130px;box-shadow:0 3px 8px rgba(0,0,0,.1)}
+.fp-hd{background:#FFFFFF;padding:7px;border-bottom:1px solid rgba(0,0,0,.07);text-align:center}
+.fp-body{padding:8px;display:flex;flex-direction:column;gap:5px}
+.fp-cbox{width:20px;height:24px;background:#FFFFFF;border:1.5px solid rgba(0,0,0,.12);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:var(--txt)}
+
+/* SÉPARATEUR */
+.sep{height:1px;background:var(--border);margin:10px 0}
+
+/* PRINT */
+@media print{
+  body{background:white}
+  .page,.cover{page-break-after:always;margin:0;box-shadow:none}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .print-btn{display:none!important}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ BOUTON IMPRESSION ═══ -->
+<div class="print-btn" onclick="window.print()" style="position:fixed;bottom:20px;right:20px;background:var(--g);color:#09090F;border:none;border-radius:8px;padding:10px 20px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 4px 16px rgba(201,168,76,.4);z-index:100">🖨️ Imprimer</div>
+
+<!-- ═══════════════════════════════ -->
+<!-- PAGE DE GARDE -->
+<!-- ═══════════════════════════════ -->
+<div class="cover">
+  <div style="font-size:72px;font-weight:900;color:var(--g);letter-spacing:.05em;margin-bottom:8px">SÉSAME</div>
+  <div style="font-size:20px;color:var(--txt);font-weight:300;margin-bottom:4px">Catalogue complet des interfaces</div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:40px">Application de prescription rémunérée</div>
+  <div style="width:60px;height:3px;background:var(--g);margin:0 auto 40px"></div>
+  <div style="font-size:11px;color:var(--muted);line-height:2.2">
+    App Ambassadeur · App Chauffeur · Dashboard Admin · Page Fournisseur<br>
+    Fondateur : NAJAH Abdallah<br>
+    Version 4.0 · Mai 2026
+  </div>
+  <div style="margin-top:50px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px;text-align:center;max-width:400px">
+    <div style="background:rgba(201,168,76,.06);border:1px solid rgba(201,168,76,.2);border-radius:8px;padding:10px 6px"><div style="font-size:18px">📱</div><div style="font-size:9px;color:var(--muted);margin-top:4px">App Ambassadeur</div></div>
+    <div style="background:rgba(42,110,204,.06);border:1px solid rgba(42,110,204,.15);border-radius:8px;padding:10px 6px"><div style="font-size:18px">🚗</div><div style="font-size:9px;color:var(--muted);margin-top:4px">App Chauffeur</div></div>
+    <div style="background:rgba(0,0,0,.03);border:1px solid var(--border);border-radius:8px;padding:10px 6px"><div style="font-size:18px">🖥️</div><div style="font-size:9px;color:var(--muted);margin-top:4px">Dashboard Admin</div></div>
+    <div style="background:rgba(46,138,90,.06);border:1px solid rgba(46,138,90,.15);border-radius:8px;padding:10px 6px"><div style="font-size:18px">🔑</div><div style="font-size:9px;color:var(--muted);margin-top:4px">Page Fournisseur</div></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ -->
+<!-- PAGE 1 — APP AMBASSADEUR 1 -->
+<!-- ═══════════════════════════════ -->
+<div class="page">
+  <div class="sh"><h2 style="color:var(--g)">1 — Application Ambassadeur</h2><p>Connexion · Accueil · Commander · Code client · Message</p></div>
+
+  <div class="sub-lbl">Connexion · Accueil · Commander</div>
+  <div class="phones">
+
+    <!-- Connexion -->
+    <div class="ph-col"><div class="ph-lbl">Connexion</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div class="s-hd"><div class="s-t" style="color:var(--g)">SÉSAME 🗝</div></div>
+      <div class="s-body">
+        <div style="text-align:center;padding:5px 0"><div style="font-size:18px;font-weight:900;color:var(--g)">SÉSAME</div><div style="font-size:5px;color:var(--muted);margin-top:1px">Bienvenue</div></div>
+        <div style="display:flex;gap:3px;margin-bottom:4px">
+          <div style="flex:1;background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.25);border-radius:3px;padding:3px;text-align:center;font-size:6px;font-weight:700;color:#8A6200">Ambassadeur</div>
+          <div style="flex:1;background:#F5F5F8;border:1px solid var(--border);border-radius:3px;padding:3px;text-align:center;font-size:6px;color:var(--muted)">Chauffeur</div>
+        </div>
+        <div class="c" style="margin-bottom:3px"><div style="font-size:5px;color:var(--muted);margin-bottom:1px">EMAIL</div><div style="font-size:6px;color:var(--txt)">jean.dupont@hotel.fr</div></div>
+        <div class="c" style="margin-bottom:5px"><div style="font-size:5px;color:var(--muted);margin-bottom:1px">MOT DE PASSE</div><div style="font-size:6px;color:var(--txt)">••••••••</div></div>
+        <div class="btn btn-g">Se connecter</div>
+        <div style="text-align:center;font-size:5px;color:var(--muted);margin-top:3px">Mot de passe oublié ?</div>
+      </div>
+    </div></div></div>
+
+    <!-- Accueil gaming -->
+    <div class="ph-col"><div class="ph-lbl">Accueil — Anneau points</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div class="s-hd"><div class="s-t">Bonjour Jean 👋</div><div class="b b-g">847 pts</div></div>
+      <div class="s-body">
+        <div class="c" style="text-align:center;padding:8px 5px">
+          <div style="width:44px;height:44px;border-radius:50%;border:3px solid rgba(201,168,76,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 4px;background:rgba(201,168,76,.05)"><div style="font-size:11px;font-weight:800;color:var(--g)">847</div></div>
+          <div style="font-size:5px;color:var(--muted)">STARTER → PRO 500 pts</div>
+          <div style="height:3px;background:var(--card2);border-radius:2px;overflow:hidden;margin-top:4px"><div style="width:17%;height:100%;background:var(--g);border-radius:2px"></div></div>
+        </div>
+        <div class="btn btn-g">🚗 Commander un véhicule</div>
+        <div class="c">
+          <div style="font-size:5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Cette semaine</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;text-align:center">
+            <div><div style="font-size:9px;font-weight:800;color:var(--txt)">12</div><div style="font-size:5px;color:var(--muted)">Courses</div></div>
+            <div><div style="font-size:9px;font-weight:800;color:var(--g)">+8</div><div style="font-size:5px;color:var(--muted)">Points</div></div>
+            <div><div style="font-size:9px;font-weight:800;color:var(--green)">100%</div><div style="font-size:5px;color:var(--muted)">Satisfaits</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="nav-b"><div class="ni on"><div class="nd on">🏠</div><span>Accueil</span></div><div class="ni"><div class="nd">🚗</div><span>VTC</span></div><div class="ni"><div class="nd">🎁</div><span>Boutique</span></div><div class="ni"><div class="nd">🏆</div><span>Niveaux</span></div><div class="ni"><div class="nd">👤</div><span>Profil</span></div></div>
+    </div></div></div>
+
+    <!-- Mode réservation uniquement -->
+    <div class="ph-col"><div class="ph-lbl">Accueil — Mode réservation</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div class="s-hd"><div class="s-t">Bonjour Jean 👋</div><div class="b b-bl">📅 Réservation</div></div>
+      <div class="s-body">
+        <div class="c" style="text-align:center;padding:6px 4px">
+          <div style="width:40px;height:40px;border-radius:50%;border:3px solid rgba(201,168,76,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 3px;background:rgba(201,168,76,.05)"><div style="font-size:10px;font-weight:800;color:var(--g)">847</div></div>
+          <div style="font-size:5px;color:var(--muted)">STARTER · 847 pts</div>
+        </div>
+        <div style="background:rgba(42,110,204,.06);border:1px solid rgba(42,110,204,.18);border-radius:5px;padding:5px 6px;font-size:6px;color:var(--blue);line-height:1.5;margin-bottom:3px">📅 Réservation uniquement.<br>Délai minimum : <strong>1h avant</strong></div>
+        <div class="btn btn-b">📅 Réserver un véhicule</div>
+        <div class="btn btn-lock">🔒 Course immédiate — bientôt</div>
+      </div>
+      <div class="nav-b"><div class="ni on"><div class="nd on">🏠</div><span>Accueil</span></div><div class="ni"><div class="nd">🚗</div><span>VTC</span></div><div class="ni"><div class="nd">🎁</div><span>Boutique</span></div><div class="ni"><div class="nd">🏆</div><span>Niveaux</span></div><div class="ni"><div class="nd">👤</div><span>Profil</span></div></div>
+    </div></div></div>
+
+    <!-- Mode 2 modes -->
+    <div class="ph-col"><div class="ph-lbl">Accueil — 2 modes actifs</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div class="s-hd" style="background:rgba(46,138,90,.05);border-bottom:1px solid rgba(46,138,90,.15)"><div class="s-t">Bonjour Jean 👋</div><div class="b b-gr">⚡ 2 modes</div></div>
+      <div class="s-body">
+        <div class="c" style="text-align:center;padding:6px 4px">
+          <div style="width:40px;height:40px;border-radius:50%;border:3px solid rgba(201,168,76,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 3px;background:rgba(201,168,76,.05)"><div style="font-size:10px;font-weight:800;color:var(--g)">847</div></div>
+          <div style="font-size:5px;color:var(--muted)">STARTER · 847 pts</div>
+        </div>
+        <div class="btn btn-g" style="font-size:8px;padding:7px">⚡ Commander maintenant</div>
+        <div class="btn btn-b" style="font-size:8px;padding:7px">📅 Réserver à l'avance</div>
+      </div>
+      <div class="nav-b"><div class="ni on"><div class="nd on">🏠</div><span>Accueil</span></div><div class="ni"><div class="nd">🚗</div><span>VTC</span></div><div class="ni"><div class="nd">🎁</div><span>Boutique</span></div><div class="ni"><div class="nd">🏆</div><span>Niveaux</span></div><div class="ni"><div class="nd">👤</div><span>Profil</span></div></div>
+    </div></div></div>
+
+    <!-- Commander -->
+    <div class="ph-col"><div class="ph-lbl">Commander immédiat</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div class="s-hd"><div class="s-t">Commander</div></div>
+      <div class="s-body">
+        <div class="c"><div style="font-size:5px;color:var(--muted);margin-bottom:1px">DÉPART</div><div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:7px;color:var(--txt)">Hôtel Mercure</div><div class="b b-gr">Par défaut</div></div></div>
+        <div class="c"><div style="font-size:5px;color:var(--muted);margin-bottom:1px">DESTINATION</div><div style="font-size:7px;color:var(--txt)">Aéroport Montpellier</div></div>
+        <div style="display:flex;gap:3px;margin-bottom:3px">
+          <div class="c gold" style="flex:1;text-align:center;margin-bottom:0"><div style="font-size:10px">🚗</div><div style="font-size:6px;font-weight:700;color:#8A6200">Berline</div><div style="font-size:5px;color:var(--muted)">36,00 €</div></div>
+          <div class="c" style="flex:1;text-align:center;margin-bottom:0"><div style="font-size:10px">🚐</div><div style="font-size:6px;color:var(--muted)">Van</div><div style="font-size:5px;color:var(--muted)">48,00 €</div></div>
+        </div>
+        <div class="btn btn-g">Rechercher un chauffeur</div>
+        <div class="btn btn-ol">Annuler</div>
+      </div>
+    </div></div></div>
+
+    <!-- Réservation avec délai -->
+    <div class="ph-col"><div class="ph-lbl">Réserver à l'avance</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div class="s-hd"><div class="s-t">Réservation</div></div>
+      <div class="s-body">
+        <div class="c"><div style="font-size:5px;color:var(--muted);margin-bottom:1px">DÉPART</div><div style="font-size:7px;color:var(--txt)">Hôtel Mercure</div></div>
+        <div class="c"><div style="font-size:5px;color:var(--muted);margin-bottom:1px">DESTINATION</div><div style="font-size:7px;color:var(--txt)">Gare Saint-Roch</div></div>
+        <div class="c">
+          <div style="font-size:5px;color:var(--muted);margin-bottom:3px">DATE ET HEURE</div>
+          <div style="display:flex;gap:3px;margin-bottom:3px">
+            <div style="flex:1;background:#F5F5F8;border:1px solid var(--border);border-radius:4px;padding:4px;text-align:center;font-size:7px;font-weight:600;color:var(--txt)">📅 15/05</div>
+            <div style="flex:1;background:rgba(201,168,76,.06);border:1px solid rgba(201,168,76,.25);border-radius:4px;padding:4px;text-align:center;font-size:7px;font-weight:600;color:#8A6200">🕐 16h30</div>
+          </div>
+          <div style="background:rgba(42,110,204,.06);border:1px solid rgba(42,110,204,.15);border-radius:3px;padding:3px 5px;font-size:6px;color:var(--blue)">✓ Dans 2h15 — délai minimum OK</div>
+        </div>
+        <div class="btn btn-g">Confirmer</div>
+      </div>
+    </div></div></div>
+
+    <!-- Code reçu -->
+    <div class="ph-col"><div class="ph-lbl">Code client reçu</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div class="s-hd"><div class="s-t" style="color:var(--green)">Chauffeur trouvé !</div></div>
+      <div class="s-body">
+        <div class="c gold" style="text-align:center;padding:7px 5px">
+          <div style="font-size:5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">CODE CLIENT</div>
+          <div class="codes" style="justify-content:center"><div class="cbox">5</div><div class="cbox">8</div><div class="cbox">2</div><div class="cbox">1</div></div>
+        </div>
+        <div class="c">
+          <div class="row"><span class="rl">Chauffeur</span><span class="rv">Ahmed Benali</span></div>
+          <div class="row"><span class="rl">Véhicule</span><span class="rv">Toyota Camry · Gris</span></div>
+          <div class="row"><span class="rl">Immat.</span><span style="font-family:monospace;font-size:6px;background:rgba(42,110,204,.12);color:var(--blue);padding:1px 3px;border-radius:2px">AB-123-CD</span></div>
+          <div class="row"><span class="rl">Arrivée</span><span style="font-size:6px;font-weight:700;color:var(--green)">~5 min</span></div>
+          <div class="row"><span class="rl">Montant</span><span style="font-size:6px;font-weight:700;color:#8A6200">36,00 €</span></div>
+        </div>
+        <div class="btn btn-g">Envoyer le message au client</div>
+        <div style="display:flex;gap:3px"><div class="btn btn-b" style="margin-bottom:0;flex:1">📞 Appeler</div><div class="btn btn-b" style="margin-bottom:0;flex:1">💬 Chat</div></div>
+      </div>
+    </div></div></div>
+
+    <!-- Message client -->
+    <div class="ph-col"><div class="ph-lbl">Message client</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div class="s-hd"><div class="s-t">Message client</div></div>
+      <div class="s-body">
+        <div class="c" style="font-size:6px;color:var(--txt);line-height:1.8">
+          Votre véhicule SÉSAME arrive.<br><br>
+          <strong>Chauffeur :</strong> Ahmed Benali<br>
+          <strong>Véhicule :</strong> Toyota · Gris<br>
+          <strong>Immat. :</strong> <span style="font-family:monospace;background:rgba(42,110,204,.1);color:var(--blue);padding:0 2px">AB-123-CD</span><br>
+          <strong>Arrivée :</strong> ~5 min<br>
+          <strong>Montant :</strong> 36,00 €<br>
+          <strong>Code :</strong> <span style="color:#8A6200;font-weight:700">5821</span><br><br>
+          <em style="color:var(--muted)">Bonne route. — SÉSAME</em>
+        </div>
+        <div class="btn btn-g">Partager le message</div>
+      </div>
+    </div></div></div>
+
+  </div>
+
+  <div class="sep"></div>
+  <div class="sub-lbl">Code accessible partout — Bandeau course active</div>
+  <div class="phones">
+
+    <!-- Bandeau course active accueil -->
+    <div class="ph-col"><div class="ph-lbl">Bandeau accueil</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div style="background:rgba(201,168,76,.08);border-bottom:1px solid rgba(201,168,76,.2);padding:4px 7px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+        <div><div style="font-size:6px;font-weight:700;color:#8A6200">Course active</div><div style="font-size:5px;color:var(--muted)">~5 min · AB-123-CD</div></div>
+        <div class="codes"><div class="cbox" style="width:13px;height:16px;font-size:8px">5</div><div class="cbox" style="width:13px;height:16px;font-size:8px">8</div><div class="cbox" style="width:13px;height:16px;font-size:8px">2</div><div class="cbox" style="width:13px;height:16px;font-size:8px">1</div></div>
+      </div>
+      <div class="s-body">
+        <div class="c" style="text-align:center;padding:5px 4px">
+          <div style="font-size:6px;color:var(--muted);margin-bottom:3px">Code toujours visible depuis :</div>
+          <div style="font-size:5px;color:var(--muted);line-height:1.8">📌 Bandeau accueil<br>📋 Centre notifications<br>📜 Historique VTC</div>
+        </div>
+        <div class="btn btn-lock">🚗 Course déjà en cours</div>
+      </div>
+      <div class="nav-b"><div class="ni on"><div class="nd on">🏠</div><span>Accueil</span></div><div class="ni"><div class="nd">🚗</div><span>VTC</span></div><div class="ni"><div class="nd">🎁</div><span>Boutique</span></div><div class="ni"><div class="nd">🏆</div><span>Niveaux</span></div><div class="ni"><div class="nd">👤</div><span>Profil</span></div></div>
+    </div></div></div>
+
+    <!-- Historique VTC -->
+    <div class="ph-col"><div class="ph-lbl">Historique VTC — épinglée</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div class="s-hd"><div class="s-t">Mes courses</div></div>
+      <div class="s-body">
+        <div style="font-size:5px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;display:flex;align-items:center;gap:3px"><span style="width:5px;height:5px;border-radius:50%;background:var(--green);display:inline-block"></span>En cours</div>
+        <div class="c gold" style="margin-bottom:6px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
+            <div><div style="font-size:7px;font-weight:700;color:#8A6200">Ahmed Benali</div><div style="font-size:5px;color:var(--muted)">Toyota Camry · Gris</div></div>
+            <div style="font-size:6px;color:var(--green);font-weight:700">~5 min</div>
+          </div>
+          <div style="background:rgba(201,168,76,.06);border:1px solid rgba(201,168,76,.2);border-radius:4px;padding:4px;text-align:center;margin-bottom:3px">
+            <div style="font-size:5px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:2px">Code client</div>
+            <div class="codes" style="justify-content:center"><div class="cbox">5</div><div class="cbox">8</div><div class="cbox">2</div><div class="cbox">1</div></div>
+          </div>
+          <div style="display:flex;gap:3px"><div class="btn btn-b" style="flex:1;margin-bottom:0">📞</div><div class="btn btn-b" style="flex:1;margin-bottom:0">💬</div></div>
+        </div>
+        <div style="font-size:5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Passées</div>
+        <div class="c"><div class="row"><span class="rl">Karim T.</span><span class="rv">36,00 € · +3 pts</span></div></div>
+        <div class="c"><div class="row"><span class="rl">Sofia M.</span><span class="rv">52,00 € · +5 pts</span></div></div>
+      </div>
+      <div class="nav-b"><div class="ni"><div class="nd">🏠</div><span>Accueil</span></div><div class="ni on"><div class="nd on">🚗</div><span>VTC</span></div><div class="ni"><div class="nd">🎁</div><span>Boutique</span></div><div class="ni"><div class="nd">🏆</div><span>Niveaux</span></div><div class="ni"><div class="nd">👤</div><span>Profil</span></div></div>
+    </div></div></div>
+
+    <!-- Notification iOS -->
+    <div class="ph-col"><div class="ph-lbl">Centre notifications</div>
+    <div class="phone"><div class="notch"></div>
+    <div style="background:#E8E8F0;border-radius:9px;min-height:190px;display:flex;flex-direction:column;padding:5px">
+      <div style="text-align:center;padding:8px 0 6px"><div style="font-size:20px;font-weight:200;color:#333">14:22</div><div style="font-size:6px;color:var(--muted)">Lundi 15 mai 2026</div></div>
+      <!-- Notification persistante avec code -->
+      <div style="background:rgba(255,255,255,.9);backdrop-filter:blur(10px);border-radius:8px;padding:7px 8px;margin-bottom:4px">
+        <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px">
+          <div style="width:14px;height:14px;border-radius:3px;background:var(--g);display:flex;align-items:center;justify-content:center;font-size:7px">🗝</div>
+          <div style="font-size:6px;font-weight:600;color:var(--txt)">SÉSAME · Course active</div>
+        </div>
+        <div style="font-size:7px;font-weight:700;color:var(--txt);margin-bottom:2px">🚗 Ahmed Benali arrive dans ~5 min</div>
+        <div style="font-size:5px;color:var(--muted);margin-bottom:5px">Toyota Camry · Gris · AB-123-CD</div>
+        <div style="background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.2);border-radius:5px;padding:4px;text-align:center">
+          <div style="font-size:5px;color:var(--muted);margin-bottom:3px">CODE CLIENT À TRANSMETTRE</div>
+          <div class="codes" style="justify-content:center"><div class="cbox" style="width:14px;height:17px;font-size:9px">5</div><div class="cbox" style="width:14px;height:17px;font-size:9px">8</div><div class="cbox" style="width:14px;height:17px;font-size:9px">2</div><div class="cbox" style="width:14px;height:17px;font-size:9px">1</div></div>
+        </div>
+      </div>
+    </div></div></div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ -->
+<!-- PAGE 2 — APP AMBASSADEUR 2 -->
+<!-- ═══════════════════════════════ -->
+<div class="page">
+  <div class="sh"><h2 style="color:var(--g)">1 — Application Ambassadeur (suite)</h2><p>Boutique · Bons cadeaux · QR Code · Parrainage · Profil · Niveaux</p></div>
+
+  <div class="sub-lbl">Boutique · Bons cadeaux · QR Code</div>
+  <div class="phones">
+
+    <!-- Boutique -->
+    <div class="ph-col"><div class="ph-lbl">Boutique</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div class="s-hd"><div class="s-t">Boutique SÉSAME</div><div style="font-size:6px;color:#8A6200;font-weight:700">847 pts</div></div>
+      <div class="s-body">
+        <div class="c gold">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px"><div style="font-size:7px;font-weight:700;color:var(--txt)">🏎️ Karting Aventure</div><div style="font-size:7px;font-weight:700;color:#8A6200">75 pts</div></div>
+          <div style="font-size:5px;color:var(--muted);margin-bottom:3px">Session karting 30 min</div>
+          <div class="btn btn-g" style="padding:3px">Échanger</div>
+        </div>
+        <div class="c gold">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px"><div style="font-size:7px;font-weight:700;color:var(--txt)">🧖 Spa Wellness</div><div style="font-size:7px;font-weight:700;color:#8A6200">90 pts</div></div>
+          <div style="font-size:5px;color:var(--muted);margin-bottom:3px">Soin 1h · 2 personnes</div>
+          <div class="btn btn-g" style="padding:3px">Échanger</div>
+        </div>
+        <div class="c" style="opacity:.5">
+          <div style="font-size:6px;color:var(--muted)">🍽️ Dîner gastro · 200 pts</div>
+          <div style="font-size:5px;color:var(--muted)">Solde insuffisant</div>
+        </div>
+      </div>
+      <div class="nav-b"><div class="ni"><div class="nd">🏠</div><span>Accueil</span></div><div class="ni"><div class="nd">🚗</div><span>VTC</span></div><div class="ni on"><div class="nd on">🎁</div><span>Boutique</span></div><div class="ni"><div class="nd">🏆</div><span>Niveaux</span></div><div class="ni"><div class="nd">👤</div><span>Profil</span></div></div>
+    </div></div></div>
+
+    <!-- Mes bons -->
+    <div class="ph-col"><div class="ph-lbl">Mes bons cadeaux</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div class="s-hd"><div class="s-t">Mes bons cadeaux</div></div>
+      <div class="s-body">
+        <!-- En attente -->
+        <div class="c org">
+          <div style="display:flex;justify-content:space-between;margin-bottom:2px"><div style="font-size:7px;font-weight:700;color:var(--txt)">🧖 Spa Wellness</div><div class="b b-or">⏳ En attente</div></div>
+          <div style="font-size:5px;color:var(--orange)">Validation admin en cours</div>
+        </div>
+        <!-- J-1 -->
+        <div class="c" style="border-color:rgba(204,102,0,.25);background:rgba(204,102,0,.03)">
+          <div style="display:flex;justify-content:space-between;margin-bottom:2px"><div style="font-size:7px;font-weight:700;color:var(--orange)">🏎️ Karting</div><div class="b b-or">⚠ J-1</div></div>
+          <div style="font-size:6px;color:var(--orange);font-weight:600;margin-bottom:2px">Expire 12/05/2026 à 14h35</div>
+          <div style="background:rgba(204,102,0,.06);border:1px solid rgba(204,102,0,.15);border-radius:3px;padding:3px 5px;display:flex;justify-content:space-between">
+            <div style="font-size:5px;color:var(--orange)">QR code dispo</div>
+            <div style="background:var(--orange);color:#fff;border-radius:2px;padding:1px 4px;font-size:5px;font-weight:700">Voir</div>
+          </div>
+        </div>
+        <!-- Valide -->
+        <div class="c gold">
+          <div style="display:flex;justify-content:space-between;margin-bottom:2px"><div style="font-size:7px;font-weight:700;color:#8A6200">🤿 Plongée</div><div class="b b-g">✓ Valide</div></div>
+          <div style="font-size:5px;color:var(--muted)">Expire 11/08/2026 à <strong style="color:#8A6200">16h48</strong></div>
+        </div>
+        <!-- Expiré -->
+        <div class="c" style="opacity:.5">
+          <div style="display:flex;justify-content:space-between;margin-bottom:1px"><div style="font-size:6px;color:var(--muted)">🍽️ Dîner gastro</div><div class="b b-rd">✗ Expiré</div></div>
+          <div style="font-size:5px;color:var(--red)">Expiré 10/04/2026 à 09h22</div>
+        </div>
+      </div>
+      <div class="nav-b"><div class="ni"><div class="nd">🏠</div><span>Accueil</span></div><div class="ni"><div class="nd">🚗</div><span>VTC</span></div><div class="ni on"><div class="nd on">🎁</div><span>Boutique</span></div><div class="ni"><div class="nd">🏆</div><span>Niveaux</span></div><div class="ni"><div class="nd">👤</div><span>Profil</span></div></div>
+    </div></div></div>
+
+    <!-- QR Code -->
+    <div class="ph-col"><div class="ph-lbl">QR Code bon cadeau</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div class="s-hd"><div style="font-size:6px;color:var(--muted)">←</div><div class="s-t">Bon cadeau</div><div style="width:6px"></div></div>
+      <div class="s-body" style="align-items:center">
+        <div style="font-size:6px;font-weight:700;color:#8A6200;text-align:center;margin-bottom:4px">🏎️ Karting Aventure</div>
+        <div style="background:#FFFFFF;border-radius:5px;padding:5px;display:inline-block;margin-bottom:4px;box-shadow:0 1px 4px rgba(0,0,0,.1)">
+          <svg width="55" height="55" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+            <rect width="60" height="60" fill="white"/>
+            <rect x="4" y="4" width="18" height="18" fill="#1A1A2A"/><rect x="7" y="7" width="12" height="12" fill="white"/><rect x="9" y="9" width="8" height="8" fill="#1A1A2A"/>
+            <rect x="38" y="4" width="18" height="18" fill="#1A1A2A"/><rect x="41" y="7" width="12" height="12" fill="white"/><rect x="43" y="9" width="8" height="8" fill="#1A1A2A"/>
+            <rect x="4" y="38" width="18" height="18" fill="#1A1A2A"/><rect x="7" y="41" width="12" height="12" fill="white"/><rect x="9" y="43" width="8" height="8" fill="#1A1A2A"/>
+            <rect x="26" y="4" width="4" height="4" fill="#1A1A2A"/><rect x="32" y="4" width="4" height="4" fill="#1A1A2A"/>
+            <rect x="26" y="26" width="4" height="4" fill="#1A1A2A"/><rect x="38" y="30" width="4" height="4" fill="#1A1A2A"/>
+            <rect x="26" y="38" width="4" height="4" fill="#1A1A2A"/><rect x="44" y="44" width="4" height="4" fill="#1A1A2A"/>
+            <rect x="27" y="27" width="6" height="6" rx="1" fill="#C9A84C"/>
+            <text x="30" y="32" font-family="Arial" font-size="5" font-weight="bold" fill="white" text-anchor="middle">S</text>
+          </svg>
+        </div>
+        <div class="c" style="width:100%">
+          <div class="row"><span class="rl">Remis le</span><span style="font-family:monospace;font-size:5px;color:var(--blue);font-weight:700">11/05/2026 · 14h35</span></div>
+          <div class="row"><span class="rl">Expire le</span><span style="font-family:monospace;font-size:5px;color:var(--green);font-weight:700">11/08/2026 · 14h35</span></div>
+          <div class="row"><span class="rl">Réf.</span><span style="font-family:monospace;font-size:5px;color:var(--blue)">BON-KRT-X7K2</span></div>
+        </div>
+        <div style="font-size:5px;color:var(--red);text-align:center;margin-top:2px">⚡ Usage unique — non partageable</div>
+        <div class="c" style="width:100%;margin-top:3px">
+          <div style="font-size:6px;font-weight:700;color:var(--txt);margin-bottom:2px">Karting Aventure</div>
+          <div style="font-size:5px;color:var(--muted)">📍 12 Rue des Sports · 34000</div>
+          <div style="font-size:5px;color:var(--muted)">📞 04 67 12 34 56</div>
+        </div>
+      </div>
+    </div></div></div>
+
+    <!-- Parrainage -->
+    <div class="ph-col"><div class="ph-lbl">Parrainage</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div class="s-hd"><div class="s-t">Parrainage</div></div>
+      <div class="s-body">
+        <div class="c" style="text-align:center;margin-bottom:3px">
+          <div style="font-size:5px;color:var(--muted);margin-bottom:1px">MON CODE</div>
+          <div style="font-size:10px;font-weight:800;color:#8A6200;font-family:monospace;letter-spacing:.1em">SES-JD47</div>
+        </div>
+        <div class="c">
+          <div style="font-size:5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">4 Paliers cumulatifs</div>
+          <div class="row"><span class="rl">P1 · 5 courses validées</span><span style="font-size:6px;font-weight:700;color:#8A6200">+5 pts</span></div>
+          <div class="row"><span class="rl">P2 · Filleul PRO</span><span style="font-size:6px;font-weight:700;color:#8A6200">+10 pts</span></div>
+          <div class="row"><span class="rl">P3 · Filleul ELITE</span><span style="font-size:6px;font-weight:700;color:#8A6200">+15 pts</span></div>
+          <div class="row"><span class="rl">P4 · Filleul BLACK</span><span style="font-size:6px;font-weight:700;color:#8A6200">+20 pts</span></div>
+          <div class="row" style="border-top:1px solid var(--border);padding-top:3px"><span style="font-size:6px;font-weight:700;color:var(--txt)">Max par filleul</span><span style="font-size:6px;font-weight:700;color:#8A6200">50 pts</span></div>
+        </div>
+        <div class="btn btn-g">Parrainer un ami</div>
+      </div>
+      <div class="nav-b"><div class="ni"><div class="nd">🏠</div><span>Accueil</span></div><div class="ni"><div class="nd">🚗</div><span>VTC</span></div><div class="ni"><div class="nd">🎁</div><span>Boutique</span></div><div class="ni on"><div class="nd on">🏆</div><span>Niveaux</span></div><div class="ni"><div class="nd">👤</div><span>Profil</span></div></div>
+    </div></div></div>
+
+    <!-- Niveaux -->
+    <div class="ph-col"><div class="ph-lbl">Niveaux SÉSAME</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div class="s-hd"><div class="s-t">Mes niveaux</div></div>
+      <div class="s-body">
+        <div class="c" style="text-align:center;margin-bottom:3px;padding:6px">
+          <div class="b b-g" style="font-size:7px;padding:2px 8px;margin-bottom:4px">STARTER</div>
+          <div style="font-size:9px;font-weight:800;color:#8A6200">847 / 500 pts</div>
+          <div style="font-size:5px;color:var(--green);margin-top:2px">✓ Niveau PRO débloqué !</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 6px;background:rgba(201,168,76,.06);border:1px solid rgba(201,168,76,.2);border-radius:4px">
+            <div style="font-size:7px;font-weight:700;color:#8A6200">STARTER</div><div style="font-size:6px;color:var(--muted)">0 pts</div><div class="b b-g">Actuel</div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 6px;background:rgba(42,110,204,.06);border:1px solid rgba(42,110,204,.2);border-radius:4px">
+            <div style="font-size:7px;font-weight:700;color:var(--blue)">PRO</div><div style="font-size:6px;color:var(--muted)">500 pts</div><div class="b b-gr">Débloqué</div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 6px;background:#F8F8F8;border:1px solid var(--border);border-radius:4px;opacity:.6">
+            <div style="font-size:7px;font-weight:700;color:var(--muted)">ELITE</div><div style="font-size:6px;color:var(--muted)">2 000 pts</div><div class="b b-gy">🔒</div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 6px;background:#F8F8F8;border:1px solid var(--border);border-radius:4px;opacity:.4">
+            <div style="font-size:7px;font-weight:700;color:var(--muted)">BLACK</div><div style="font-size:6px;color:var(--muted)">5 000 pts</div><div class="b b-gy">🔒</div>
+          </div>
+        </div>
+      </div>
+    </div></div></div>
+
+    <!-- Profil préférences -->
+    <div class="ph-col"><div class="ph-lbl">Profil · Préférences</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div class="s-hd"><div class="s-t">Préférences</div></div>
+      <div class="s-body">
+        <div class="c" style="margin-bottom:3px">
+          <div style="font-size:5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Thème</div>
+          <div style="background:rgba(201,168,76,.06);border:1px solid rgba(201,168,76,.25);border-radius:4px;padding:3px 5px;display:flex;align-items:center;gap:3px;margin-bottom:2px"><span style="font-size:8px">🌙</span><div style="flex:1;font-size:6px;font-weight:700;color:var(--txt)">Nocturne</div><div style="width:8px;height:8px;border-radius:50%;background:var(--g);display:flex;align-items:center;justify-content:center"><span style="font-size:5px;color:#09090F">✓</span></div></div>
+          <div style="border:1px solid var(--border);border-radius:4px;padding:3px 5px;display:flex;align-items:center;gap:3px;margin-bottom:2px"><span style="font-size:8px">☀️</span><div style="flex:1;font-size:6px;color:var(--muted)">Clair</div></div>
+          <div style="border:1px solid var(--border);border-radius:4px;padding:3px 5px;display:flex;align-items:center;gap:3px"><span style="font-size:8px">⚡</span><div style="flex:1;font-size:6px;color:var(--muted)">Automatique</div></div>
+        </div>
+        <div class="c">
+          <div style="font-size:5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Langue</div>
+          <div style="display:flex;justify-content:space-between;font-size:6px;color:var(--txt)"><span>Langue</span><span>🇫🇷 Français ›</span></div>
+        </div>
+      </div>
+      <div class="nav-b"><div class="ni"><div class="nd">🏠</div><span>Accueil</span></div><div class="ni"><div class="nd">🚗</div><span>VTC</span></div><div class="ni"><div class="nd">🎁</div><span>Boutique</span></div><div class="ni"><div class="nd">🏆</div><span>Niveaux</span></div><div class="ni on"><div class="nd on">👤</div><span>Profil</span></div></div>
+    </div></div></div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ -->
+<!-- PAGE 3 — APP CHAUFFEUR -->
+<!-- ═══════════════════════════════ -->
+<div class="page">
+  <div class="sh"><h2 style="color:var(--blue)">2 — Application Chauffeur</h2><p>Toggle disponibilité · Course entrante · Saisie code · En route · Fin de course · Client absent · Chat</p></div>
+
+  <div class="phones">
+
+    <!-- Hors ligne -->
+    <div class="ph-col"><div class="ph-lbl">Hors ligne</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div class="s-hd"><div><div class="s-t">Ahmed Benali</div><div class="s-sub">Chauffeur</div></div><div class="b b-gy">Hors ligne</div></div>
+      <div class="s-body">
+        <div class="c" style="text-align:center;padding:10px 5px">
+          <div style="font-size:6px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em">Disponibilité</div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:4px">
+            <div style="font-size:5px;color:var(--muted)">Hors ligne</div>
+            <div class="big-tog off"><div class="big-tog-t"></div></div>
+            <div style="font-size:5px;color:var(--muted)">En ligne</div>
+          </div>
+          <div style="font-size:5px;color:var(--muted)">Activez pour recevoir des courses</div>
+        </div>
+        <div class="c"><div class="row"><span class="rl">Courses</span><span class="rv">0</span></div><div class="row"><span class="rl">CA encaissé</span><span class="rv">0,00 €</span></div></div>
+      </div>
+      <div class="nav-b"><div class="ni on"><div class="nd on">🏠</div><span>Accueil</span></div><div class="ni"><div class="nd">🚗</div><span>Course</span></div><div class="ni"><div class="nd">💰</div><span>Revenus</span></div><div class="ni"><div class="nd">👤</div><span>Profil</span></div></div>
+    </div></div></div>
+
+    <!-- En ligne -->
+    <div class="ph-col"><div class="ph-lbl">En ligne</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div style="background:rgba(46,138,90,.05);border-bottom:1px solid rgba(46,138,90,.15);padding:5px 7px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+        <div><div class="s-t">Ahmed Benali</div><div style="font-size:5px;color:var(--green)">● En ligne</div></div>
+        <div class="big-tog on"><div class="big-tog-t"></div></div>
+      </div>
+      <div class="s-body">
+        <div class="c grn" style="text-align:center;padding:6px">
+          <div style="font-size:6px;color:var(--green);font-weight:700;margin-bottom:2px">DISPONIBLE</div>
+          <div style="font-size:5px;color:var(--muted)">En attente de courses...</div>
+        </div>
+        <div class="c"><div class="row"><span class="rl">Courses</span><span class="rv">3</span></div><div class="row"><span class="rl">CA encaissé</span><span class="rv">108,00 €</span></div></div>
+        <div style="font-size:5px;color:var(--muted);text-align:center;padding:3px 0">Frais SÉSAME : visible uniquement sur factures Stripe</div>
+      </div>
+      <div class="nav-b"><div class="ni on"><div class="nd on">🏠</div><span>Accueil</span></div><div class="ni"><div class="nd">🚗</div><span>Course</span></div><div class="ni"><div class="nd">💰</div><span>Revenus</span></div><div class="ni"><div class="nd">👤</div><span>Profil</span></div></div>
+    </div></div></div>
+
+    <!-- Toggle bloqué -->
+    <div class="ph-col"><div class="ph-lbl">Toggle bloqué — cours active</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div style="background:rgba(42,110,204,.05);border-bottom:1px solid rgba(42,110,204,.15);padding:5px 7px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+        <div><div class="s-t">Ahmed Benali</div><div style="font-size:5px;color:var(--blue)">● Course en cours</div></div>
+      </div>
+      <div class="s-body">
+        <div class="c">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+            <div style="font-size:6px;color:var(--muted)">Disponibilité</div>
+            <div class="big-tog on" style="opacity:.4"><div class="big-tog-t"></div></div>
+          </div>
+          <div style="background:rgba(204,102,0,.06);border:1px solid rgba(204,102,0,.15);border-radius:4px;padding:4px 5px;font-size:5px;color:var(--orange);line-height:1.5">🔒 Toggle verrouillé pendant une course active. Terminez la course d'abord.</div>
+        </div>
+        <div class="c blu">
+          <div style="font-size:5px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Course en cours</div>
+          <div class="row"><span class="rl">Destination</span><span class="rv">Aéroport</span></div>
+          <div class="row"><span class="rl">Montant</span><span style="font-size:6px;font-weight:700;color:#8A6200">52,00 €</span></div>
+          <div class="row"><span class="rl">Arrivée</span><span style="font-size:6px;font-weight:700;color:var(--green)">~8 min</span></div>
+        </div>
+      </div>
+    </div></div></div>
+
+    <!-- Course entrante 10s -->
+    <div class="ph-col"><div class="ph-lbl">Course entrante — 10s</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div class="s-hd"><div class="s-t" style="color:var(--orange)">Nouvelle course !</div></div>
+      <div class="s-body">
+        <div style="text-align:center;margin-bottom:4px">
+          <div style="width:32px;height:32px;border-radius:50%;border:3px solid rgba(201,168,76,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 2px;background:rgba(201,168,76,.05)"><div style="font-size:10px;font-weight:800;color:#8A6200">8s</div></div>
+        </div>
+        <div class="c">
+          <div class="row"><span class="rl">De</span><span class="rv">Hôtel Mercure</span></div>
+          <div class="row"><span class="rl">Vers</span><span class="rv">Aéroport</span></div>
+          <div class="row"><span class="rl">Montant</span><span style="font-size:7px;font-weight:700;color:#8A6200">36,00 €</span></div>
+          <div class="row"><span class="rl">ETA départ</span><span style="font-size:6px;font-weight:700;color:var(--green)">~4 min</span></div>
+          <div class="row"><span class="rl">Ambassadeur</span><span class="rv">Jean Dupont</span></div>
+        </div>
+        <div style="display:flex;gap:3px">
+          <div class="btn btn-ol" style="flex:1;margin-bottom:0">Refuser</div>
+          <div class="btn btn-g" style="flex:1;margin-bottom:0">Accepter</div>
+        </div>
+        <div style="font-size:5px;color:var(--muted);text-align:center;margin-top:2px">Refus libre — aucune sanction (règle juridique)</div>
+      </div>
+    </div></div></div>
+
+    <!-- En route -->
+    <div class="ph-col"><div class="ph-lbl">En route vers client</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div style="background:rgba(42,110,204,.05);border-bottom:1px solid rgba(42,110,204,.12);padding:5px 7px;flex-shrink:0"><div class="s-t" style="color:var(--blue)">En route vers le client</div><div class="s-sub">Hôtel Mercure · ~4 min</div></div>
+      <div class="s-body">
+        <div class="c">
+          <div class="row"><span class="rl">Client</span><span class="rv">Jean Dupont</span></div>
+          <div class="row"><span class="rl">Adresse</span><span class="rv">Hôtel Mercure</span></div>
+          <div class="row"><span class="rl">ETA</span><span style="font-size:6px;font-weight:700;color:var(--green)">~4 min</span></div>
+        </div>
+        <div class="c org"><div style="font-size:6px;color:var(--orange);text-align:center">Demandez le code 4 chiffres à l'arrivée</div></div>
+        <div class="btn btn-b">💬 Envoyer un message</div>
+        <div class="btn btn-b">📞 Appeler l'Ambassadeur</div>
+      </div>
+    </div></div></div>
+
+    <!-- Saisie code -->
+    <div class="ph-col"><div class="ph-lbl">Saisie code — pivot</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div class="s-hd"><div class="s-t">Code client — PIVOT</div></div>
+      <div class="s-body" style="align-items:center">
+        <div style="font-size:5px;color:var(--muted);text-align:center;margin-bottom:4px">Saisissez le code communiqué par l'Ambassadeur</div>
+        <div class="codes" style="margin-bottom:4px"><div class="cbox">5</div><div class="cbox">8</div><div class="cbox" style="border-style:dashed">_</div><div class="cbox" style="border-color:rgba(0,0,0,.15);color:rgba(0,0,0,.2)">_</div></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;width:85%;margin:0 auto">
+          <div style="background:#F5F5F8;border:1px solid var(--border);border-radius:4px;padding:5px;text-align:center;font-size:10px;font-weight:700;color:var(--txt)">1</div>
+          <div style="background:#F5F5F8;border:1px solid var(--border);border-radius:4px;padding:5px;text-align:center;font-size:10px;font-weight:700;color:var(--txt)">2</div>
+          <div style="background:#F5F5F8;border:1px solid var(--border);border-radius:4px;padding:5px;text-align:center;font-size:10px;font-weight:700;color:var(--txt)">3</div>
+          <div style="background:#F5F5F8;border:1px solid var(--border);border-radius:4px;padding:5px;text-align:center;font-size:10px;font-weight:700;color:var(--txt)">4</div>
+          <div style="background:#F5F5F8;border:1px solid var(--border);border-radius:4px;padding:5px;text-align:center;font-size:10px;font-weight:700;color:var(--txt)">5</div>
+          <div style="background:#F5F5F8;border:1px solid var(--border);border-radius:4px;padding:5px;text-align:center;font-size:10px;font-weight:700;color:var(--txt)">6</div>
+          <div style="background:#F5F5F8;border:1px solid var(--border);border-radius:4px;padding:5px;text-align:center;font-size:10px;font-weight:700;color:var(--txt)">7</div>
+          <div style="background:#F5F5F8;border:1px solid var(--border);border-radius:4px;padding:5px;text-align:center;font-size:10px;font-weight:700;color:var(--txt)">8</div>
+          <div style="background:#F5F5F8;border:1px solid var(--border);border-radius:4px;padding:5px;text-align:center;font-size:10px;font-weight:700;color:var(--txt)">9</div>
+          <div style="background:#EEEEEE;border:1px solid var(--border);border-radius:4px;padding:5px;text-align:center;font-size:8px;color:var(--txt)">⌫</div>
+          <div style="background:#F5F5F8;border:1px solid var(--border);border-radius:4px;padding:5px;text-align:center;font-size:10px;font-weight:700;color:var(--txt)">0</div>
+          <div style="background:var(--g);border-radius:4px;padding:5px;text-align:center;font-size:9px;font-weight:800;color:#09090F">OK</div>
+        </div>
+        <div style="font-size:5px;color:var(--orange);text-align:center;margin-top:4px;font-weight:700">⚡ PIVOT JURIDIQUE ET FINANCIER</div>
+      </div>
+    </div></div></div>
+
+    <!-- Fin de course -->
+    <div class="ph-col"><div class="ph-lbl">Fin de course</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div class="s-hd"><div class="s-t">Course terminée</div></div>
+      <div class="s-body">
+        <div style="text-align:center;padding:5px 0"><div style="font-size:18px;margin-bottom:3px">✅</div><div style="font-size:7px;font-weight:700;color:var(--green)">Bonne course !</div></div>
+        <div class="c">
+          <div class="row"><span class="rl">Trajet</span><span class="rv">Hôtel → Aéroport</span></div>
+          <div class="row"><span class="rl">Distance</span><span class="rv">18,4 km</span></div>
+          <div class="row"><span class="rl">Durée</span><span class="rv">24 min</span></div>
+          <div class="row"><span class="rl">Montant encaissé</span><span style="font-size:9px;font-weight:800;color:#8A6200">52,00 €</span></div>
+        </div>
+        <div class="c blu">
+          <div class="row"><span class="rl">Total aujourd'hui</span><span style="font-size:6px;font-weight:700;color:var(--blue)">232,00 €</span></div>
+          <div class="row"><span class="rl">Courses</span><span class="rv">6</span></div>
+        </div>
+        <div class="btn btn-g">Continuer</div>
+        <div class="btn btn-ol">Terminer ma journée</div>
+      </div>
+    </div></div></div>
+
+    <!-- Client absent -->
+    <div class="ph-col"><div class="ph-lbl">Client absent</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div style="background:rgba(204,102,0,.05);border-bottom:1px solid rgba(204,102,0,.12);padding:5px 7px;flex-shrink:0"><div class="s-t" style="color:var(--orange)">En attente client</div></div>
+      <div class="s-body">
+        <div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--orange);font-family:monospace">08:34</div><div style="font-size:5px;color:var(--muted);margin-top:1px">Temps d'attente</div></div>
+        <div class="c">
+          <div class="row"><span class="rl">Prescripteur</span><span class="rv">Jean Dupont</span></div>
+          <div class="row"><span class="rl">Adresse</span><span class="rv">Hôtel Mercure</span></div>
+        </div>
+        <div class="btn btn-b">📞 Appeler Jean Dupont</div>
+        <div class="btn btn-org">🆘 Client absent — Contacter SÉSAME</div>
+        <div style="background:rgba(204,102,0,.06);border:1px solid rgba(204,102,0,.15);border-radius:4px;padding:3px 5px;font-size:5px;color:var(--orange);text-align:center;line-height:1.4">⚠ Seule l'équipe SÉSAME peut annuler cette course</div>
+      </div>
+    </div></div></div>
+
+    <!-- Chat course -->
+    <div class="ph-col"><div class="ph-lbl">Chat cours active</div>
+    <div class="phone"><div class="notch"></div><div class="sc">
+      <div style="padding:4px 7px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:4px;flex-shrink:0;background:#FFFFFF">
+        <div style="width:16px;height:16px;border-radius:50%;background:rgba(201,168,76,.15);display:flex;align-items:center;justify-content:center;font-size:6px;font-weight:700;color:#8A6200">JD</div>
+        <div style="flex:1"><div style="font-size:6px;font-weight:600;color:var(--txt)">Jean Dupont</div><div style="font-size:5px;color:var(--muted)">Ambassadeur</div></div>
+        <div style="font-size:10px;color:var(--blue)">📞</div>
+      </div>
+      <div style="flex:1;padding:5px 6px;display:flex;flex-direction:column;gap:3px">
+        <div class="bub bub-r">J'arrive dans 5 min, je suis sur le boulevard</div>
+        <div class="bub bub-s">Ok, le client attend à l'entrée principale</div>
+        <div class="bub bub-r">Je suis garé devant, voiture grise</div>
+        <div style="text-align:center"><span style="font-size:5px;color:var(--muted)">Message SÉSAME</span></div>
+        <div><div style="font-size:5px;color:var(--green);margin-bottom:1px">SÉSAME</div><div class="bub bub-a">Pouvez-vous patienter 3 min ? Le client arrive.</div></div>
+      </div>
+      <div style="padding:3px 5px;border-top:1px solid var(--border);display:flex;gap:3px;align-items:center;flex-shrink:0;background:#FFFFFF">
+        <div style="flex:1;background:#F5F5F8;border:1px solid var(--border);border-radius:8px;padding:3px 6px;font-size:5px;color:var(--muted)">Message...</div>
+        <div style="width:14px;height:14px;border-radius:50%;background:var(--g);display:flex;align-items:center;justify-content:center;font-size:7px">➤</div>
+      </div>
+    </div></div></div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ -->
+<!-- PAGE 4 — DASHBOARD ADMIN -->
+<!-- ═══════════════════════════════ -->
+<div class="page">
+  <div class="sh"><h2>3 — Dashboard Admin</h2><p>Vue générale · Courses · Échanges · Ambassadeurs · Chauffeurs · Fournisseurs · Blacklist</p></div>
+
+  <!-- Vue générale -->
+  <div class="sub-lbl">Vue générale</div>
+  <div class="dash">
+    <div class="dash-hd">
+      <div style="display:flex;align-items:center;gap:8px"><div style="font-size:14px;font-weight:800;color:var(--g)">S</div><div style="font-size:12px;font-weight:700;color:var(--txt)">SÉSAME</div><div style="font-size:9px;color:var(--muted)">Administration</div></div>
+      <div style="font-size:9px;font-weight:600;color:var(--txt)">Vue générale · Mai 2026</div>
+    </div>
+    <div class="dash-body">
+      <div class="kpis">
+        <div class="kpi"><div class="kpi-n">12 480 €</div><div class="kpi-l">CA brut mai</div></div>
+        <div class="kpi"><div class="kpi-n" style="color:var(--txt)">1 842</div><div class="kpi-l">Courses</div></div>
+        <div class="kpi"><div class="kpi-n" style="color:var(--blue)">47</div><div class="kpi-l">Ambassadeurs</div></div>
+        <div class="kpi"><div class="kpi-n" style="color:var(--txt)">38</div><div class="kpi-l">Chauffeurs actifs</div></div>
+      </div>
+      <div class="grid2">
+        <div class="info-box">
+          <div style="font-size:7px;font-weight:700;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em">Alertes actives</div>
+          <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px"><div class="b b-rd">Cas B</div><div style="font-size:7px;color:var(--txt)">Course interrompue — client à bord</div></div>
+          <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px"><div class="b b-or">⏳</div><div style="font-size:7px;color:var(--txt)">Client absent — Ahmed B. · 8 min</div></div>
+          <div style="display:flex;align-items:center;gap:4px"><div class="b b-or">📄</div><div style="font-size:7px;color:var(--txt)">Document expiré — Karim A.</div></div>
+        </div>
+        <div class="info-box">
+          <div style="font-size:7px;font-weight:700;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em">Top Ambassadeurs</div>
+          <div style="display:flex;justify-content:space-between;font-size:7px;margin-bottom:3px"><span style="color:#8A6200;font-weight:700">1. Jean Dupont</span><span style="color:#8A6200">142 courses</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:7px;margin-bottom:3px"><span style="color:var(--muted)">2. Sophie Martin</span><span style="color:var(--txt)">111 courses</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:7px"><span style="color:var(--muted)">3. Karim Aziz</span><span style="color:var(--txt)">88 courses</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Courses -->
+  <div class="sub-lbl">Section Courses</div>
+  <div class="dash">
+    <div class="dash-hd"><div style="font-size:10px;font-weight:700;color:var(--txt)">Courses</div><div style="display:flex;gap:4px"><div class="b b-gy">Toutes</div><div class="b b-bl">En cours</div><div class="b b-gr">Terminées</div><div class="b b-rd">Annulées</div></div></div>
+    <div class="dash-body" style="padding:6px 10px">
+      <table class="dtable">
+        <thead><tr><th>Référence</th><th>Ambassadeur</th><th>Chauffeur</th><th>Statut</th><th>Montant</th><th>Date</th></tr></thead>
+        <tbody>
+          <tr><td style="color:var(--g);font-family:monospace">CRS-10428</td><td>Amine B.</td><td>Karim L.</td><td><span class="b b-gr">Terminée</span></td><td style="font-weight:600">24,50 €</td><td style="color:var(--muted)">12/05 14:32</td></tr>
+          <tr><td style="color:var(--g);font-family:monospace">CRS-10427</td><td>Sofia M.</td><td>Yanis D.</td><td><span class="b b-bl">En cours</span></td><td style="font-weight:600">18,00 €</td><td style="color:var(--muted)">12/05 14:10</td></tr>
+          <tr><td style="color:var(--g);font-family:monospace">CRS-10426</td><td>Hugo R.</td><td>Karim L.</td><td><span class="b b-rd">Annulée</span></td><td style="font-weight:600">0,00 €</td><td style="color:var(--muted)">12/05 13:21</td></tr>
+          <tr><td style="color:var(--g);font-family:monospace">CRS-10425</td><td>Nora S.</td><td>Yanis D.</td><td><span class="b b-or">Recherche</span></td><td style="font-weight:600">22,40 €</td><td style="color:var(--muted)">12/05 12:30</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="grid2" style="gap:10px">
+    <!-- Échanges -->
+    <div>
+      <div class="sub-lbl">Échanges — Validation manuelle</div>
+      <div class="dash" style="margin-bottom:0">
+        <div class="dash-hd"><div style="font-size:9px;font-weight:700;color:var(--txt)">Échanges</div><div class="b b-or">3 en attente</div></div>
+        <div class="dash-body" style="padding:6px 10px">
+          <table class="dtable">
+            <thead><tr><th>Ambassadeur</th><th>Récompense</th><th>Points</th><th>Actions</th></tr></thead>
+            <tbody>
+              <tr><td>Karim B.</td><td>Karting 30min</td><td>75</td><td><span class="b b-gr">Valider</span> <span class="b b-rd">Refuser</span></td></tr>
+              <tr><td>Sophie L.</td><td>Spa Wellness</td><td>90</td><td><span class="b b-gr">Valider</span> <span class="b b-rd">Refuser</span></td></tr>
+              <tr><td>Marc D.</td><td>Bon Amazon</td><td>150</td><td><span class="b b-gr">Valider</span> <span class="b b-rd">Refuser</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Blacklist -->
+    <div>
+      <div class="sub-lbl">Blacklist — Blocage silencieux</div>
+      <div class="dash" style="margin-bottom:0">
+        <div class="dash-hd"><div style="font-size:9px;font-weight:700;color:var(--txt)">Blacklist</div><div class="b b-rd">Blocage silencieux</div></div>
+        <div style="background:rgba(204,34,34,.04);border-bottom:1px solid rgba(204,34,34,.12);padding:5px 10px;font-size:7px;color:var(--red)">⚠ L'utilisateur voit uniquement un message d'erreur générique</div>
+        <div class="dash-body" style="padding:6px 10px">
+          <table class="dtable">
+            <thead><tr><th>Nom · Prénom</th><th>Naissance · Lieu</th><th>Type</th><th>Motif</th></tr></thead>
+            <tbody>
+              <tr><td style="font-weight:600">Dubois Marc</td><td style="color:var(--muted)">12/03/1985 · Paris</td><td><span class="b b-g">Amb.</span></td><td style="color:var(--muted);font-size:7px">Fraude points</td></tr>
+              <tr><td style="font-weight:600">Nguyen Linh</td><td style="color:var(--muted)">22/07/1990 · Lyon</td><td><span class="b b-bl">Chauf.</span></td><td style="color:var(--muted);font-size:7px">Comportement</td></tr>
+              <tr><td style="font-weight:600">Martin Sophie</td><td style="color:var(--muted)">04/11/1992 · Marseille</td><td><span class="b b-g">Amb.</span></td><td style="color:var(--muted);font-size:7px">Faux comptes</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ -->
+<!-- PAGE 5 — DASHBOARD SUITE -->
+<!-- ═══════════════════════════════ -->
+<div class="page">
+  <div class="sh"><h2>3 — Dashboard Admin (suite)</h2><p>Ambassadeurs · Fournisseurs · Support · Paramètres · Arbitrage client absent</p></div>
+
+  <!-- Ambassadeurs -->
+  <div class="sub-lbl">Section Ambassadeurs</div>
+  <div class="dash">
+    <div class="dash-hd"><div style="font-size:10px;font-weight:700;color:var(--txt)">Ambassadeurs</div><div style="display:flex;gap:3px"><div class="b b-gy">Tous</div><div class="b b-gy">Starter</div><div class="b b-bl">Pro</div><div class="b b-g">Elite</div><div class="b b-gy">Black</div></div></div>
+    <div class="dash-body" style="padding:6px 10px">
+      <table class="dtable">
+        <thead><tr><th>Nom · Prénom</th><th>Établissement</th><th>Niveau</th><th>Points</th><th>Statut</th></tr></thead>
+        <tbody>
+          <tr><td style="font-weight:600">Martin Sophie</td><td>Le Bistrot Parisien</td><td><span class="b b-g">Elite</span></td><td style="font-weight:700;color:#8A6200">4 820</td><td><span class="b b-gr">Actif</span></td></tr>
+          <tr><td style="font-weight:600">Bernard Karim</td><td>Hôtel Horizon</td><td><span class="b b-gy" style="background:#1A1A2A;color:#E0DBD2">Black</span></td><td style="font-weight:700;color:#8A6200">12 450</td><td><span class="b b-gr">Actif</span></td></tr>
+          <tr><td style="font-weight:600">Nguyen Linh</td><td>Saigon Café</td><td><span class="b b-bl">Pro</span></td><td style="font-weight:700;color:#8A6200">1 820</td><td><span class="b b-gr">Actif</span></td></tr>
+          <tr><td style="font-weight:600">Dubois Marc</td><td>Brasserie du Centre</td><td><span class="b b-gy">Starter</span></td><td style="color:var(--muted)">320</td><td><span class="b b-rd">Suspendu</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Fournisseurs -->
+  <div class="sub-lbl">Section Fournisseurs</div>
+  <div class="dash">
+    <div class="dash-hd"><div style="font-size:10px;font-weight:700;color:var(--txt)">Fournisseurs</div><div style="background:var(--g);color:#09090F;border-radius:4px;padding:2px 8px;font-size:8px;font-weight:700">+ Ajouter fournisseur</div></div>
+    <div class="dash-body" style="padding:6px 10px">
+      <table class="dtable">
+        <thead><tr><th>Nom société</th><th>Contact légal</th><th>Ville</th><th>Option</th><th>Contrat</th><th>Statut</th></tr></thead>
+        <tbody>
+          <tr><td style="font-weight:700">Karting Aventure</td><td>Pierre Durand</td><td>Montpellier</td><td style="color:var(--muted)">C</td><td><span class="b b-gr">Signé</span></td><td><span class="b b-gr">Actif</span></td></tr>
+          <tr><td style="font-weight:700">Spa Wellness</td><td>Sophie Laurent</td><td>Montpellier</td><td style="color:var(--muted)">C</td><td><span class="b b-or">En attente</span></td><td><span class="b b-gr">Actif</span></td></tr>
+          <tr><td style="font-weight:700">Plongée Méditerranée</td><td>Marc Lebrun</td><td>Palavas</td><td style="color:var(--muted)">B</td><td><span class="b b-gy">Aucun</span></td><td><span class="b b-gy">Inactif</span></td></tr>
+        </tbody>
+      </table>
+      <div style="margin-top:6px;background:rgba(204,34,34,.04);border:1px solid rgba(204,34,34,.12);border-radius:4px;padding:4px 8px;font-size:7px;color:var(--red)">🔒 Boutique bloquée tant que contrat non signé · Points SÉSAME jamais mentionnés dans le contrat</div>
+    </div>
+  </div>
+
+  <div class="grid2" style="gap:10px">
+
+    <!-- Support -->
+    <div>
+      <div class="sub-lbl">Support — 3 colonnes</div>
+      <div class="dash" style="margin-bottom:0">
+        <div class="dash-hd"><div style="font-size:9px;font-weight:700;color:var(--txt)">Support</div></div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:6px 10px 4px">
+          <div class="kpi" style="padding:4px 6px"><div class="kpi-n" style="color:var(--red);font-size:12px">8</div><div class="kpi-l">Ouverts</div></div>
+          <div class="kpi" style="padding:4px 6px"><div class="kpi-n" style="color:var(--orange);font-size:12px">5</div><div class="kpi-l">En attente</div></div>
+          <div class="kpi" style="padding:4px 6px"><div class="kpi-n" style="color:var(--green);font-size:12px">124</div><div class="kpi-l">Résolus</div></div>
+          <div class="kpi" style="padding:4px 6px"><div class="kpi-n" style="font-size:10px">32 min</div><div class="kpi-l">Temps moyen</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:90px 1fr;min-height:80px;border-top:1px solid var(--border)">
+          <div style="border-right:1px solid var(--border);padding:6px 8px">
+            <div style="font-size:7px;color:var(--g);font-weight:700;margin-bottom:3px">TCK-1042 <span class="b b-rd">Ouvert</span></div>
+            <div style="font-size:7px;font-weight:600;color:var(--txt);margin-bottom:1px">Course non créditée</div>
+            <div style="font-size:5px;color:var(--muted)">Sophie M. · il y a 12 min</div>
+            <div style="margin-top:5px;border-top:1px solid var(--border);padding-top:4px">
+              <div style="font-size:7px;color:var(--muted)">TCK-1041 <span class="b b-or">Attente</span></div>
+              <div style="font-size:7px;font-weight:600;color:var(--txt)">Problème virement</div>
+            </div>
+          </div>
+          <div style="padding:6px 8px;display:flex;flex-direction:column;gap:3px">
+            <div class="bub bub-r" style="font-size:6px">Ma course du 10/05 n'apparaît pas dans mon historique.</div>
+            <div><div style="font-size:5px;color:var(--green)">SÉSAME · 10:18</div><div class="bub bub-a" style="font-size:6px">Bonjour Sophie, je vérifie cela tout de suite.</div></div>
+            <div class="bub bub-r" style="font-size:6px">Merci beaucoup !</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Arbitrage client absent -->
+    <div>
+      <div class="sub-lbl">Arbitrage — Client absent</div>
+      <div class="dash" style="margin-bottom:0">
+        <div class="dash-hd"><div style="font-size:9px;font-weight:700;color:var(--orange)">Client absent · 08:34 d'attente</div></div>
+        <div class="dash-body" style="padding:6px 10px">
+          <div class="grid2" style="gap:5px;margin-bottom:6px">
+            <div class="info-box">
+              <div style="font-size:7px;color:var(--muted);margin-bottom:2px">Chauffeur</div>
+              <div style="font-size:7px;font-weight:600;color:var(--txt)">Ahmed Benali</div>
+              <div style="font-size:6px;color:var(--green)">Sur place ✓</div>
+              <div style="font-size:6px;color:var(--orange)">Attente : 08:34</div>
+            </div>
+            <div class="info-box">
+              <div style="font-size:7px;color:var(--muted);margin-bottom:2px">Ambassadeur</div>
+              <div style="font-size:7px;font-weight:600;color:var(--txt)">Jean Dupont</div>
+              <div style="font-size:6px;color:var(--green)">Notifié ✓</div>
+              <div style="font-size:6px;color:var(--red)">Pas de réponse</div>
+            </div>
+          </div>
+          <div style="font-size:7px;color:var(--muted);margin-bottom:3px">Sanctions modulables :</div>
+          <div style="display:flex;justify-content:space-between;font-size:7px;margin-bottom:2px"><span>Pénalité Ambassadeur</span><span style="color:var(--red);font-weight:700">-10 pts (différé si solde insuffisant)</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:7px;margin-bottom:5px"><span>Indemnisation chauffeur</span><span style="color:var(--green);font-weight:700">+5,00 €</span></div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <div style="background:rgba(46,138,90,.08);border:1px solid rgba(46,138,90,.2);border-radius:4px;padding:3px;font-size:7px;color:var(--green);text-align:center">⏱ Accorder 10 min</div>
+            <div style="background:rgba(204,102,0,.08);border:1px solid rgba(204,102,0,.2);border-radius:4px;padding:3px;font-size:7px;color:var(--orange);text-align:center">✕ Annuler sans pénalité</div>
+            <div style="background:rgba(204,34,34,.07);border:1px solid rgba(204,34,34,.18);border-radius:4px;padding:3px;font-size:7px;color:var(--red);text-align:center">🚫 Annuler avec pénalité (-10 pts · +5€ chauf.)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ -->
+<!-- PAGE 6 — PARAMÈTRES & MODE COURSES -->
+<!-- ═══════════════════════════════ -->
+<div class="page">
+  <div class="sh"><h2>3 — Dashboard Admin · Paramètres</h2><p>Mode des courses · Véhicules et tarifs · Parrainage · Pays · Facturation · Équipe admin</p></div>
+
+  <!-- Mode des courses -->
+  <div class="sub-lbl">Paramètres — Mode des courses (nouvelle fonctionnalité clé)</div>
+  <div class="dash">
+    <div class="dash-hd">
+      <div style="font-size:10px;font-weight:700;color:var(--txt)">Paramètres · Mode des courses</div>
+      <div class="b b-bl">📅 Réservation uniquement</div>
+    </div>
+    <div class="dash-body">
+      <div style="display:grid;grid-template-columns:120px 1fr;gap:10px">
+        <div style="border-right:1px solid var(--border);padding-right:10px">
+          <div style="font-size:8px;font-weight:700;color:var(--txt);padding:5px 0;border-bottom:1px solid var(--border)">Informations générales</div>
+          <div style="font-size:8px;font-weight:700;color:var(--g);padding:5px 0;border-bottom:1px solid var(--border);border-left:2px solid var(--g);padding-left:6px;background:rgba(201,168,76,.04)">Mode des courses</div>
+          <div style="font-size:8px;color:var(--muted);padding:5px 0;border-bottom:1px solid var(--border)">Véhicules et tarifs</div>
+          <div style="font-size:8px;color:var(--muted);padding:5px 0;border-bottom:1px solid var(--border)">Pays & Localisation</div>
+          <div style="font-size:8px;color:var(--muted);padding:5px 0;border-bottom:1px solid var(--border)">Parrainage</div>
+          <div style="font-size:8px;color:var(--muted);padding:5px 0;border-bottom:1px solid var(--border)">Facturation</div>
+          <div style="font-size:8px;color:var(--muted);padding:5px 0">Équipe admin</div>
+        </div>
+        <div>
+          <!-- Toggle course immédiate -->
+          <div class="info-box" style="margin-bottom:8px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+              <div><div style="font-size:10px;font-weight:700;color:var(--txt)">⚡ Course immédiate</div><div style="font-size:8px;color:var(--muted)">Permet aux Ambassadeurs de commander en temps réel</div></div>
+              <div class="tog off"><div class="tog-t"></div></div>
+            </div>
+            <div style="background:rgba(204,102,0,.05);border:1px solid rgba(204,102,0,.15);border-radius:5px;padding:6px 8px;font-size:8px;color:var(--orange);line-height:1.5">⚠️ <strong>Activez uniquement si vous avez suffisamment de chauffeurs.</strong> Un parc insuffisant = attentes longues = perte d'Ambassadeurs.</div>
+          </div>
+          <!-- Toggle réservation -->
+          <div class="info-box" style="margin-bottom:8px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+              <div><div style="font-size:10px;font-weight:700;color:var(--txt)">📅 Réservation à l'avance</div><div style="font-size:8px;color:var(--muted)">Toujours actif — ne peut pas être désactivé</div></div>
+              <div class="tog on" style="opacity:.7"><div class="tog-t"></div></div>
+            </div>
+            <div style="font-size:8px;font-weight:700;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em">Délai minimum avant départ</div>
+            <div style="display:flex;gap:6px">
+              <div style="background:rgba(201,168,76,.06);border:1.5px solid var(--g);border-radius:5px;padding:5px 8px;font-size:9px;font-weight:700;color:#8A6200;text-align:center;flex:1">1 heure<div style="font-size:7px;font-weight:400;color:var(--muted)">Recommandé lancement</div></div>
+              <div style="border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:9px;color:var(--muted);text-align:center;flex:1">2 heures</div>
+              <div style="border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:9px;color:var(--muted);text-align:center;flex:1">24 heures</div>
+            </div>
+          </div>
+          <div style="background:var(--g);color:#09090F;border-radius:6px;padding:7px;font-size:9px;font-weight:800;text-align:center">Enregistrer</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid3" style="gap:8px;margin-top:10px">
+
+    <!-- Véhicules et tarifs -->
+    <div>
+      <div class="sub-lbl">Véhicules et tarifs</div>
+      <div class="dash" style="margin-bottom:0">
+        <div class="dash-hd"><div style="font-size:9px;font-weight:700;color:var(--txt)">Véhicules et tarifs</div></div>
+        <div class="dash-body" style="padding:6px 10px">
+          <div class="grid2" style="gap:5px;margin-bottom:5px">
+            <div class="info-box">
+              <div style="font-size:8px;font-weight:700;color:var(--txt);margin-bottom:4px">🚗 Berline</div>
+              <div class="row"><span class="rl">Forfait</span><span class="rv">12,00 €</span></div>
+              <div class="row"><span class="rl">Seuil</span><span class="rv">6 km</span></div>
+              <div class="row"><span class="rl">Prix/km</span><span class="rv">2,00 €</span></div>
+            </div>
+            <div class="info-box">
+              <div style="font-size:8px;font-weight:700;color:var(--txt);margin-bottom:4px">🚐 Van</div>
+              <div class="row"><span class="rl">Forfait</span><span class="rv">12,00 €</span></div>
+              <div class="row"><span class="rl">Seuil</span><span class="rv">6 km</span></div>
+              <div class="row"><span class="rl">Prix/km</span><span class="rv">3,00 €</span></div>
+            </div>
+          </div>
+          <div style="background:var(--g);color:#09090F;border-radius:4px;padding:4px;font-size:7px;font-weight:800;text-align:center">Enregistrer</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Parrainage -->
+    <div>
+      <div class="sub-lbl">Parrainage</div>
+      <div class="dash" style="margin-bottom:0">
+        <div class="dash-hd"><div style="font-size:9px;font-weight:700;color:var(--txt)">Parrainage</div></div>
+        <div class="dash-body" style="padding:6px 10px">
+          <div class="row" style="font-size:8px"><span>P1 · 5 courses validées</span><span style="font-weight:700;color:#8A6200">+5 pts</span></div>
+          <div class="row" style="font-size:8px"><span>P2 · Filleul PRO</span><span style="font-weight:700;color:#8A6200">+10 pts</span></div>
+          <div class="row" style="font-size:8px"><span>P3 · Filleul ELITE</span><span style="font-weight:700;color:#8A6200">+15 pts</span></div>
+          <div class="row" style="font-size:8px"><span>P4 · Filleul BLACK</span><span style="font-weight:700;color:#8A6200">+20 pts</span></div>
+          <div style="padding-top:4px;display:flex;justify-content:space-between;font-size:8px;font-weight:700"><span>Max par filleul</span><span style="color:#8A6200">50 pts</span></div>
+          <div style="background:var(--g);color:#09090F;border-radius:4px;padding:4px;font-size:7px;font-weight:800;text-align:center;margin-top:5px">Enregistrer</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Facturation + Équipe -->
+    <div>
+      <div class="sub-lbl">Facturation · Équipe admin</div>
+      <div class="dash" style="margin-bottom:5px">
+        <div class="dash-hd"><div style="font-size:9px;font-weight:700;color:var(--txt)">Facturation</div></div>
+        <div class="dash-body" style="padding:6px 10px">
+          <div class="row" style="font-size:8px"><span>Taux SÉSAME</span><span style="font-weight:700;color:var(--orange)">20%</span></div>
+          <div class="row" style="font-size:8px"><span>Cycle</span><span class="rv">Lundi 01h00</span></div>
+          <div class="row" style="font-size:8px"><span>Relance</span><span class="rv">Lundi 13h00</span></div>
+          <div class="row" style="font-size:8px"><span>Suspension</span><span class="rv">Mardi 01h00</span></div>
+        </div>
+      </div>
+      <div class="dash" style="margin-bottom:0">
+        <div class="dash-hd"><div style="font-size:9px;font-weight:700;color:var(--txt)">Équipe admin</div></div>
+        <div class="dash-body" style="padding:6px 10px">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div><div style="font-size:9px;font-weight:700;color:var(--txt)">NAJAH Abdallah</div><div style="font-size:7px;color:var(--muted)">Fondateur & Concepteur</div></div>
+            <div class="b b-g">Super admin</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ -->
+<!-- PAGE 7 — PAGE FOURNISSEUR -->
+<!-- ═══════════════════════════════ -->
+<div class="page">
+  <div class="sh"><h2 style="color:var(--green)">4 — Page Web Fournisseur</h2><p>sesame-pro.com/valider — 6 états · Triple vérification système</p></div>
+
+  <div class="sub-lbl">Les 6 états de la page de validation</div>
+  <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px">
+
+    <!-- État 1 -->
+    <div class="ph-col"><div class="ph-lbl">État 1 — Saisie</div>
+    <div class="fp">
+      <div class="fp-hd"><div style="font-size:12px;font-weight:800;color:var(--g)">SÉSAME 🗝</div><div style="font-size:7px;color:#8A8AA0">Validation bon cadeau</div></div>
+      <div class="fp-body">
+        <div style="background:#FFFFFF;border:1px solid rgba(0,0,0,.07);border-radius:5px;padding:7px">
+          <div style="font-size:9px;font-weight:800;color:#1C1C2E;margin-bottom:3px">🏎️ Karting Aventure</div>
+          <div class="row" style="font-size:6px"><span style="color:#8A8AA0">Client</span><span style="font-weight:600;color:#1C1C2E">Jean Dupont</span></div>
+          <div class="row" style="font-size:6px"><span style="color:#8A8AA0">Référence</span><span style="font-family:monospace;font-size:6px;color:var(--blue)">BON-KRT-X7K2</span></div>
+        </div>
+        <div style="font-size:7px;font-weight:600;color:#1C1C2E;text-align:center">Code à 4 chiffres</div>
+        <div style="display:flex;gap:3px;justify-content:center"><div class="fp-cbox">_</div><div class="fp-cbox">_</div><div class="fp-cbox">_</div><div class="fp-cbox">_</div></div>
+        <div style="display:flex;justify-content:center;gap:3px"><div style="width:7px;height:7px;border-radius:50%;background:rgba(0,0,0,.1)"></div><div style="width:7px;height:7px;border-radius:50%;background:rgba(0,0,0,.1)"></div><div style="width:7px;height:7px;border-radius:50%;background:rgba(0,0,0,.1)"></div><div style="font-size:6px;color:#8A8AA0">3 tentatives</div></div>
+        <div style="background:var(--g);color:#09090F;border-radius:4px;padding:4px;font-size:7px;font-weight:800;text-align:center">Valider</div>
+      </div>
+    </div></div>
+
+    <!-- État 2 -->
+    <div class="ph-col"><div class="ph-lbl">État 2 — Erreur</div>
+    <div class="fp">
+      <div class="fp-hd"><div style="font-size:12px;font-weight:800;color:var(--g)">SÉSAME 🗝</div></div>
+      <div class="fp-body">
+        <div style="background:#FFF0F0;border:1px solid rgba(204,34,34,.2);border-radius:4px;padding:4px;font-size:7px;color:var(--red);text-align:center;margin-bottom:3px">⚠️ Code incorrect</div>
+        <div style="display:flex;gap:3px;justify-content:center"><div class="fp-cbox" style="background:#FFF0F0;border-color:var(--red);color:var(--red)">✕</div><div class="fp-cbox" style="background:#FFF0F0;border-color:var(--red);color:var(--red)">✕</div><div class="fp-cbox" style="background:#FFF0F0;border-color:var(--red);color:var(--red)">✕</div><div class="fp-cbox" style="background:#FFF0F0;border-color:var(--red);color:var(--red)">✕</div></div>
+        <div style="display:flex;justify-content:center;gap:3px"><div style="width:7px;height:7px;border-radius:50%;background:var(--red)"></div><div style="width:7px;height:7px;border-radius:50%;background:rgba(0,0,0,.1)"></div><div style="width:7px;height:7px;border-radius:50%;background:rgba(0,0,0,.1)"></div><div style="font-size:6px;color:var(--orange)">2 restantes</div></div>
+        <div style="background:var(--g);color:#09090F;border-radius:4px;padding:4px;font-size:7px;font-weight:800;text-align:center">Réessayer</div>
+      </div>
+    </div></div>
+
+    <!-- État 3 -->
+    <div class="ph-col"><div class="ph-lbl">État 3 — Bloqué</div>
+    <div class="fp">
+      <div class="fp-hd"><div style="font-size:12px;font-weight:800;color:var(--g)">SÉSAME 🗝</div></div>
+      <div class="fp-body">
+        <div style="background:#FFF5EC;border:1.5px solid rgba(204,102,0,.25);border-radius:6px;padding:9px;text-align:center;margin-bottom:4px">
+          <div style="font-size:18px;margin-bottom:4px">🔒</div>
+          <div style="font-size:9px;font-weight:800;color:var(--orange);margin-bottom:3px">Validation bloquée</div>
+          <div style="font-size:6px;color:#8A6030">3 tentatives incorrectes</div>
+        </div>
+        <div style="background:#FFFFFF;border:1px solid rgba(0,0,0,.07);border-radius:5px;padding:7px">
+          <div style="font-size:7px;font-weight:700;color:#1C1C2E;margin-bottom:4px">Contactez SÉSAME</div>
+          <div style="background:#F2F2F7;border-radius:4px;padding:4px;font-size:7px;text-align:center;margin-bottom:3px">✉️ support@sesame-pro.com</div>
+          <div style="background:var(--red);color:#fff;border-radius:4px;padding:4px;font-size:7px;font-weight:800;text-align:center">📞 07 45 20 70 06</div>
+        </div>
+      </div>
+    </div></div>
+
+    <!-- État 4 -->
+    <div class="ph-col"><div class="ph-lbl">État 4 — Validé ✅</div>
+    <div class="fp">
+      <div class="fp-hd"><div style="font-size:12px;font-weight:800;color:var(--g)">SÉSAME 🗝</div></div>
+      <div class="fp-body">
+        <div style="background:#EEF9F4;border:1.5px solid rgba(46,138,90,.25);border-radius:6px;padding:10px;text-align:center;margin-bottom:4px">
+          <div style="font-size:22px;margin-bottom:4px">✅</div>
+          <div style="font-size:10px;font-weight:800;color:var(--green);margin-bottom:3px">Bon validé !</div>
+          <div style="font-size:6px;color:#4A7A5A;line-height:1.5">Jean Dupont peut bénéficier de sa prestation. Bon désormais inutilisable.</div>
+        </div>
+        <div style="background:#FFFFFF;border:1px solid rgba(0,0,0,.07);border-radius:5px;padding:6px">
+          <div class="row" style="font-size:6px"><span style="color:#8A8AA0">Prestation</span><span style="font-weight:600;color:#1C1C2E">🏎️ Karting</span></div>
+          <div class="row" style="font-size:6px"><span style="color:#8A8AA0">Validé le</span><span style="font-weight:600;color:#1C1C2E">11/05/2026 14:35</span></div>
+          <div class="row" style="font-size:6px"><span style="color:#8A8AA0">Référence</span><span style="font-family:monospace;color:var(--blue);font-size:6px">BON-KRT-X7K2</span></div>
+        </div>
+      </div>
+    </div></div>
+
+    <!-- État 5 -->
+    <div class="ph-col"><div class="ph-lbl">État 5 — Déjà utilisé</div>
+    <div class="fp">
+      <div class="fp-hd"><div style="font-size:12px;font-weight:800;color:var(--g)">SÉSAME 🗝</div></div>
+      <div class="fp-body">
+        <div style="background:#FFF0F0;border:1.5px solid rgba(204,34,34,.25);border-radius:6px;padding:10px;text-align:center;margin-bottom:4px">
+          <div style="font-size:22px;margin-bottom:4px">❌</div>
+          <div style="font-size:10px;font-weight:800;color:var(--red);margin-bottom:3px">Bon invalide</div>
+          <div style="font-size:6px;color:#993333;line-height:1.5">Ce bon a déjà été utilisé et ne peut pas être accepté une seconde fois.</div>
+        </div>
+        <div style="background:#F8F8FC;border:1px solid rgba(0,0,0,.07);border-radius:5px;padding:6px;font-size:6px;color:#8A8AA0;text-align:center">Contactez SÉSAME :<br>support@sesame-pro.com</div>
+      </div>
+    </div></div>
+
+    <!-- État 6 -->
+    <div class="ph-col"><div class="ph-lbl">État 6 — Expiré ⌛</div>
+    <div class="fp">
+      <div class="fp-hd"><div style="font-size:12px;font-weight:800;color:var(--g)">SÉSAME 🗝</div></div>
+      <div class="fp-body">
+        <div style="background:#FFF0F0;border:1.5px solid rgba(204,34,34,.25);border-radius:6px;padding:10px;text-align:center;margin-bottom:4px">
+          <div style="font-size:22px;margin-bottom:4px">⌛</div>
+          <div style="font-size:10px;font-weight:800;color:var(--red);margin-bottom:3px">Bon expiré</div>
+          <div style="font-size:6px;color:#993333;line-height:1.5">Ce bon a dépassé sa date de validité.</div>
+        </div>
+        <div style="background:#FFFFFF;border:1px solid rgba(0,0,0,.07);border-radius:5px;padding:6px">
+          <div class="row" style="font-size:6px"><span style="color:#8A8AA0">Remis le</span><span style="font-family:monospace;font-size:6px;color:#1C1C2E">10/01/2026 · 09h22</span></div>
+          <div class="row" style="font-size:6px"><span style="color:#8A8AA0">Expiré le</span><span style="font-family:monospace;font-size:6px;color:var(--red);font-weight:700">10/04/2026 · 09h22</span></div>
+        </div>
+        <div style="font-size:6px;color:#8A8AA0;text-align:center;line-height:1.4">Vous n'avez aucune obligation d'accepter ce bon.</div>
+      </div>
+    </div></div>
+
+  </div>
+
+  <div class="sep"></div>
+
+  <!-- Triple vérification -->
+  <div class="sub-lbl">Sécurité — Triple vérification côté serveur (Option C)</div>
+  <div class="grid3" style="gap:8px;margin-bottom:12px">
+    <div class="info-box">
+      <div style="font-size:9px;font-weight:700;color:#8A6200;margin-bottom:4px">Vérif 1 — Code secret</div>
+      <div style="font-size:8px;color:var(--muted);line-height:1.5">Le code 4 chiffres saisi correspond au hash enregistré pour ce fournisseur</div>
+    </div>
+    <div class="info-box">
+      <div style="font-size:9px;font-weight:700;color:#8A6200;margin-bottom:4px">Vérif 2 — Appartenance QR</div>
+      <div style="font-size:8px;color:var(--muted);line-height:1.5">Le QR code appartient bien à ce fournisseur — pas à un autre</div>
+    </div>
+    <div class="info-box">
+      <div style="font-size:9px;font-weight:700;color:#8A6200;margin-bottom:4px">Vérif 3 — Offre active</div>
+      <div style="font-size:8px;color:var(--muted);line-height:1.5">La prestation du bon correspond à une offre active de ce fournisseur</div>
+    </div>
+  </div>
+
+  <!-- Règles clés -->
+  <div class="sub-lbl">Règles métier essentielles</div>
+  <div class="grid2" style="gap:8px">
+    <div class="info-box">
+      <div style="font-size:8px;font-weight:700;color:var(--txt);margin-bottom:6px">Code 4 chiffres — Pivot juridique et financier</div>
+      <div class="row" style="font-size:7px"><span>Avant validation</span><span style="color:var(--muted)">0 obligation financière chauffeur</span></div>
+      <div class="row" style="font-size:7px"><span>Après validation</span><span style="color:#8A6200;font-weight:600">Frais SÉSAME 20% dus</span></div>
+      <div class="row" style="font-size:7px"><span>Points</span><span style="color:var(--green);font-weight:600">Math.floor(montant / 10)</span></div>
+      <div class="row" style="font-size:7px"><span>Compensation</span><span style="color:var(--muted)">Uniquement si code validé</span></div>
+    </div>
+    <div class="info-box">
+      <div style="font-size:8px;font-weight:700;color:var(--txt);margin-bottom:6px">Règles juridiques absolues</div>
+      <div class="row" style="font-size:7px"><span>Refus de course</span><span style="color:var(--red);font-weight:600">0 sanction — règle absolue</span></div>
+      <div class="row" style="font-size:7px"><span>Course partagée</span><span style="color:var(--red);font-weight:600">INTERDITE</span></div>
+      <div class="row" style="font-size:7px"><span>Mot "objectif"</span><span style="color:var(--red);font-weight:600">BANNI</span></div>
+      <div class="row" style="font-size:7px"><span>Frais chauffeur</span><span style="color:var(--muted)">Factures Stripe uniquement</span></div>
+    </div>
+  </div>
+
+  <!-- Pied de page -->
+  <div style="margin-top:30px;text-align:center;padding-top:15px;border-top:2px solid var(--g)">
+    <div style="font-size:14px;font-weight:800;color:var(--g);margin-bottom:4px">SÉSAME 🗝</div>
+    <div style="font-size:9px;color:var(--muted)">Fondateur & Concepteur : NAJAH Abdallah · support@sesame-pro.com · Version 4.0 · Mai 2026</div>
+  </div>
+</div>
+
+</body>
+</html>
