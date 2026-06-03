@@ -3,7 +3,6 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Activi
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { createCourse, getAdminParameters } from '../services/api';
-import { calculateVehiclePrice } from '../../backend/src/lib/rules'; // Importing from backend for consistency if possible, or duplicate logic
 import type { RootStackParamList } from '../types';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 

@@ -1,5 +1,7 @@
 export type RootStackParamList = {
     Login: undefined;
+    Register: undefined;
+    Onboarding: undefined;
     AmbassadorHome: undefined;
     AmbassadorAccueil: undefined;
     AmbassadorCommander: undefined;
@@ -9,15 +11,47 @@ export type RootStackParamList = {
     AmbassadorParrainage: undefined;
     AmbassadorProfil: undefined;
     AmbassadorNiveaux: undefined;
+    AmbassadorEquipe: undefined;
+    AmbassadorCommissions: undefined;
     ChauffeurHome: undefined;
     ChauffeurCourses: undefined;
     ChauffeurProfile: undefined;
+    ChauffeurRevenus: undefined;
     AdminDashboard: undefined;
     AdminAmbassadeurs: undefined;
     AdminChauffeurs: undefined;
     AdminCourses: undefined;
     AdminBlacklist: undefined;
     FournisseurValidation: undefined;
+    Chat: { courseId: string; senderRole: 'ambassadeur' | 'chauffeur' | 'admin'; senderId: string; courseRef?: string; };
+};
+
+export type ChatMessage = {
+    id: string;
+    course_id: string;
+    expediteur_type: string;
+    expediteur_id: string;
+    contenu: string;
+    envoye_at: string;
+};
+
+export type ChauffeurDocument = {
+    id: string;
+    chauffeur_id: string;
+    type: string;
+    fichier_recto_url: string;
+    fichier_verso_url?: string;
+    date_expiration?: string;
+    statut: 'en_attente' | 'valide' | 'refuse' | 'expire';
+    uploaded_at: string;
+};
+
+export type Filleul = {
+    prenom: string;
+    nom: string;
+    niveau: string;
+    points_solde: number;
+    created_at: string;
 };
 
 export type UserRole = 'ambassadeur' | 'chauffeur' | 'admin';
@@ -53,22 +87,25 @@ export type ChauffeurProfile = {
     vehicule_modele?: string;
     vehicule_couleur?: string;
     vehicule_immat?: string;
-    note_moyenne?: number;
     iban?: string;
     siret?: string;
-    taux_commission?: number;
+    taux_commission_override?: number | null;
+    stripe_customer_id?: string | null;
+    documents_valides?: boolean;
 };
 
 export type ActiveCourse = {
     id: string;
     reference?: string;
     statut?: string;
-    type?: string;
+    type_course?: string;
     adresse_depart?: string;
     adresse_destination?: string;
     vehicule_type?: string;
     montant?: number;
     points_attribues?: number;
+    code_validation?: string;
+    code_valide_at?: string;
     date_reservation?: string;
     date_acceptation?: string;
     date_fin?: string;
@@ -100,8 +137,8 @@ export type ChauffeurDashboard = {
     vehicule_modele?: string;
     vehicule_couleur?: string;
     vehicule_immat?: string;
-    note_moyenne?: number;
-    taux_commission?: number;
+    taux_commission_override?: number | null;
+    documents_valides?: boolean;
     active_courses_count: number;
     current_course?: ActiveCourse | null;
 };
@@ -155,7 +192,8 @@ export type AdminChauffeurRow = {
     vehicule_type: string;
     vehicule_marque?: string;
     vehicule_modele?: string;
-    note_moyenne?: number;
+    taux_commission_override?: number | null;
+    documents_valides?: boolean;
 };
 
 export type AdminCourseRow = ActiveCourse & {
@@ -165,7 +203,8 @@ export type AdminCourseRow = ActiveCourse & {
 
 export type AdminBlacklistRow = {
     id: string;
-    nom_prenom: string;
+    nom: string;
+    prenom: string;
     date_naissance: string;
     lieu_naissance: string;
     telephone: string;
@@ -173,4 +212,23 @@ export type AdminBlacklistRow = {
     type_utilisateur: string;
     ajoute_par_admin_id: string;
     created_at: string;
+};
+
+export type EquipeEmployee = {
+    id: string;
+    prenom: string;
+    nom: string;
+    email: string;
+    telephone: string;
+    metier?: string;
+    statut: 'actif' | 'suspendu';
+    created_at: string;
+    nb_courses: number;
+};
+
+export type CommissionMois = {
+    mois: string;
+    nb_courses: number;
+    ca_brut_ttc: number;
+    commission: number;
 };

@@ -87,6 +87,18 @@ router.put('/:id/profile', async (req, res) => {
     res.json(profileResult.rows[0]);
 });
 
+router.get('/:id/filleuls', async (req, res) => {
+    const result = await query(
+        `SELECT u.prenom, u.nom, a.niveau, a.points_solde, u.created_at
+         FROM ambassadeurs a
+         JOIN utilisateurs u ON u.id = a.utilisateur_id
+         WHERE a.parrain_id = $1
+         ORDER BY u.created_at DESC`,
+        [req.params.id]
+    );
+    res.json(result.rows);
+});
+
 router.get('/:id/dashboard', async (req, res) => {
     const profileResult = await query(
         `SELECT
@@ -124,7 +136,7 @@ router.get('/:id/dashboard', async (req, res) => {
     const pointsToNextLevel = nextLevelTarget ? Math.max(0, nextLevelTarget - currentPoints) : 0;
 
     const coursesResult = await query(
-        `SELECT id, reference, statut, type, adresse_depart, adresse_destination, vehicule_type, montant, points_attribues, date_reservation
+        `SELECT id, reference, statut, type_course, adresse_depart, adresse_destination, vehicule_type, montant, points_attribues, date_reservation
          FROM courses
          WHERE ambassadeur_id = $1 AND statut IN ($2, $3, $4, $5, $6)
          ORDER BY date_acceptation DESC NULLS LAST
@@ -160,6 +172,89 @@ router.get('/:id/dashboard', async (req, res) => {
         points_to_next_level: pointsToNextLevel,
         active_courses: coursesResult.rows,
     });
+});
+
+// Sous-comptes employés (Ambassadeur Moral)
+router.get('/:id/equipe', async (req, res) => {
+    const result = await query(
+        `SELECT s.id, u.prenom, u.nom, u.email, u.telephone, s.metier, s.statut, s.created_at,
+                (SELECT count(*) FROM courses c WHERE c.ambassadeur_id = s.id) AS nb_courses
+         FROM sous_comptes_employes s
+         JOIN utilisateurs u ON u.id = s.utilisateur_id
+         WHERE s.ambassadeur_moral_id = $1
+         ORDER BY s.created_at DESC`,
+        [req.params.id]
+    );
+    res.json(result.rows);
+});
+
+router.post('/:id/equipe', async (req, res) => {
+    const { prenom, nom, email, telephone, metier, mot_de_passe } = req.body;
+    if (!prenom || !nom || !email || !telephone || !mot_de_passe) {
+        return res.status(400).json({ error: 'Champs obligatoires manquants' });
+    }
+    const bcrypt = await import('bcrypt');
+    const hashed = await bcrypt.hash(mot_de_passe, 10);
+    const userResult = await query(
+        `INSERT INTO utilisateurs(type, prenom, nom, email, telephone, mot_de_passe_hash)
+         VALUES ('ambassadeur', $1, $2, $3, $4, $5) RETURNING id`,
+        [prenom, nom, email, telephone, hashed]
+    );
+    const userId = userResult.rows[0].id;
+    await query(
+        `INSERT INTO sous_comptes_employes(ambassadeur_moral_id, utilisateur_id, metier)
+         VALUES ($1, $2, $3)`,
+        [req.params.id, userId, metier || null]
+    );
+    res.status(201).json({ success: true, utilisateur_id: userId });
+});
+
+// Commissions mensuelles (Ambassadeur Moral)
+router.get('/:id/commissions', async (req, res) => {
+    const rateResult = await query(
+        "SELECT valeur FROM parametres_systeme WHERE cle = 'commission_ambassadeur_moral_pct'"
+    );
+    const tauxPct = Number(rateResult.rows[0]?.valeur ?? 10);
+
+    const result = await query(
+        `SELECT
+            to_char(date_trunc('month', c.date_fin), 'YYYY-MM') AS mois,
+            count(*) AS nb_courses,
+            sum(c.montant) AS ca_brut_ttc,
+            round(sum(c.montant) * $1 / 100, 2) AS commission
+         FROM courses c
+         JOIN ambassadeurs a ON a.id = c.ambassadeur_id
+         WHERE (a.id = $2 OR a.ambassadeur_moral_id = $2)
+           AND c.statut = 'terminee'
+           AND c.code_valide_at IS NOT NULL
+           AND c.date_fin IS NOT NULL
+         GROUP BY date_trunc('month', c.date_fin)
+         ORDER BY date_trunc('month', c.date_fin) DESC
+         LIMIT 12`,
+        [tauxPct, req.params.id]
+    );
+
+    // Chercher aussi les sous-comptes
+    const subResult = await query(
+        `SELECT
+            to_char(date_trunc('month', c.date_fin), 'YYYY-MM') AS mois,
+            count(*) AS nb_courses,
+            sum(c.montant) AS ca_brut_ttc,
+            round(sum(c.montant) * $1 / 100, 2) AS commission
+         FROM courses c
+         JOIN ambassadeurs a ON a.id = c.ambassadeur_id
+         JOIN sous_comptes_employes s ON s.id = a.id
+         WHERE s.ambassadeur_moral_id = $2
+           AND c.statut = 'terminee'
+           AND c.code_valide_at IS NOT NULL
+           AND c.date_fin IS NOT NULL
+         GROUP BY date_trunc('month', c.date_fin)
+         ORDER BY date_trunc('month', c.date_fin) DESC
+         LIMIT 12`,
+        [tauxPct, req.params.id]
+    );
+
+    res.json({ taux_pct: tauxPct, mois: result.rows, sous_comptes_mois: subResult.rows });
 });
 
 export default router;

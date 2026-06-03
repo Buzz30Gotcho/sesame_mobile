@@ -18,21 +18,46 @@
     "extra": {
       "SUPABASE_URL": "https://lqjgscbqznugjeykklzx.supabase.co",
       "SUPABASE_KEY": "sb_publishable_YGXxPwOg3ANKscQo2JPZsg_NZcH3QVS",
-      "BACKEND_URL": "http://10.246.14.83:4000"
+      "BACKEND_URL": "http://192.168.1.18:4001"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "SÉSAME utilise la caméra pour scanner les QR codes partenaires.",
+        "NSPhotoLibraryUsageDescription": "SÉSAME accède à vos photos pour l'envoi de documents KYC.",
+        "NSPhotoLibraryAddUsageDescription": "SÉSAME peut enregistrer des documents dans vos photos."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#101018"
-      }
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE"
+      ]
     },
     "plugins": [
-      "expo-asset"
+      "expo-asset",
+      "expo-camera",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "SÉSAME accède à vos photos pour l'envoi de documents KYC.",
+          "cameraPermission": "SÉSAME utilise la caméra pour scanner les QR codes."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#C9A84C"
+        }
+      ]
     ]
   }
 }

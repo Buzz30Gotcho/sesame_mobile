@@ -40,14 +40,9 @@ export default function ChauffeurCoursesScreen() {
         }
     };
 
-    const handleValidate = async (courseId: string) => {
-        if (!chauffeurId) return;
-        try {
-            await validateCourseCode(chauffeurId, courseId, '1234');
-            Alert.alert('Validation', 'Code validé.');
-        } catch (err) {
-            Alert.alert('Erreur', 'Impossible de valider le code.');
-        }
+    const handleValidate = async (_courseId: string) => {
+        // La saisie du code 4 chiffres se fait via le clavier numérique de l'écran principal chauffeur
+        Alert.alert('Code requis', 'Pour valider le code client, utilisez l\'écran d\'accueil chauffeur.');
     };
 
     const handleFinish = async (courseId: string) => {

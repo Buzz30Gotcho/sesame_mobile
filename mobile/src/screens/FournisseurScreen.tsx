@@ -1,442 +1,563 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, SafeAreaView, ActivityIndicator } from 'react-native';
-import { api } from '../services/api';
+import {
+    View, Text, StyleSheet, TouchableOpacity, ScrollView,
+    SafeAreaView, ActivityIndicator, StatusBar, Modal, Alert,
+} from 'react-native';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import { Colors, Typography } from '../theme';
+import { validateFournisseurBon } from '../services/api';
 
-type State = 'saisie' | 'erreur' | 'bloque' | 'valide' | 'utilise' | 'expire' | 'loading';
+type State = 'saisie' | 'erreur' | 'bloque' | 'valide' | 'loading';
+type Mode = 'qr' | 'manuel';
 
 export default function FournisseurScreen() {
-    const [tokenQr, setTokenQr] = useState('');
-    const [code, setCode] = useState('');
+    const [mode, setMode] = useState<Mode>('qr');
+    const [scannerVisible, setScannerVisible] = useState(false);
+    const [scannedToken, setScannedToken] = useState<string | null>(null);
+    const [codeDigits, setCodeDigits] = useState(['', '', '', '']);
     const [state, setState] = useState<State>('saisie');
     const [tentatives, setTentatives] = useState(3);
-    const [validationData, setValidationData] = useState<any>(null);
+    const [bonInfo, setBonInfo] = useState<{ reference: string } | null>(null);
+    const [permission, requestPermission] = useCameraPermissions();
+
+    const handleOpenScanner = async () => {
+        if (!permission?.granted) {
+            const result = await requestPermission();
+            if (!result.granted) {
+                Alert.alert('Permission caméra requise', 'Veuillez autoriser l\'accès à la caméra pour scanner les QR codes.');
+                return;
+            }
+        }
+        setScannerVisible(true);
+    };
+
+    const handleBarcodeScanned = ({ data }: { data: string }) => {
+        setScannerVisible(false);
+        setScannedToken(data);
+        setMode('manuel');
+        setState('saisie');
+        setCodeDigits(['', '', '', '']);
+    };
+
+    const handleDigitPress = (digit: string) => {
+        const nextEmptyIndex = codeDigits.findIndex(d => d === '');
+        if (nextEmptyIndex !== -1) {
+            const newDigits = [...codeDigits];
+            newDigits[nextEmptyIndex] = digit;
+            setCodeDigits(newDigits);
+        }
+    };
+
+    const handleDelete = () => {
+        const lastFilledIndex = codeDigits.findLastIndex(d => d !== '');
+        if (lastFilledIndex !== -1) {
+            const newDigits = [...codeDigits];
+            newDigits[lastFilledIndex] = '';
+            setCodeDigits(newDigits);
+        }
+    };
 
     const handleValidate = async () => {
-        if (!tokenQr || !code) return;
+        const code_secret = codeDigits.join('');
+        if (code_secret.length < 4) return;
+        if (!scannedToken) {
+            Alert.alert('QR non scanné', 'Veuillez scanner le QR code du client avant de valider.');
+            return;
+        }
+
         setState('loading');
         try {
-            const response = await api.post('/api/fournisseurs/valider-bon', { token_qr: tokenQr, code_secret: code });
-            setValidationData(response.data);
+            const res = await validateFournisseurBon({ token_qr: scannedToken, code_secret });
+            setBonInfo({ reference: res.data.reference || '' });
             setState('valide');
         } catch (err: any) {
-            const error = err.response?.data?.error || '';
-            if (error.includes('Code secret incorrect')) {
-                setTentatives(t => t - 1);
-                if (tentatives - 1 <= 0) {
-                    setState('bloque');
-                } else {
-                    setState('erreur');
-                }
-            } else if (error.includes('déjà utilisé')) {
-                setState('utilise');
-            } else if (error.includes('expiré')) {
-                setState('expire');
+            const nextTentatives = tentatives - 1;
+            setTentatives(nextTentatives);
+            setCodeDigits(['', '', '', '']);
+            if (nextTentatives <= 0) {
+                setState('bloque');
             } else {
                 setState('erreur');
             }
         }
     };
 
+    const handleReset = () => {
+        setState('saisie');
+        setCodeDigits(['', '', '', '']);
+        setScannedToken(null);
+        setTentatives(3);
+        setBonInfo(null);
+        setMode('qr');
+    };
+
     const renderContent = () => {
-        switch (state) {
-            case 'loading':
-                return <ActivityIndicator size="large" color="#C9A84C" />;
+        if (state === 'loading') {
+            return (
+                <View style={styles.center}>
+                    <ActivityIndicator size="large" color={Colors.brand.gold} />
+                    <Text style={styles.loadingText}>Vérification en cours...</Text>
+                </View>
+            );
+        }
 
-            case 'saisie':
-            case 'erreur':
-                return (
-                    <View style={styles.card}>
-                        {state === 'erreur' && (
-                            <View style={styles.errorBanner}>
-                                <Text style={styles.errorText}>⚠️ Code incorrect</Text>
+        if (state === 'valide') {
+            return (
+                <View style={[styles.card, styles.cardSuccess]}>
+                    <Text style={styles.bigEmoji}>✅</Text>
+                    <Text style={styles.successTitle}>BON VALIDÉ !</Text>
+                    <Text style={styles.successSub}>Le client peut bénéficier de sa prestation. Ce bon est désormais inutilisable.</Text>
+                    {bonInfo?.reference ? (
+                        <View style={styles.recapDetails}>
+                            <View style={styles.infoRow}>
+                                <Text style={styles.infoLabel}>RÉFÉRENCE</Text>
+                                <Text style={styles.infoValueBlue}>{bonInfo.reference}</Text>
                             </View>
-                        )}
-                        <View style={styles.offerBox}>
-                            <Text style={styles.offerTitle}>🏎️ Karting Aventure</Text>
-                            <View style={styles.row}>
-                                <Text style={styles.label}>Client</Text>
-                                <Text style={styles.value}>Jean Dupont</Text>
-                            </View>
-                            <View style={styles.row}>
-                                <Text style={styles.label}>Référence</Text>
-                                <Text style={styles.valueBlue}>BON-KRT-X7K2</Text>
+                            <View style={styles.infoRow}>
+                                <Text style={styles.infoLabel}>VALIDÉ LE</Text>
+                                <Text style={styles.infoValue}>{new Date().toLocaleDateString('fr-FR')} à {new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</Text>
                             </View>
                         </View>
+                    ) : null}
+                    <TouchableOpacity style={styles.finishBtn} onPress={handleReset}>
+                        <Text style={styles.finishBtnText}>NOUVEAU BON</Text>
+                    </TouchableOpacity>
+                </View>
+            );
+        }
 
-                        <Text style={styles.inputLabel}>Code à 4 chiffres</Text>
-                        <TextInput 
-                            style={styles.codeInput}
-                            value={code}
-                            onChangeText={setCode}
-                            keyboardType="numeric"
-                            maxLength={4}
-                            secureTextEntry
-                            placeholder="_ _ _ _"
-                            placeholderTextColor="#6A6680"
-                        />
-                        
-                        <View style={styles.attemptsRow}>
-                            <View style={[styles.dot, tentatives < 3 && styles.dotActive]} />
-                            <View style={[styles.dot, tentatives < 2 && styles.dotActive]} />
-                            <View style={[styles.dot, tentatives < 1 && styles.dotActive]} />
-                            <Text style={styles.attemptsText}>{tentatives} tentatives</Text>
-                        </View>
-
-                        <TouchableOpacity style={styles.validateBtn} onPress={handleValidate}>
-                            <Text style={styles.validateBtnText}>{state === 'erreur' ? 'Réessayer' : 'Valider'}</Text>
+        if (state === 'bloque') {
+            return (
+                <View style={[styles.card, styles.cardBlocked]}>
+                    <Text style={styles.bigEmoji}>🔒</Text>
+                    <Text style={styles.blockedTitle}>VALIDATION BLOQUÉE</Text>
+                    <Text style={styles.blockedSub}>3 TENTATIVES INCORRECTES</Text>
+                    <View style={styles.supportBox}>
+                        <Text style={styles.supportLabel}>CONTACTEZ L'ÉQUIPE SÉSAME</Text>
+                        <Text style={styles.supportEmail}>support@sesame-pro.com</Text>
+                        <TouchableOpacity style={styles.callBtn}>
+                            <Text style={styles.callBtnText}>📞 07 45 20 70 06</Text>
                         </TouchableOpacity>
-                        
-                        {/* Hidden input for Token QR in this simulation */}
-                        <TextInput 
-                            style={{ height: 0, opacity: 0 }}
-                            value={tokenQr}
-                            onChangeText={setTokenQr}
-                            placeholder="QR Token"
-                        />
                     </View>
-                );
+                </View>
+            );
+        }
 
-            case 'valide':
-                return (
-                    <View style={[styles.card, styles.cardSuccess]}>
-                        <Text style={styles.bigEmoji}>✅</Text>
-                        <Text style={styles.successTitle}>Bon validé !</Text>
-                        <Text style={styles.successSub}>Jean Dupont peut bénéficier de sa prestation. Bon désormais inutilisable.</Text>
-                        
-                        <View style={styles.detailsBox}>
-                            <View style={styles.row}>
-                                <Text style={styles.label}>Prestation</Text>
-                                <Text style={styles.value}>🏎️ Karting</Text>
-                            </View>
-                            <View style={styles.row}>
-                                <Text style={styles.label}>Validé le</Text>
-                                <Text style={styles.value}>11/05/2026 14:35</Text>
-                            </View>
-                            <View style={styles.row}>
-                                <Text style={styles.label}>Référence</Text>
-                                <Text style={styles.valueBlue}>{validationData?.reference}</Text>
-                            </View>
+        return (
+            <View style={styles.card}>
+                {/* Étape 1 : QR scan */}
+                <View style={styles.stepBlock}>
+                    <View style={styles.stepHeader}>
+                        <View style={[styles.stepBadge, scannedToken && styles.stepBadgeDone]}>
+                            <Text style={styles.stepBadgeText}>{scannedToken ? '✓' : '1'}</Text>
                         </View>
+                        <Text style={styles.stepTitle}>Scanner le QR code client</Text>
                     </View>
-                );
 
-            case 'utilise':
-                return (
-                    <View style={[styles.card, styles.cardError]}>
-                        <Text style={styles.bigEmoji}>❌</Text>
-                        <Text style={styles.errorTitle}>Bon invalide</Text>
-                        <Text style={styles.errorSub}>Ce bon a déjà été utilisé et ne peut pas être accepté une seconde fois.</Text>
-                        <Text style={styles.supportText}>Contactez SÉSAME : support@sesame-pro.com</Text>
-                    </View>
-                );
-
-            case 'expire':
-                return (
-                    <View style={[styles.card, styles.cardError]}>
-                        <Text style={styles.bigEmoji}>⌛</Text>
-                        <Text style={styles.errorTitle}>Bon expiré</Text>
-                        <Text style={styles.errorSub}>Ce bon a dépassé sa date de validité.</Text>
-                        <View style={styles.detailsBox}>
-                            <View style={styles.row}>
-                                <Text style={styles.label}>Expiré le</Text>
-                                <Text style={styles.valueRed}>10/04/2026 · 09h22</Text>
-                            </View>
-                        </View>
-                        <Text style={styles.supportText}>Vous n'avez aucune obligation d'accepter ce bon.</Text>
-                    </View>
-                );
-
-            case 'bloque':
-                return (
-                    <View style={[styles.card, styles.cardBlocked]}>
-                        <Text style={styles.bigEmoji}>🔒</Text>
-                        <Text style={styles.blockedTitle}>Validation bloquée</Text>
-                        <Text style={styles.blockedSub}>3 tentatives incorrectes</Text>
-                        <View style={styles.detailsBox}>
-                            <Text style={styles.label}>Contactez SÉSAME</Text>
-                            <View style={styles.contactItem}><Text style={styles.contactText}>✉️ support@sesame-pro.com</Text></View>
-                            <TouchableOpacity style={styles.callBtn}>
-                                <Text style={styles.callBtnText}>📞 07 45 20 70 06</Text>
+                    {scannedToken ? (
+                        <View style={styles.scannedBadge}>
+                            <Text style={styles.scannedText}>QR scanné avec succès</Text>
+                            <TouchableOpacity onPress={() => setScannedToken(null)}>
+                                <Text style={styles.rescanText}>Rescanner</Text>
                             </TouchableOpacity>
                         </View>
+                    ) : (
+                        <TouchableOpacity style={styles.scanBtn} onPress={handleOpenScanner}>
+                            <Text style={styles.scanBtnText}>📷 SCANNER LE QR CODE</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
+
+                {/* Étape 2 : Code secret fournisseur */}
+                <View style={[styles.stepBlock, !scannedToken && styles.stepBlockDisabled]}>
+                    <View style={styles.stepHeader}>
+                        <View style={[styles.stepBadge, !scannedToken && styles.stepBadgeInactive]}>
+                            <Text style={styles.stepBadgeText}>2</Text>
+                        </View>
+                        <Text style={[styles.stepTitle, !scannedToken && styles.stepTitleInactive]}>
+                            Saisir votre code secret
+                        </Text>
                     </View>
-                );
-        }
+
+                    {state === 'erreur' && (
+                        <View style={styles.errorBanner}>
+                            <Text style={styles.errorTextBanner}>CODE INCORRECT — {tentatives} tentative{tentatives > 1 ? 's' : ''} restante{tentatives > 1 ? 's' : ''}</Text>
+                        </View>
+                    )}
+
+                    <View style={styles.codeRow}>
+                        {codeDigits.map((d, i) => (
+                            <View key={i} style={[
+                                styles.codeBox,
+                                state === 'erreur' && styles.codeBoxError,
+                                !scannedToken && styles.codeBoxDisabled,
+                            ]}>
+                                <Text style={styles.codeDigit}>{d ? '●' : ''}</Text>
+                            </View>
+                        ))}
+                    </View>
+
+                    <View style={[styles.numpad, !scannedToken && styles.numpadDisabled]}>
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => (
+                            <TouchableOpacity
+                                key={n}
+                                style={styles.numKey}
+                                onPress={() => scannedToken && handleDigitPress(n.toString())}
+                                disabled={!scannedToken}
+                            >
+                                <Text style={styles.numText}>{n}</Text>
+                            </TouchableOpacity>
+                        ))}
+                        <TouchableOpacity style={styles.numKey} onPress={handleDelete} disabled={!scannedToken}>
+                            <Text style={styles.numText}>⌫</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.numKey} onPress={() => scannedToken && handleDigitPress('0')} disabled={!scannedToken}>
+                            <Text style={styles.numText}>0</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.numKey, styles.okKey, (!scannedToken || codeDigits.join('').length < 4) && styles.okKeyDisabled]}
+                            onPress={handleValidate}
+                            disabled={!scannedToken || codeDigits.join('').length < 4}
+                        >
+                            <Text style={styles.okText}>OK</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </View>
+        );
     };
 
     return (
         <SafeAreaView style={styles.safeArea}>
+            <StatusBar barStyle="dark-content" />
             <View style={styles.header}>
                 <Text style={styles.logo}>SÉSAME 🗝</Text>
-                <Text style={styles.headerSub}>Validation bon cadeau</Text>
+                <Text style={styles.headerSub}>ESPACE VALIDATION PARTENAIRE</Text>
             </View>
+
             <ScrollView contentContainerStyle={styles.container}>
                 {renderContent()}
-                
-                {/* Reset button for demo */}
-                <TouchableOpacity onPress={() => setState('saisie')} style={{ marginTop: 40 }}>
-                    <Text style={{ color: '#6A6680', fontSize: 10 }}>Réinitialiser (démo)</Text>
-                </TouchableOpacity>
             </ScrollView>
-            
+
             <View style={styles.footer}>
-                <Text style={styles.footerText}>SÉSAME 🗝</Text>
-                <Text style={styles.footerSubText}>Fondateur & Concepteur : NAJAH Abdallah</Text>
+                <Text style={styles.footerText}>SÉSAME - OUVRE-TOI AU MONDE</Text>
+                <Text style={styles.footerSub}>SÉCURITÉ & TRANSPARENCE • 2026</Text>
             </View>
+
+            {/* Modal caméra QR */}
+            <Modal visible={scannerVisible} animationType="slide" onRequestClose={() => setScannerVisible(false)}>
+                <View style={styles.scannerContainer}>
+                    <CameraView
+                        style={styles.camera}
+                        facing="back"
+                        barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+                        onBarcodeScanned={handleBarcodeScanned}
+                    />
+                    <View style={styles.scannerOverlay}>
+                        <View style={styles.scannerFrame} />
+                        <Text style={styles.scannerHint}>Pointez la caméra vers le QR code du client</Text>
+                        <TouchableOpacity style={styles.cancelScanBtn} onPress={() => setScannerVisible(false)}>
+                            <Text style={styles.cancelScanText}>ANNULER</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
-    safeArea: {
-        flex: 1,
-        backgroundColor: '#F2F2F7',
-    },
+    safeArea: { flex: 1, backgroundColor: Colors.clair.background },
     header: {
         backgroundColor: '#FFFFFF',
-        padding: 16,
+        paddingVertical: 20,
         alignItems: 'center',
         borderBottomWidth: 1,
         borderBottomColor: 'rgba(0,0,0,0.05)',
     },
     logo: {
-        color: '#C9A84C',
-        fontSize: 20,
-        fontWeight: '900',
+        fontSize: 22,
+        fontWeight: Typography.weights.black as any,
+        color: Colors.brand.gold,
+        letterSpacing: 2,
     },
     headerSub: {
-        color: '#8A8AA0',
-        fontSize: 10,
+        fontSize: Typography.sizes.tiny,
+        fontWeight: Typography.weights.bold as any,
+        color: Colors.clair.textSecondary,
         marginTop: 4,
+        letterSpacing: 1,
     },
     container: {
-        padding: 24,
+        padding: 20,
         alignItems: 'center',
+        paddingTop: 32,
+    },
+    center: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginTop: 60,
+    },
+    loadingText: {
+        marginTop: 16,
+        color: Colors.clair.textSecondary,
+        fontWeight: Typography.weights.semiBold as any,
     },
     card: {
         backgroundColor: '#FFFFFF',
-        borderRadius: 12,
-        padding: 16,
+        borderRadius: 24,
+        padding: 24,
         width: '100%',
-        maxWidth: 320,
+        maxWidth: 400,
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
+        shadowOffset: { width: 0, height: 10 },
         shadowOpacity: 0.1,
-        shadowRadius: 10,
-        elevation: 5,
+        shadowRadius: 20,
+        elevation: 10,
     },
-    errorBanner: {
-        backgroundColor: '#FFF0F0',
-        borderWidth: 1,
-        borderColor: 'rgba(204, 34, 34, 0.2)',
-        borderRadius: 8,
-        padding: 8,
+    stepBlock: {
+        marginBottom: 24,
+    },
+    stepBlockDisabled: { opacity: 0.5 },
+    stepHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
         marginBottom: 12,
+    },
+    stepBadge: {
+        width: 28, height: 28, borderRadius: 14,
+        backgroundColor: Colors.brand.gold,
+        justifyContent: 'center', alignItems: 'center',
+    },
+    stepBadgeDone: { backgroundColor: Colors.brand.success },
+    stepBadgeInactive: { backgroundColor: 'rgba(0,0,0,0.1)' },
+    stepBadgeText: { color: '#FFFFFF', fontWeight: Typography.weights.black as any, fontSize: 12 },
+    stepTitle: {
+        color: Colors.clair.textPrimary,
+        fontSize: Typography.sizes.sub,
+        fontWeight: Typography.weights.bold as any,
+    },
+    stepTitleInactive: { color: Colors.clair.textSecondary },
+    scanBtn: {
+        backgroundColor: Colors.brand.gold,
+        borderRadius: 14,
+        paddingVertical: 16,
         alignItems: 'center',
     },
-    errorText: {
-        color: '#CC2222',
-        fontSize: 12,
-        fontWeight: '700',
+    scanBtnText: {
+        color: '#FFFFFF',
+        fontWeight: Typography.weights.black as any,
+        fontSize: Typography.sizes.sub,
+        letterSpacing: 1,
     },
-    offerBox: {
-        backgroundColor: '#FFFFFF',
-        borderWidth: 1,
-        borderColor: 'rgba(0,0,0,0.05)',
-        borderRadius: 8,
-        padding: 12,
-        marginBottom: 20,
-    },
-    offerTitle: {
-        fontSize: 14,
-        fontWeight: '800',
-        color: '#1C1C2E',
-        marginBottom: 8,
-    },
-    row: {
+    scannedBadge: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        marginBottom: 4,
+        alignItems: 'center',
+        backgroundColor: 'rgba(76, 175, 130, 0.1)',
+        borderRadius: 12,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderWidth: 1,
+        borderColor: 'rgba(76, 175, 130, 0.3)',
     },
-    label: {
-        fontSize: 10,
-        color: '#8A8AA0',
+    scannedText: {
+        color: Colors.brand.success,
+        fontWeight: Typography.weights.bold as any,
+        fontSize: Typography.sizes.sub,
     },
-    value: {
-        fontSize: 10,
-        fontWeight: '600',
-        color: '#1C1C2E',
+    rescanText: {
+        color: Colors.brand.info,
+        fontSize: Typography.sizes.tiny,
+        fontWeight: Typography.weights.bold as any,
     },
-    valueBlue: {
-        fontSize: 10,
-        fontWeight: '700',
-        color: '#2A6ECC',
-        fontFamily: 'monospace',
-    },
-    inputLabel: {
-        fontSize: 11,
-        fontWeight: '700',
-        color: '#1C1C2E',
-        textAlign: 'center',
-        marginBottom: 10,
-    },
-    codeInput: {
-        fontSize: 24,
-        fontWeight: '900',
-        color: '#1C1C2E',
-        textAlign: 'center',
-        letterSpacing: 10,
-        backgroundColor: '#F2F2F7',
-        borderRadius: 8,
-        paddingVertical: 12,
+    errorBanner: {
+        backgroundColor: 'rgba(255, 100, 100, 0.1)',
+        borderRadius: 10,
+        padding: 10,
         marginBottom: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 100, 100, 0.2)',
     },
-    attemptsRow: {
+    errorTextBanner: {
+        color: Colors.brand.error,
+        fontWeight: Typography.weights.bold as any,
+        fontSize: Typography.sizes.tiny,
+        textAlign: 'center',
+    },
+    codeRow: {
         flexDirection: 'row',
         justifyContent: 'center',
-        alignItems: 'center',
-        gap: 6,
+        gap: 12,
         marginBottom: 20,
     },
-    dot: {
-        width: 10,
-        height: 10,
-        borderRadius: 5,
-        backgroundColor: 'rgba(0,0,0,0.1)',
-    },
-    dotActive: {
-        backgroundColor: '#CC2222',
-    },
-    attemptsText: {
-        fontSize: 10,
-        color: '#8A8AA0',
-        marginLeft: 4,
-    },
-    validateBtn: {
-        backgroundColor: '#C9A84C',
-        borderRadius: 8,
-        paddingVertical: 14,
+    codeBox: {
+        width: 50, height: 65,
+        backgroundColor: Colors.clair.background,
+        borderRadius: 12,
+        borderWidth: 2,
+        borderColor: 'rgba(0,0,0,0.1)',
+        justifyContent: 'center',
         alignItems: 'center',
     },
-    validateBtnText: {
-        color: '#09090F',
-        fontWeight: '900',
-        fontSize: 13,
+    codeBoxError: { borderColor: Colors.brand.error },
+    codeBoxDisabled: { backgroundColor: 'rgba(0,0,0,0.03)' },
+    codeDigit: {
+        fontSize: 20,
+        fontWeight: Typography.weights.black as any,
+        color: Colors.clair.textPrimary,
     },
+    numpad: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
+        gap: 10,
+    },
+    numpadDisabled: { opacity: 0.4 },
+    numKey: {
+        width: '30%', height: 52,
+        backgroundColor: Colors.clair.background,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    numText: {
+        fontSize: Typography.sizes.header,
+        fontWeight: Typography.weights.bold as any,
+        color: Colors.clair.textPrimary,
+    },
+    okKey: { backgroundColor: Colors.brand.gold },
+    okKeyDisabled: { opacity: 0.4 },
+    okText: { color: '#FFFFFF', fontWeight: Typography.weights.black as any, fontSize: Typography.sizes.sub },
     cardSuccess: {
-        borderWidth: 2,
-        borderColor: 'rgba(46, 138, 90, 0.2)',
-        backgroundColor: '#EEF9F4',
+        backgroundColor: '#F0FFF4',
+        borderWidth: 1,
+        borderColor: 'rgba(76, 175, 130, 0.2)',
     },
-    bigEmoji: {
-        fontSize: 48,
-        textAlign: 'center',
-        marginBottom: 16,
-    },
+    bigEmoji: { fontSize: 64, textAlign: 'center', marginBottom: 16 },
     successTitle: {
-        fontSize: 18,
-        fontWeight: '800',
-        color: '#2E8A5A',
+        fontSize: Typography.sizes.header,
+        fontWeight: Typography.weights.black as any,
+        color: Colors.brand.success,
         textAlign: 'center',
-        marginBottom: 8,
+        marginBottom: 12,
     },
     successSub: {
-        fontSize: 11,
-        color: '#4A7A5A',
+        fontSize: Typography.sizes.tiny,
+        color: Colors.clair.textSecondary,
         textAlign: 'center',
-        lineHeight: 16,
+        lineHeight: 18,
         marginBottom: 20,
     },
-    detailsBox: {
+    recapDetails: {
         backgroundColor: '#FFFFFF',
-        borderRadius: 8,
-        padding: 12,
-        width: '100%',
-    },
-    cardError: {
-        borderWidth: 2,
-        borderColor: 'rgba(204, 34, 34, 0.2)',
-        backgroundColor: '#FFF0F0',
-    },
-    errorTitle: {
-        fontSize: 18,
-        fontWeight: '800',
-        color: '#CC2222',
-        textAlign: 'center',
-        marginBottom: 8,
-    },
-    errorSub: {
-        fontSize: 11,
-        color: '#993333',
-        textAlign: 'center',
-        lineHeight: 16,
+        borderRadius: 16,
+        padding: 14,
         marginBottom: 20,
     },
-    supportText: {
-        fontSize: 10,
-        color: '#8A8AA0',
-        textAlign: 'center',
-        marginTop: 16,
+    infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+    infoLabel: { fontSize: 10, color: Colors.clair.textSecondary, fontWeight: Typography.weights.bold as any },
+    infoValue: { fontSize: 10, color: Colors.clair.textPrimary, fontWeight: Typography.weights.black as any },
+    infoValueBlue: { fontSize: 10, color: Colors.brand.info, fontWeight: Typography.weights.black as any },
+    finishBtn: {
+        backgroundColor: Colors.brand.success,
+        paddingVertical: 16,
+        borderRadius: 12,
+        alignItems: 'center',
     },
-    valueRed: {
-        fontSize: 10,
-        fontWeight: '700',
-        color: '#CC2222',
-    },
+    finishBtnText: { color: '#FFFFFF', fontWeight: Typography.weights.black as any },
     cardBlocked: {
-        backgroundColor: '#FFF5EC',
-        borderWidth: 2,
-        borderColor: 'rgba(204, 102, 0, 0.2)',
+        backgroundColor: '#FFF5F5',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 100, 100, 0.2)',
     },
     blockedTitle: {
-        fontSize: 18,
-        fontWeight: '800',
-        color: '#CC6600',
+        fontSize: Typography.sizes.header,
+        fontWeight: Typography.weights.black as any,
+        color: Colors.brand.error,
         textAlign: 'center',
         marginBottom: 8,
     },
     blockedSub: {
-        fontSize: 12,
-        color: '#8A6030',
+        fontSize: Typography.sizes.tiny,
+        color: Colors.brand.error,
         textAlign: 'center',
-        marginBottom: 20,
+        fontWeight: Typography.weights.bold as any,
+        marginBottom: 24,
     },
-    contactItem: {
-        backgroundColor: '#F2F2F7',
-        padding: 8,
-        borderRadius: 6,
-        marginBottom: 8,
+    supportBox: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 16,
+        padding: 20,
         alignItems: 'center',
     },
-    contactText: {
-        fontSize: 10,
-        color: '#1C1C2E',
+    supportLabel: {
+        fontSize: 9,
+        fontWeight: Typography.weights.black as any,
+        color: Colors.clair.textSecondary,
+        marginBottom: 8,
+    },
+    supportEmail: {
+        fontSize: Typography.sizes.sub,
+        fontWeight: Typography.weights.bold as any,
+        color: Colors.clair.textPrimary,
+        marginBottom: 12,
     },
     callBtn: {
-        backgroundColor: '#CC2222',
-        padding: 10,
-        borderRadius: 6,
-        alignItems: 'center',
+        backgroundColor: Colors.brand.error,
+        paddingHorizontal: 20,
+        paddingVertical: 12,
+        borderRadius: 10,
     },
-    callBtnText: {
-        color: '#FFFFFF',
-        fontSize: 11,
-        fontWeight: '800',
-    },
-    footer: {
-        padding: 24,
-        alignItems: 'center',
-        borderTopWidth: 2,
-        borderTopColor: '#C9A84C',
-    },
+    callBtnText: { color: '#FFFFFF', fontWeight: Typography.weights.black as any },
+    footer: { padding: 24, alignItems: 'center' },
     footerText: {
-        color: '#C9A84C',
-        fontSize: 16,
-        fontWeight: '900',
+        fontSize: Typography.sizes.tiny,
+        fontWeight: Typography.weights.black as any,
+        color: Colors.brand.gold,
+        letterSpacing: 2,
     },
-    footerSubText: {
-        color: '#8A8AA0',
-        fontSize: 9,
-        marginTop: 4,
+    footerSub: { fontSize: 8, color: Colors.clair.textSecondary, marginTop: 4 },
+    // Scanner
+    scannerContainer: { flex: 1, backgroundColor: '#000' },
+    camera: { flex: 1 },
+    scannerOverlay: {
+        position: 'absolute',
+        top: 0, left: 0, right: 0, bottom: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    scannerFrame: {
+        width: 250, height: 250,
+        borderWidth: 3,
+        borderColor: Colors.brand.gold,
+        borderRadius: 20,
+        marginBottom: 30,
+    },
+    scannerHint: {
+        color: '#FFFFFF',
+        fontSize: Typography.sizes.sub,
+        textAlign: 'center',
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+        borderRadius: 10,
+        marginBottom: 40,
+        marginHorizontal: 40,
+    },
+    cancelScanBtn: {
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        borderWidth: 1,
+        borderColor: '#FFFFFF',
+        borderRadius: 14,
+        paddingHorizontal: 32,
+        paddingVertical: 14,
+    },
+    cancelScanText: {
+        color: '#FFFFFF',
+        fontWeight: Typography.weights.black as any,
+        letterSpacing: 1,
     },
 });

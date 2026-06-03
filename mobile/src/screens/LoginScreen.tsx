@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, SafeAreaView, StatusBar, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { login } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import type { RootStackParamList } from '../types';
+import { Colors, Typography } from '../theme';
+import type { RootStackParamList, UserRole } from '../types';
 
 export default function LoginScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'Login'>) {
+    const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -13,6 +15,11 @@ export default function LoginScreen({ navigation }: NativeStackScreenProps<RootS
     const { setAuth } = useAuth();
 
     const handleLogin = async () => {
+        if (!email || !password) {
+            setError('Email et mot de passe requis');
+            return;
+        }
+
         setLoading(true);
         setError(null);
 
@@ -20,12 +27,9 @@ export default function LoginScreen({ navigation }: NativeStackScreenProps<RootS
             const response = await login(email, password);
             const { token, userId, role, ambassadeur_id, chauffeur_id } = response.data;
 
-            if (!userId || !role) {
-                setError('Impossible de récupérer les informations du compte.');
-                setLoading(false);
-                return;
-            }
-
+            // Optional: check if role matches selected role
+            // But for now, we just redirect based on actual backend role
+            
             setAuth({
                 token,
                 userId,
@@ -41,94 +45,259 @@ export default function LoginScreen({ navigation }: NativeStackScreenProps<RootS
             } else if (role === 'admin') {
                 navigation.replace('AdminDashboard');
             } else if (role === 'ambassadeur' && ambassadeur_id) {
-                navigation.replace('AmbassadorHome');
+                navigation.replace('AmbassadorAccueil'); // Use replace to clear stack
             } else {
                 setError('Type de compte non géré.');
             }
-        } catch (error) {
-            setError('Email ou mot de passe incorrect.');
+        } catch (error: any) {
+            setError(error.response?.data?.error || 'Email ou mot de passe incorrect.');
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <View style={styles.container}>
-            <Text style={styles.title}>SESAME</Text>
-            <Text style={styles.subtitle}>Connectez-vous pour accéder à votre espace SESAME: Ambassadeur, Chauffeur ou Admin.</Text>
-            <TextInput
-                style={styles.input}
-                placeholder="Email"
-                placeholderTextColor="#999"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                value={email}
-                onChangeText={setEmail}
-            />
-            <TextInput
-                style={styles.input}
-                placeholder="Mot de passe"
-                placeholderTextColor="#999"
-                secureTextEntry
-                value={password}
-                onChangeText={setPassword}
-            />
-            {error ? <Text style={styles.errorText}>{error}</Text> : null}
-            <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
-                {loading ? <ActivityIndicator color="#101018" /> : <Text style={styles.buttonText}>Se connecter</Text>}
-            </TouchableOpacity>
-            <Text style={styles.hint}>Utilisez les identifiants de votre compte Ambassadeur.</Text>
-        </View>
+        <SafeAreaView style={styles.safeArea}>
+            <StatusBar barStyle="light-content" />
+            <KeyboardAvoidingView 
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+                style={styles.container}
+            >
+                <ScrollView contentContainerStyle={styles.scrollContent} centerContent>
+                    
+                    {/* Header: Huge Logo */}
+                    <View style={styles.header}>
+                        <Text style={styles.logoText}>SÉSAME</Text>
+                        <Text style={styles.welcomeText}>Bienvenue</Text>
+                    </View>
+
+                    {/* Role Selection Portal */}
+                    {!selectedRole ? (
+                        <View style={styles.portalContainer}>
+                            <Text style={styles.instructionText}>Choisissez votre espace pour commencer</Text>
+                            
+                            <TouchableOpacity style={styles.roleBtn} onPress={() => setSelectedRole('ambassadeur')}>
+                                <Text style={styles.roleEmoji}>🗝</Text>
+                                <Text style={styles.roleLabel}>AMBASSADEUR</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity style={styles.roleBtn} onPress={() => setSelectedRole('chauffeur')}>
+                                <Text style={styles.roleEmoji}>🚗</Text>
+                                <Text style={styles.roleLabel}>CHAUFFEUR</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity style={[styles.roleBtn, styles.roleBtnAdmin]} onPress={() => setSelectedRole('admin')}>
+                                <Text style={styles.roleLabelSmall}>ADMINISTRATION</Text>
+                            </TouchableOpacity>
+                        </View>
+                    ) : (
+                        <View style={styles.formContainer}>
+                            <TouchableOpacity style={styles.backLink} onPress={() => setSelectedRole(null)}>
+                                <Text style={styles.backLinkText}>← Retour au choix</Text>
+                            </TouchableOpacity>
+
+                            <Text style={styles.roleIndicator}>ESPACE {selectedRole.toUpperCase()}</Text>
+
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Email professionnel"
+                                placeholderTextColor={Colors.nocturne.textSecondary}
+                                keyboardType="email-address"
+                                autoCapitalize="none"
+                                value={email}
+                                onChangeText={setEmail}
+                            />
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Mot de passe"
+                                placeholderTextColor={Colors.nocturne.textSecondary}
+                                secureTextEntry
+                                value={password}
+                                onChangeText={setPassword}
+                            />
+
+                            {error && <Text style={styles.errorText}>{error}</Text>}
+
+                            <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
+                                {loading ? <ActivityIndicator color="#101018" /> : <Text style={styles.buttonText}>SE CONNECTER</Text>}
+                            </TouchableOpacity>
+
+                            <View style={styles.footerLinks}>
+                                <TouchableOpacity>
+                                    <Text style={styles.footerLinkText}>Mot de passe oublié ?</Text>
+                                </TouchableOpacity>
+                            </View>
+
+                            <View style={styles.registerRow}>
+                                <Text style={styles.registerText}>Pas encore de compte ? </Text>
+                                <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+                                    <Text style={styles.registerLink}>S'inscrire</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    )}
+                </ScrollView>
+            </KeyboardAvoidingView>
+        </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
+    safeArea: {
+        flex: 1,
+        backgroundColor: Colors.nocturne.background,
+    },
     container: {
         flex: 1,
-        backgroundColor: '#101018',
+    },
+    scrollContent: {
+        flexGrow: 1,
         justifyContent: 'center',
-        padding: 24,
+        padding: 32,
     },
-    title: {
-        fontSize: 36,
-        color: '#C9A84C',
-        marginBottom: 12,
-        fontWeight: 'bold',
+    header: {
+        alignItems: 'center',
+        marginBottom: 60,
     },
-    subtitle: {
-        color: '#E0DBD2',
+    logoText: {
+        fontSize: 48,
+        color: Colors.brand.gold,
+        fontWeight: Typography.weights.black as any,
+        letterSpacing: 4,
+    },
+    welcomeText: {
+        fontSize: Typography.sizes.header,
+        color: Colors.nocturne.textPrimary,
+        fontWeight: Typography.weights.semiBold as any,
+        marginTop: 8,
+    },
+    portalContainer: {
+        gap: 16,
+    },
+    instructionText: {
+        color: Colors.nocturne.textSecondary,
+        textAlign: 'center',
+        fontSize: Typography.sizes.sub,
         marginBottom: 24,
-        fontSize: 16,
-        lineHeight: 22,
+        fontWeight: Typography.weights.bold as any,
+    },
+    roleBtn: {
+        backgroundColor: Colors.nocturne.card,
+        borderRadius: 20,
+        padding: 24,
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(201, 168, 76, 0.1)',
+    },
+    roleBtnAdmin: {
+        padding: 16,
+        justifyContent: 'center',
+        opacity: 0.6,
+        marginTop: 20,
+    },
+    roleEmoji: {
+        fontSize: 32,
+        marginRight: 20,
+    },
+    roleLabel: {
+        color: '#FFFFFF',
+        fontSize: Typography.sizes.header,
+        fontWeight: Typography.weights.black as any,
+        letterSpacing: 1,
+    },
+    roleLabelSmall: {
+        color: Colors.nocturne.textSecondary,
+        fontSize: Typography.sizes.tiny,
+        fontWeight: Typography.weights.bold as any,
+        letterSpacing: 2,
+    },
+    formContainer: {
+        width: '100%',
+    },
+    backLink: {
+        marginBottom: 32,
+    },
+    backLinkText: {
+        color: Colors.nocturne.textSecondary,
+        fontSize: Typography.sizes.sub,
+    },
+    roleIndicator: {
+        color: Colors.brand.gold,
+        fontSize: Typography.sizes.tiny,
+        fontWeight: Typography.weights.black as any,
+        letterSpacing: 2,
+        marginBottom: 24,
+        textAlign: 'center',
     },
     input: {
-        backgroundColor: '#161624',
+        backgroundColor: Colors.nocturne.card,
         color: '#FFFFFF',
-        borderRadius: 14,
-        paddingHorizontal: 16,
-        paddingVertical: 14,
-        marginBottom: 14,
+        borderRadius: 16,
+        paddingHorizontal: 20,
+        paddingVertical: 18,
+        fontSize: Typography.sizes.body,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
     button: {
-        backgroundColor: '#C9A84C',
-        paddingVertical: 16,
-        borderRadius: 14,
+        backgroundColor: Colors.brand.gold,
+        paddingVertical: 20,
+        borderRadius: 16,
         alignItems: 'center',
-        marginTop: 6,
+        marginTop: 10,
+        shadowColor: Colors.brand.gold,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 10,
+        elevation: 5,
     },
     buttonText: {
         color: '#101018',
-        fontWeight: '700',
+        fontWeight: Typography.weights.black as any,
+        fontSize: 16,
+        letterSpacing: 1,
     },
-    hint: {
-        color: '#8F8F8F',
-        marginTop: 16,
-        textAlign: 'center',
-        lineHeight: 20,
+    footerLinks: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginTop: 32,
+    },
+    footerLinkText: {
+        color: Colors.brand.gold,
+        fontSize: Typography.sizes.sub,
+        fontWeight: Typography.weights.semiBold as any,
+    },
+    dot: {
+        width: 4,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: Colors.nocturne.textSecondary,
+        marginHorizontal: 12,
+        opacity: 0.5,
     },
     errorText: {
-        color: '#FF6B6B',
-        marginBottom: 10,
+        color: Colors.brand.error,
+        marginBottom: 20,
         textAlign: 'center',
+        fontSize: Typography.sizes.sub,
+        fontWeight: Typography.weights.bold as any,
+    },
+    registerRow: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginTop: 20,
+    },
+    registerText: {
+        color: Colors.nocturne.textSecondary,
+        fontSize: Typography.sizes.sub,
+    },
+    registerLink: {
+        color: Colors.brand.gold,
+        fontSize: Typography.sizes.sub,
+        fontWeight: Typography.weights.bold as any,
     },
 });

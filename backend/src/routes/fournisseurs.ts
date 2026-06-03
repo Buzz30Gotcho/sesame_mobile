@@ -13,7 +13,7 @@ router.post('/valider-bon', async (req, res) => {
     const exchangeResult = await query('SELECT * FROM echanges WHERE token_qr = $1', [token_qr]);
     const exchange = exchangeResult.rows[0];
     if (!exchange) return res.status(404).json({ error: 'Bon introuvable' });
-    if (exchange.token_expire || exchange.statut === 'utilise') {
+    if (exchange.statut === 'utilise' || exchange.statut === 'expire') {
         return res.status(400).json({ error: 'Bon déjà utilisé ou expiré' });
     }
 
@@ -42,11 +42,11 @@ router.post('/valider-bon', async (req, res) => {
         return res.status(400).json({ error: 'Bon non prêt à être validé' });
     }
     if (new Date(exchange.expire_at) <= new Date()) {
-        await query('UPDATE echanges SET statut = $1, token_expire = true WHERE id = $2', ['expire', exchange.id]);
+        await query('UPDATE echanges SET statut = $1 WHERE id = $2', ['expire', exchange.id]);
         return res.status(400).json({ error: 'Bon expiré' });
     }
 
-    await query('UPDATE echanges SET statut = $1, token_expire = true, utilise_at = now() WHERE id = $2', ['utilise', exchange.id]);
+    await query('UPDATE echanges SET statut = $1, utilise_at = now() WHERE id = $2', ['utilise', exchange.id]);
     res.json({ success: true, message: 'Bon validé', reference: exchange.reference });
 });
 

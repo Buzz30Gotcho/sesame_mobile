@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, SafeAreaView, Switch } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, SafeAreaView, Switch, StatusBar } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { getChauffeurDashboard, setChauffeurAvailability, validateCourseCode, finishChauffeurCourse } from '../services/api';
-import type { RootStackParamList, ChauffeurDashboard, ActiveCourse } from '../types';
+import { Colors, Typography } from '../theme';
+import BottomNav from '../components/BottomNav';
+import type { RootStackParamList, ChauffeurDashboard } from '../types';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 export default function ChauffeurHomeScreen() {
@@ -19,6 +21,8 @@ export default function ChauffeurHomeScreen() {
 
     useEffect(() => {
         loadDashboard();
+        const interval = setInterval(loadDashboard, 10000);
+        return () => clearInterval(interval);
     }, [chauffeurId]);
 
     async function loadDashboard() {
@@ -89,7 +93,7 @@ export default function ChauffeurHomeScreen() {
     if (loading) {
         return (
             <View style={[styles.container, styles.center]}>
-                <ActivityIndicator size="large" color="#C9A84C" />
+                <ActivityIndicator size="large" color={Colors.brand.gold} />
             </View>
         );
     }
@@ -98,18 +102,20 @@ export default function ChauffeurHomeScreen() {
 
     return (
         <SafeAreaView style={styles.safeArea}>
-            {/* Availability Header */}
+            <StatusBar barStyle="light-content" />
+            
+            {/* Availability Header - Driver Status System */}
             <View style={[styles.statusHeader, dashboard?.disponible ? styles.statusOnline : styles.statusOffline]}>
                 <View>
                     <Text style={styles.driverName}>{dashboard?.prenom} {dashboard?.nom}</Text>
                     <Text style={dashboard?.disponible ? styles.onlineText : styles.offlineText}>
-                        ● {dashboard?.disponible ? 'En ligne' : 'Hors ligne'}
+                        ● {dashboard?.disponible ? 'EN LIGNE' : 'HORS LIGNE'}
                     </Text>
                 </View>
                 <Switch 
                     value={dashboard?.disponible} 
                     onValueChange={toggleAvailability} 
-                    trackColor={{ false: '#CCCCDD', true: '#2E8A5A' }}
+                    trackColor={{ false: '#303040', true: Colors.brand.success }}
                     thumbColor="#FFFFFF"
                 />
             </View>
@@ -119,38 +125,38 @@ export default function ChauffeurHomeScreen() {
                 {!currentCourse ? (
                     <View style={styles.emptyState}>
                         <View style={styles.emptyCard}>
-                            <Text style={styles.emptyTitle}>DISPONIBLE</Text>
-                            <Text style={styles.emptySub}>En attente de courses...</Text>
+                            <Text style={styles.emptyTitle}>PRÊT À ACCEPTER</Text>
+                            <Text style={styles.emptySub}>Recherche de courses en cours...</Text>
                         </View>
                         <View style={styles.statsRow}>
                             <View style={styles.statCard}>
-                                <Text style={styles.statLabel}>Courses</Text>
+                                <Text style={styles.statLabel}>COURSES JOUR</Text>
                                 <Text style={styles.statValue}>3</Text>
                             </View>
                             <View style={styles.statCard}>
-                                <Text style={styles.statLabel}>CA encaissé</Text>
+                                <Text style={styles.statLabel}>CA ESTIMÉ</Text>
                                 <Text style={styles.statValue}>108,00 €</Text>
                             </View>
                         </View>
-                        <Text style={styles.footerInfo}>Frais SÉSAME : visible uniquement sur factures Stripe</Text>
+                        <Text style={styles.footerInfo}>CA AFFICHÉ : MONTANT TOTAL ENCAISSÉ CLIENT</Text>
                     </View>
                 ) : (
                     <View style={styles.courseActiveContainer}>
                         {/* Course Step Indicator */}
                         <View style={styles.stepCard}>
                             <Text style={styles.stepTitle}>
-                                {currentCourse.statut === 'acceptee' ? 'En route vers le client' : 
-                                 currentCourse.statut === 'en_route' ? 'Arrivé sur place' : 
-                                 currentCourse.statut === 'code_valide' ? 'Course en cours' : 'Course terminée'}
+                                {currentCourse.statut === 'acceptee' ? 'EN ROUTE VERS LE CLIENT' : 
+                                 currentCourse.statut === 'en_route' ? 'ARRIVÉ SUR PLACE' : 
+                                 currentCourse.statut === 'code_valide' ? 'COURSE EN COURS' : 'MISSION TERMINÉE'}
                             </Text>
-                            <Text style={styles.stepSub}>{currentCourse.adresse_depart} • ~4 min</Text>
+                            <Text style={styles.stepSub}>{currentCourse.adresse_depart}</Text>
                         </View>
 
-                        {/* Pivot UI: Code Entry */}
+                        {/* Pivot UI: Code Entry - MANDATORY FOR REVENUE */}
                         {['acceptee', 'en_route'].includes(currentCourse.statut || '') && (
                             <View style={styles.pivotCard}>
-                                <Text style={styles.pivotTitle}>Code client — PIVOT</Text>
-                                <Text style={styles.pivotSub}>Saisissez le code communiqué par l'Ambassadeur</Text>
+                                <Text style={styles.pivotTitle}>CODE CLIENT SESAME</Text>
+                                <Text style={styles.pivotSub}>Le client doit vous communiquer son code à 4 chiffres</Text>
                                 
                                 <View style={styles.codeRow}>
                                     {codeDigits.map((d, i) => (
@@ -179,11 +185,13 @@ export default function ChauffeurHomeScreen() {
                                     </TouchableOpacity>
                                 </View>
                                 
-                                <Text style={styles.pivotWarning}>⚡ PIVOT JURIDIQUE ET FINANCIER</Text>
+                                <View style={styles.pivotWarningBox}>
+                                    <Text style={styles.pivotWarning}>⚡ PIVOT JURIDIQUE ET FINANCIER OBLIGATOIRE</Text>
+                                </View>
                             </View>
                         )}
 
-                        {/* Course in progress */}
+                        {/* Course in progress - Billing Context */}
                         {currentCourse.statut === 'code_valide' && (
                             <View style={styles.inProgressCard}>
                                 <View style={styles.infoRow}>
@@ -191,52 +199,42 @@ export default function ChauffeurHomeScreen() {
                                     <Text style={styles.infoValue}>{currentCourse.adresse_destination}</Text>
                                 </View>
                                 <View style={styles.infoRow}>
-                                    <Text style={styles.infoLabel}>MONTANT</Text>
+                                    <Text style={styles.infoLabel}>MONTANT À ENCAISSER</Text>
                                     <Text style={styles.infoValueGold}>{currentCourse.montant} €</Text>
                                 </View>
                                 <TouchableOpacity style={styles.finishButton} onPress={handleFinishCourse}>
-                                    <Text style={styles.finishButtonText}>Terminer la course</Text>
+                                    <Text style={styles.finishButtonText}>TERMINER ET FERMER LA COURSE</Text>
                                 </TouchableOpacity>
                             </View>
                         )}
 
                         {/* Action Buttons */}
                         <View style={styles.actionRow}>
-                            <TouchableOpacity style={styles.actionBtn}>
-                                <Text style={styles.actionBtnText}>💬 Chat</Text>
+                            <TouchableOpacity
+                                style={styles.actionBtn}
+                                onPress={() => chauffeurId && currentCourse && navigation.navigate('Chat', {
+                                    courseId: currentCourse.id,
+                                    senderRole: 'chauffeur',
+                                    senderId: chauffeurId,
+                                    courseRef: currentCourse.reference,
+                                })}
+                            >
+                                <Text style={styles.actionBtnText}>💬 CHAT</Text>
                             </TouchableOpacity>
                             <TouchableOpacity style={styles.actionBtn}>
-                                <Text style={styles.actionBtnText}>📞 Appeler</Text>
+                                <Text style={styles.actionBtnText}>📞 APPELER</Text>
                             </TouchableOpacity>
                         </View>
 
                         {/* Client Absent Option */}
                         <TouchableOpacity style={styles.absentBtn}>
-                            <Text style={styles.absentBtnText}>🆘 Client absent — Contacter SÉSAME</Text>
+                            <Text style={styles.absentBtnText}>🆘 CLIENT ABSENT / LITIGE</Text>
                         </TouchableOpacity>
                     </View>
                 )}
             </ScrollView>
 
-            {/* Bottom Nav */}
-            <View style={styles.bottomNav}>
-                <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('ChauffeurHome')}>
-                    <Text style={[styles.navIcon, { color: '#4A9EFF' }]}>🏠</Text>
-                    <Text style={[styles.navLabel, { color: '#4A9EFF' }]}>Accueil</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.navItem}>
-                    <Text style={styles.navIcon}>🚗</Text>
-                    <Text style={styles.navLabel}>Course</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.navItem}>
-                    <Text style={styles.navIcon}>💰</Text>
-                    <Text style={styles.navLabel}>Revenus</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.navItem}>
-                    <Text style={styles.navIcon}>👤</Text>
-                    <Text style={styles.navLabel}>Profil</Text>
-                </TouchableOpacity>
-            </View>
+            <BottomNav role="chauffeur" />
         </SafeAreaView>
     );
 }
@@ -244,7 +242,11 @@ export default function ChauffeurHomeScreen() {
 const styles = StyleSheet.create({
     safeArea: {
         flex: 1,
-        backgroundColor: '#101018',
+        backgroundColor: Colors.nocturne.background,
+    },
+    container: {
+        flex: 1,
+        backgroundColor: Colors.nocturne.background,
     },
     center: {
         justifyContent: 'center',
@@ -260,24 +262,26 @@ const styles = StyleSheet.create({
         borderBottomColor: 'rgba(255,255,255,0.05)',
     },
     statusOnline: {
-        backgroundColor: 'rgba(46, 138, 82, 0.05)',
+        backgroundColor: 'rgba(76, 175, 130, 0.05)',
     },
     statusOffline: {
-        backgroundColor: 'rgba(119, 119, 136, 0.05)',
+        backgroundColor: 'rgba(106, 102, 128, 0.05)',
     },
     driverName: {
         color: '#FFFFFF',
-        fontSize: 16,
-        fontWeight: '700',
+        fontSize: Typography.sizes.body,
+        fontWeight: Typography.weights.bold as any,
     },
     onlineText: {
-        color: '#4CAF82',
-        fontSize: 10,
+        color: Colors.brand.success,
+        fontSize: Typography.sizes.tiny,
+        fontWeight: Typography.weights.black as any,
         marginTop: 2,
     },
     offlineText: {
-        color: '#777788',
-        fontSize: 10,
+        color: Colors.nocturne.textSecondary,
+        fontSize: Typography.sizes.tiny,
+        fontWeight: Typography.weights.black as any,
         marginTop: 2,
     },
     scrollContent: {
@@ -288,9 +292,9 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     emptyCard: {
-        backgroundColor: 'rgba(46, 138, 82, 0.05)',
+        backgroundColor: 'rgba(76, 175, 130, 0.05)',
         borderWidth: 1,
-        borderColor: 'rgba(46, 138, 82, 0.2)',
+        borderColor: 'rgba(76, 175, 130, 0.2)',
         borderRadius: 18,
         padding: 24,
         width: '100%',
@@ -298,15 +302,15 @@ const styles = StyleSheet.create({
         marginBottom: 20,
     },
     emptyTitle: {
-        color: '#4CAF82',
-        fontSize: 14,
-        fontWeight: '700',
+        color: Colors.brand.success,
+        fontSize: Typography.sizes.sub,
+        fontWeight: Typography.weights.black as any,
         letterSpacing: 1,
         marginBottom: 8,
     },
     emptySub: {
-        color: '#6A6680',
-        fontSize: 12,
+        color: Colors.nocturne.textSecondary,
+        fontSize: Typography.sizes.sub,
     },
     statsRow: {
         flexDirection: 'row',
@@ -316,25 +320,27 @@ const styles = StyleSheet.create({
     },
     statCard: {
         flex: 1,
-        backgroundColor: '#161624',
+        backgroundColor: Colors.nocturne.card,
         borderRadius: 18,
         padding: 16,
         marginHorizontal: 4,
     },
     statLabel: {
-        color: '#6A6680',
-        fontSize: 10,
+        color: Colors.nocturne.textSecondary,
+        fontSize: Typography.sizes.tiny,
+        fontWeight: Typography.weights.bold as any,
         marginBottom: 8,
     },
     statValue: {
         color: '#FFFFFF',
-        fontSize: 20,
-        fontWeight: '800',
+        fontSize: Typography.sizes.header,
+        fontWeight: Typography.weights.black as any,
     },
     footerInfo: {
-        color: '#6A6680',
-        fontSize: 10,
+        color: Colors.nocturne.textSecondary,
+        fontSize: Typography.sizes.tiny,
         textAlign: 'center',
+        fontWeight: Typography.weights.bold as any,
     },
     courseActiveContainer: {
         width: '100%',
@@ -348,17 +354,17 @@ const styles = StyleSheet.create({
         marginBottom: 16,
     },
     stepTitle: {
-        color: '#4A9EFF',
-        fontSize: 14,
-        fontWeight: '700',
+        color: Colors.brand.info,
+        fontSize: Typography.sizes.sub,
+        fontWeight: Typography.weights.black as any,
         marginBottom: 4,
     },
     stepSub: {
-        color: '#6A6680',
-        fontSize: 12,
+        color: Colors.nocturne.textSecondary,
+        fontSize: Typography.sizes.sub,
     },
     pivotCard: {
-        backgroundColor: '#161624',
+        backgroundColor: Colors.nocturne.card,
         borderRadius: 24,
         padding: 20,
         alignItems: 'center',
@@ -366,13 +372,13 @@ const styles = StyleSheet.create({
     },
     pivotTitle: {
         color: '#FFFFFF',
-        fontSize: 16,
-        fontWeight: '700',
+        fontSize: Typography.sizes.body,
+        fontWeight: Typography.weights.black as any,
         marginBottom: 8,
     },
     pivotSub: {
-        color: '#6A6680',
-        fontSize: 10,
+        color: Colors.nocturne.textSecondary,
+        fontSize: Typography.sizes.tiny,
         marginBottom: 20,
         textAlign: 'center',
     },
@@ -387,7 +393,7 @@ const styles = StyleSheet.create({
         height: 55,
         backgroundColor: 'rgba(201, 168, 76, 0.08)',
         borderWidth: 1,
-        borderColor: '#C9A84C',
+        borderColor: Colors.brand.gold,
         borderRadius: 12,
         justifyContent: 'center',
         alignItems: 'center',
@@ -396,9 +402,9 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(201, 168, 76, 0.2)',
     },
     codeDigit: {
-        color: '#C9A84C',
-        fontSize: 24,
-        fontWeight: '900',
+        color: Colors.brand.gold,
+        fontSize: Typography.sizes.title,
+        fontWeight: Typography.weights.black as any,
     },
     numpad: {
         flexDirection: 'row',
@@ -418,24 +424,31 @@ const styles = StyleSheet.create({
     },
     numText: {
         color: '#FFFFFF',
-        fontSize: 20,
-        fontWeight: '700',
+        fontSize: Typography.sizes.header,
+        fontWeight: Typography.weights.bold as any,
     },
     okKey: {
-        backgroundColor: '#C9A84C',
+        backgroundColor: Colors.brand.gold,
     },
     okText: {
         color: '#09090F',
-        fontWeight: '900',
+        fontWeight: Typography.weights.black as any,
+    },
+    pivotWarningBox: {
+        marginTop: 10,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        backgroundColor: 'rgba(255, 154, 60, 0.1)',
+        borderRadius: 6,
     },
     pivotWarning: {
-        color: '#FF9A3C',
-        fontSize: 10,
-        fontWeight: '900',
+        color: Colors.brand.warning,
+        fontSize: Typography.sizes.tiny,
+        fontWeight: Typography.weights.black as any,
         letterSpacing: 0.5,
     },
     inProgressCard: {
-        backgroundColor: '#161624',
+        backgroundColor: Colors.nocturne.card,
         borderRadius: 18,
         padding: 20,
         marginBottom: 16,
@@ -446,22 +459,22 @@ const styles = StyleSheet.create({
         marginBottom: 12,
     },
     infoLabel: {
-        color: '#6A6680',
-        fontSize: 10,
-        fontWeight: '700',
+        color: Colors.nocturne.textSecondary,
+        fontSize: Typography.sizes.tiny,
+        fontWeight: Typography.weights.bold as any,
     },
     infoValue: {
         color: '#FFFFFF',
-        fontSize: 14,
-        fontWeight: '600',
+        fontSize: Typography.sizes.body,
+        fontWeight: Typography.weights.semiBold as any,
     },
     infoValueGold: {
-        color: '#C9A84C',
-        fontSize: 18,
-        fontWeight: '900',
+        color: Colors.brand.gold,
+        fontSize: Typography.sizes.header,
+        fontWeight: Typography.weights.black as any,
     },
     finishButton: {
-        backgroundColor: '#C9A84C',
+        backgroundColor: Colors.brand.gold,
         borderRadius: 14,
         paddingVertical: 16,
         alignItems: 'center',
@@ -469,8 +482,8 @@ const styles = StyleSheet.create({
     },
     finishButtonText: {
         color: '#09090F',
-        fontSize: 14,
-        fontWeight: '800',
+        fontSize: Typography.sizes.body,
+        fontWeight: Typography.weights.black as any,
     },
     actionRow: {
         flexDirection: 'row',
@@ -487,8 +500,9 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     actionBtnText: {
-        color: '#4A9EFF',
-        fontWeight: '700',
+        color: Colors.brand.info,
+        fontWeight: Typography.weights.bold as any,
+        fontSize: Typography.sizes.tiny,
     },
     absentBtn: {
         backgroundColor: 'rgba(255, 154, 60, 0.1)',
@@ -499,38 +513,13 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     absentBtnText: {
-        color: '#FF9A3C',
-        fontWeight: '700',
-    },
-    bottomNav: {
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height: 80,
-        backgroundColor: '#161624',
-        flexDirection: 'row',
-        justifyContent: 'space-around',
-        alignItems: 'center',
-        paddingBottom: 20,
-        borderTopWidth: 1,
-        borderTopColor: 'rgba(255,255,255,0.05)',
-    },
-    navItem: {
-        alignItems: 'center',
-    },
-    navIcon: {
-        fontSize: 20,
-        color: '#6A6680',
-        marginBottom: 4,
-    },
-    navLabel: {
-        fontSize: 10,
-        color: '#6A6680',
+        color: Colors.brand.warning,
+        fontWeight: Typography.weights.bold as any,
+        fontSize: Typography.sizes.tiny,
     },
     errorText: {
-        color: '#FF6464',
-        fontSize: 12,
+        color: Colors.brand.error,
+        fontSize: Typography.sizes.tiny,
         marginBottom: 16,
     },
 });

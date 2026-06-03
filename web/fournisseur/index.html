@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SESAME — Validation bon</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+            background: #F2F2F7;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        .card {
+            background: #fff;
+            border-radius: 20px;
+            padding: 40px 32px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.10);
+        }
+        .logo {
+            text-align: center;
+            margin-bottom: 28px;
+        }
+        .logo-text {
+            font-size: 28px;
+            font-weight: 900;
+            color: #C9A84C;
+            letter-spacing: 3px;
+        }
+        .logo-sub { font-size: 11px; color: #888; letter-spacing: 1px; margin-top: 2px; }
+
+        /* Bon recap */
+        .bon-recap {
+            background: #F8F8FA;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 28px;
+        }
+        .bon-recap-title { font-size: 11px; color: #888; font-weight: 600; letter-spacing: 1px; margin-bottom: 8px; }
+        .bon-prestation { font-size: 16px; font-weight: 700; color: #1C1C2E; }
+        .bon-ref { font-size: 12px; color: #888; margin-top: 4px; font-family: monospace; }
+        .bon-expire { font-size: 12px; color: #FF9A3C; margin-top: 4px; }
+
+        /* Code input */
+        .code-label { font-size: 13px; color: #555; text-align: center; margin-bottom: 16px; }
+        .code-boxes {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        .code-box {
+            width: 64px;
+            height: 72px;
+            border: 2px solid #E0E0E8;
+            border-radius: 12px;
+            font-size: 28px;
+            font-weight: 700;
+            text-align: center;
+            color: #1C1C2E;
+            background: #F8F8FA;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .code-box:focus { border-color: #C9A84C; background: #fff; }
+        .code-box.error { border-color: #FF6464; animation: shake 0.3s; }
+        .code-box.valid { border-color: #4CAF82; }
+
+        /* Tentatives */
+        .tentatives {
+            display: flex;
+            gap: 6px;
+            justify-content: center;
+            margin-bottom: 24px;
+        }
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: #C9A84C; transition: background 0.2s; }
+        .dot.used { background: #FF6464; }
+        .dot.empty { background: #E0E0E8; }
+
+        /* Bouton valider */
+        .btn-valider {
+            width: 100%;
+            padding: 16px;
+            background: #C9A84C;
+            color: #fff;
+            border: none;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .btn-valider:hover { opacity: 0.9; }
+        .btn-valider:disabled { opacity: 0.4; cursor: default; }
+
+        /* États */
+        .etat { text-align: center; padding: 20px 0; display: none; }
+        .etat.active { display: block; }
+
+        /* Erreur */
+        .msg-erreur { color: #FF6464; font-size: 13px; text-align: center; margin-bottom: 16px; display: none; }
+        .msg-erreur.visible { display: block; }
+
+        /* Bloqué */
+        .bloque-icon { font-size: 48px; margin-bottom: 12px; }
+        .bloque-title { font-size: 18px; font-weight: 700; color: #1C1C2E; margin-bottom: 8px; }
+        .bloque-sub { font-size: 13px; color: #888; margin-bottom: 16px; }
+        .contact-links { display: flex; flex-direction: column; gap: 8px; }
+        .contact-link {
+            display: block; padding: 12px 20px; border-radius: 10px;
+            text-decoration: none; font-size: 13px; font-weight: 600;
+            background: #F8F8FA; color: #1C1C2E; text-align: center;
+        }
+
+        /* Valide */
+        .valide-check { font-size: 56px; margin-bottom: 12px; }
+        .valide-title { font-size: 20px; font-weight: 800; color: #4CAF82; margin-bottom: 8px; }
+        .valide-sub { font-size: 13px; color: #888; margin-bottom: 16px; }
+        .valide-recap { background: #F0FBF5; border-radius: 10px; padding: 14px; text-align: left; }
+        .valide-recap p { font-size: 12px; color: #555; margin-bottom: 4px; }
+        .valide-recap strong { color: #1C1C2E; }
+
+        /* Expiré */
+        .expire-icon { font-size: 48px; margin-bottom: 12px; }
+        .expire-title { font-size: 18px; font-weight: 700; color: #FF9A3C; margin-bottom: 8px; }
+        .expire-note { font-size: 12px; color: #888; font-style: italic; margin-top: 12px; }
+
+        /* Déjà utilisé */
+        .utilise-icon { font-size: 48px; margin-bottom: 12px; }
+        .utilise-title { font-size: 18px; font-weight: 700; color: #FF6464; margin-bottom: 8px; }
+
+        @keyframes shake {
+            0%,100% { transform: translateX(0); }
+            25% { transform: translateX(-6px); }
+            75% { transform: translateX(6px); }
+        }
+
+        .footer { text-align: center; margin-top: 24px; font-size: 11px; color: #aaa; }
+    </style>
+</head>
+<body>
+<div class="card">
+    <div class="logo">
+        <div class="logo-text">SESAME</div>
+        <div class="logo-sub">Validation bon cadeau</div>
+    </div>
+
+    <!-- État 1 : Saisie -->
+    <div id="etat-saisie" class="etat active">
+        <div class="bon-recap" id="bon-recap">
+            <div class="bon-recap-title">BON À VALIDER</div>
+            <div class="bon-prestation" id="bon-prestation">Chargement...</div>
+            <div class="bon-ref" id="bon-ref"></div>
+            <div class="bon-expire" id="bon-expire"></div>
+        </div>
+
+        <p class="code-label">Saisissez votre code secret à 4 chiffres</p>
+
+        <div class="code-boxes">
+            <input class="code-box" id="d1" maxlength="1" inputmode="numeric" pattern="[0-9]" />
+            <input class="code-box" id="d2" maxlength="1" inputmode="numeric" pattern="[0-9]" />
+            <input class="code-box" id="d3" maxlength="1" inputmode="numeric" pattern="[0-9]" />
+            <input class="code-box" id="d4" maxlength="1" inputmode="numeric" pattern="[0-9]" />
+        </div>
+
+        <div class="tentatives">
+            <div class="dot" id="t1"></div>
+            <div class="dot" id="t2"></div>
+            <div class="dot" id="t3"></div>
+        </div>
+
+        <div class="msg-erreur" id="msg-erreur"></div>
+
+        <button class="btn-valider" id="btn-valider" onclick="valider()">VALIDER</button>
+    </div>
+
+    <!-- État 3 : Bloqué -->
+    <div id="etat-bloque" class="etat">
+        <div class="bloque-icon">🔒</div>
+        <div class="bloque-title">Validation bloquée</div>
+        <div class="bloque-sub">3 tentatives incorrectes. Contactez l'équipe SESAME pour débloquer ce bon.</div>
+        <div id="bon-ref-bloque" style="font-size:12px;color:#888;margin-bottom:16px;font-family:monospace;"></div>
+        <div class="contact-links">
+            <a href="mailto:support@sesame-pro.com" class="contact-link">✉️ support@sesame-pro.com</a>
+            <a href="tel:0745207006" class="contact-link">📞 07 45 20 70 06</a>
+        </div>
+    </div>
+
+    <!-- État 4 : Validé -->
+    <div id="etat-valide" class="etat">
+        <div class="valide-check">✅</div>
+        <div class="valide-title">Bon validé !</div>
+        <div class="valide-sub">Ce bon est désormais inutilisable.</div>
+        <div class="valide-recap" id="valide-recap"></div>
+    </div>
+
+    <!-- État 5 : Déjà utilisé -->
+    <div id="etat-utilise" class="etat">
+        <div class="utilise-icon">❌</div>
+        <div class="utilise-title">Bon déjà utilisé</div>
+        <p style="font-size:13px;color:#888;">Ce bon a déjà été consommé. Contactez SESAME si vous pensez qu'il s'agit d'une erreur.</p>
+        <div class="contact-links" style="margin-top:16px;">
+            <a href="mailto:support@sesame-pro.com" class="contact-link">✉️ support@sesame-pro.com</a>
+        </div>
+    </div>
+
+    <!-- État 6 : Expiré -->
+    <div id="etat-expire" class="etat">
+        <div class="expire-icon">⌛</div>
+        <div class="expire-title">Bon expiré</div>
+        <p style="font-size:13px;color:#888;" id="expire-detail"></p>
+        <p class="expire-note">Vous n'avez aucune obligation d'accepter ce bon expiré.</p>
+    </div>
+</div>
+
+<div class="footer">SESAME — sesame-pro.com · support@sesame-pro.com</div>
+
+<script>
+    const BACKEND_URL = window.location.hostname === 'localhost'
+        ? 'http://localhost:4000'
+        : 'https://api.sesame-pro.com'; // À configurer en production
+
+    let tentatives = 0;
+    let tokenQr = '';
+    let bonData = null;
+
+    // Récupérer le token depuis l'URL (?token=XXX)
+    const params = new URLSearchParams(window.location.search);
+    tokenQr = params.get('token') || '';
+
+    if (tokenQr) {
+        fetchBonInfo();
+    } else {
+        document.getElementById('bon-prestation').textContent = 'Token manquant dans l\'URL.';
+    }
+
+    async function fetchBonInfo() {
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/echanges/info?token=${encodeURIComponent(tokenQr)}`);
+            const data = await res.json();
+            if (!res.ok) {
+                if (data.statut === 'utilise') { showEtat('utilise'); return; }
+                if (data.statut === 'expire') { showExpire(data); return; }
+                document.getElementById('bon-prestation').textContent = data.error || 'Bon introuvable.';
+                return;
+            }
+            bonData = data;
+            document.getElementById('bon-prestation').textContent = data.nom_offre || 'Bon cadeau';
+            document.getElementById('bon-ref').textContent = data.reference || '';
+            if (data.expire_at) {
+                const exp = new Date(data.expire_at);
+                document.getElementById('bon-expire').textContent =
+                    `Expire le ${exp.toLocaleDateString('fr-FR')} à ${exp.toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'})}`;
+            }
+        } catch {
+            document.getElementById('bon-prestation').textContent = 'Impossible de charger le bon.';
+        }
+    }
+
+    // Navigation entre cases
+    ['d1','d2','d3','d4'].forEach((id, i, arr) => {
+        const el = document.getElementById(id);
+        el.addEventListener('input', () => {
+            el.value = el.value.replace(/[^0-9]/g, '');
+            if (el.value && i < arr.length - 1) document.getElementById(arr[i+1]).focus();
+        });
+        el.addEventListener('keydown', e => {
+            if (e.key === 'Backspace' && !el.value && i > 0) document.getElementById(arr[i-1]).focus();
+        });
+    });
+
+    function getCode() {
+        return ['d1','d2','d3','d4'].map(id => document.getElementById(id).value).join('');
+    }
+
+    function resetBoxes() {
+        ['d1','d2','d3','d4'].forEach(id => {
+            const el = document.getElementById(id);
+            el.value = '';
+            el.classList.remove('error','valid');
+        });
+        document.getElementById('d1').focus();
+    }
+
+    function showErreur(msg) {
+        const el = document.getElementById('msg-erreur');
+        el.textContent = msg;
+        el.classList.add('visible');
+        ['d1','d2','d3','d4'].forEach(id => document.getElementById(id).classList.add('error'));
+        setTimeout(() => { el.classList.remove('visible'); ['d1','d2','d3','d4'].forEach(id => document.getElementById(id).classList.remove('error')); }, 1500);
+        resetBoxes();
+    }
+
+    function updateDots() {
+        for (let i = 1; i <= 3; i++) {
+            const dot = document.getElementById(`t${i}`);
+            dot.className = 'dot ' + (i <= tentatives ? 'used' : (i === (3 - (3 - tentatives - (tentatives < 3 ? 0 : -1))) ? '' : 'empty'));
+        }
+        // Simple: rouge pour utilisées, or sinon
+        for (let i = 1; i <= 3; i++) {
+            document.getElementById(`t${i}`).className = 'dot ' + (i <= tentatives ? 'used' : (tentatives < 3 ? '' : 'empty'));
+        }
+    }
+
+    function showEtat(id) {
+        document.querySelectorAll('.etat').forEach(e => e.classList.remove('active'));
+        document.getElementById(`etat-${id}`).classList.add('active');
+    }
+
+    function showExpire(data) {
+        showEtat('expire');
+        let detail = '';
+        if (data.expire_at) {
+            const exp = new Date(data.expire_at);
+            detail = `Prestation : ${data.nom_offre || ''}\nReference : ${data.reference || ''}\nExpiré le ${exp.toLocaleDateString('fr-FR')} à ${exp.toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'})}`;
+        }
+        document.getElementById('expire-detail').textContent = detail;
+    }
+
+    async function valider() {
+        const code = getCode();
+        if (code.length < 4) { document.getElementById('d1').focus(); return; }
+        if (!tokenQr) return;
+
+        document.getElementById('btn-valider').disabled = true;
+
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/fournisseurs/valider-bon`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token_qr: tokenQr, code_secret: code }),
+            });
+            const data = await res.json();
+
+            if (res.ok && data.success) {
+                // État 4 — Validé
+                showEtat('valide');
+                const now = new Date();
+                document.getElementById('valide-recap').innerHTML = `
+                    <p>Prestation : <strong>${bonData?.nom_offre || ''}</strong></p>
+                    <p>Référence : <strong>${bonData?.reference || ''}</strong></p>
+                    <p>Validé le : <strong>${now.toLocaleDateString('fr-FR')} à ${now.toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'})}</strong></p>
+                `;
+            } else {
+                tentatives++;
+                updateDots();
+
+                if (tentatives >= 3 || data.bloque) {
+                    document.getElementById('bon-ref-bloque').textContent = bonData?.reference || tokenQr;
+                    showEtat('bloque');
+                } else if (data.statut === 'utilise' || data.error?.includes('utilisé')) {
+                    showEtat('utilise');
+                } else if (data.statut === 'expire' || data.error?.includes('expiré')) {
+                    showExpire(data);
+                } else {
+                    const restantes = 3 - tentatives;
+                    showErreur(`Code incorrect — ${restantes} tentative${restantes > 1 ? 's' : ''} restante${restantes > 1 ? 's' : ''}`);
+                    document.getElementById('btn-valider').disabled = false;
+                }
+            }
+        } catch {
+            showErreur('Erreur réseau. Vérifiez votre connexion.');
+            document.getElementById('btn-valider').disabled = false;
+        }
+    }
+</script>
+</body>
+</html>

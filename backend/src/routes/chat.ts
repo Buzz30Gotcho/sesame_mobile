@@ -1,5 +1,6 @@
 import express from 'express';
 import { query } from '../db';
+import { broadcastChatMessage } from '../index';
 
 const router = express.Router();
 
@@ -19,7 +20,10 @@ router.post('/:courseId/messages', async (req, res) => {
         [req.params.courseId, expediteur_type, expediteur_id, contenu]
     );
 
-    res.status(201).json(result.rows[0]);
+    const message = result.rows[0];
+    broadcastChatMessage(req.params.courseId, message);
+
+    res.status(201).json(message);
 });
 
 export default router;

@@ -1,14 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, SafeAreaView, StatusBar } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
+import { useLang } from '../context/LanguageContext';
 import { getAmbassadorProfile, updateAmbassadorProfile } from '../services/api';
+import { Colors, Typography } from '../theme';
+import BottomNav from '../components/BottomNav';
 import type { AmbassadorProfile, RootStackParamList } from '../types';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 export default function AmbassadorProfilScreen() {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'AmbassadorProfil'>>();
-    const { ambassadorId } = useAuth();
+    const { ambassadorId, logout } = useAuth();
+    const { mode, setMode } = useTheme();
+    const { lang, setLang, t } = useLang();
     const [profile, setProfile] = useState<AmbassadorProfile | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -65,102 +71,188 @@ export default function AmbassadorProfilScreen() {
     };
 
     return (
-        <ScrollView contentContainerStyle={styles.container}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                <Text style={styles.backText}>← Retour</Text>
-            </TouchableOpacity>
-            <Text style={styles.title}>Profil</Text>
-            <Text style={styles.subtitle}>Modifiez vos informations de contact et votre activité.</Text>
-            {loading ? (
-                <ActivityIndicator size="large" color="#C9A84C" />
-            ) : error ? (
-                <Text style={styles.errorText}>{error}</Text>
-            ) : (
-                <View>
-                    <View style={styles.fieldGroup}>
-                        <Text style={styles.label}>Prénom</Text>
-                        <TextInput style={styles.input} value={prenom} onChangeText={setPrenom} placeholder="Prénom" placeholderTextColor="#999" />
-                    </View>
-                    <View style={styles.fieldGroup}>
-                        <Text style={styles.label}>Nom</Text>
-                        <TextInput style={styles.input} value={nom} onChangeText={setNom} placeholder="Nom" placeholderTextColor="#999" />
-                    </View>
-                    <View style={styles.fieldGroup}>
-                        <Text style={styles.label}>Téléphone</Text>
-                        <TextInput style={styles.input} value={telephone} onChangeText={setTelephone} placeholder="Téléphone" placeholderTextColor="#999" keyboardType="phone-pad" />
-                    </View>
-                    <View style={styles.fieldGroup}>
-                        <Text style={styles.label}>Métier</Text>
-                        <TextInput style={styles.input} value={metier} onChangeText={setMetier} placeholder="Métier" placeholderTextColor="#999" />
-                    </View>
-                    <View style={styles.fieldGroup}>
-                        <Text style={styles.label}>Établissement</Text>
-                        <TextInput style={styles.input} value={etablissement} onChangeText={setEtablissement} placeholder="Établissement" placeholderTextColor="#999" />
-                    </View>
-                    {message ? <Text style={styles.successText}>{message}</Text> : null}
-                    <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={saving}>
-                        <Text style={styles.saveText}>{saving ? 'Enregistrement...' : 'Enregistrer'}</Text>
+        <SafeAreaView style={styles.safeArea}>
+            <StatusBar barStyle="light-content" />
+            <ScrollView contentContainerStyle={styles.container}>
+                <View style={styles.header}>
+                    <Text style={styles.title}>Mon Profil</Text>
+                    <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
+                        <Text style={styles.logoutText}>Déconnexion</Text>
                     </TouchableOpacity>
                 </View>
-            )}
-        </ScrollView>
+                
+                <Text style={styles.subtitle}>Gérez vos informations personnelles et professionnelles.</Text>
+                
+                {loading ? (
+                    <ActivityIndicator size="large" color={Colors.brand.gold} style={{ marginTop: 40 }} />
+                ) : error ? (
+                    <Text style={styles.errorText}>{error}</Text>
+                ) : (
+                    <View style={styles.form}>
+                        <View style={styles.fieldGroup}>
+                            <Text style={styles.label}>PRÉNOM</Text>
+                            <TextInput style={styles.input} value={prenom} onChangeText={setPrenom} placeholder="Prénom" placeholderTextColor={Colors.nocturne.textSecondary} />
+                        </View>
+                        <View style={styles.fieldGroup}>
+                            <Text style={styles.label}>NOM</Text>
+                            <TextInput style={styles.input} value={nom} onChangeText={setNom} placeholder="Nom" placeholderTextColor={Colors.nocturne.textSecondary} />
+                        </View>
+                        <View style={styles.fieldGroup}>
+                            <Text style={styles.label}>TÉLÉPHONE</Text>
+                            <TextInput style={styles.input} value={telephone} onChangeText={setTelephone} placeholder="Téléphone" placeholderTextColor={Colors.nocturne.textSecondary} keyboardType="phone-pad" />
+                        </View>
+                        <View style={styles.fieldGroup}>
+                            <Text style={styles.label}>MÉTIER</Text>
+                            <TextInput style={styles.input} value={metier} onChangeText={setMetier} placeholder="Métier" placeholderTextColor={Colors.nocturne.textSecondary} />
+                        </View>
+                        <View style={styles.fieldGroup}>
+                            <Text style={styles.label}>ÉTABLISSEMENT</Text>
+                            <TextInput style={styles.input} value={etablissement} onChangeText={setEtablissement} placeholder="Établissement" placeholderTextColor={Colors.nocturne.textSecondary} />
+                        </View>
+                        
+                        {message && (
+                            <View style={styles.successBadge}>
+                                <Text style={styles.successText}>{message}</Text>
+                            </View>
+                        )}
+                        
+                        <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={saving}>
+                            {saving ? <ActivityIndicator color="#101018" /> : <Text style={styles.saveText}>ENREGISTRER LES MODIFICATIONS</Text>}
+                        </TouchableOpacity>
+
+                        {/* Thème */}
+                        <Text style={styles.label}>{t('theme').toUpperCase()}</Text>
+                        <View style={styles.toggleRow}>
+                            {(['nocturne', 'clair', 'auto'] as const).map(m => (
+                                <TouchableOpacity
+                                    key={m}
+                                    style={[styles.toggleBtn, mode === m && styles.toggleBtnActive]}
+                                    onPress={() => setMode(m)}
+                                >
+                                    <Text style={[styles.toggleText, mode === m && styles.toggleTextActive]}>
+                                        {t(m)}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
+                        {/* Langue */}
+                        <Text style={[styles.label, { marginTop: 20 }]}>{t('langue').toUpperCase()}</Text>
+                        <View style={styles.toggleRow}>
+                            {(['fr', 'en', 'it', 'es'] as const).map(l => (
+                                <TouchableOpacity
+                                    key={l}
+                                    style={[styles.toggleBtn, lang === l && styles.toggleBtnActive]}
+                                    onPress={() => setLang(l)}
+                                >
+                                    <Text style={[styles.toggleText, lang === l && styles.toggleTextActive]}>
+                                        {l.toUpperCase()}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
+                )}
+            </ScrollView>
+            <BottomNav role="ambassadeur" />
+        </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
+    safeArea: {
+        flex: 1,
+        backgroundColor: Colors.nocturne.background,
+    },
     container: {
         padding: 24,
-        backgroundColor: '#101018',
-        minHeight: '100%',
+        paddingBottom: 120,
     },
-    backButton: {
-        marginBottom: 16,
-    },
-    backText: {
-        color: '#C9A84C',
+    header: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 8,
     },
     title: {
-        color: '#C9A84C',
-        fontSize: 28,
-        fontWeight: '700',
-        marginBottom: 8,
+        color: Colors.brand.gold,
+        fontSize: Typography.sizes.title,
+        fontWeight: Typography.weights.black as any,
+    },
+    logoutBtn: {
+        backgroundColor: 'rgba(255, 100, 100, 0.1)',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 8,
+    },
+    logoutText: {
+        color: Colors.brand.error,
+        fontSize: Typography.sizes.tiny,
+        fontWeight: Typography.weights.bold as any,
     },
     subtitle: {
-        color: '#E0DBD2',
-        marginBottom: 24,
-        lineHeight: 22,
+        color: Colors.nocturne.textSecondary,
+        marginBottom: 32,
+        fontSize: Typography.sizes.sub,
+    },
+    form: {
+        width: '100%',
     },
     fieldGroup: {
-        marginBottom: 16,
+        marginBottom: 20,
     },
     label: {
-        color: '#E0DBD2',
+        color: Colors.nocturne.textSecondary,
+        fontSize: Typography.sizes.tiny,
+        fontWeight: Typography.weights.bold as any,
         marginBottom: 8,
+        letterSpacing: 1,
     },
     input: {
-        backgroundColor: '#161624',
+        backgroundColor: Colors.nocturne.card,
         color: '#FFFFFF',
-        borderRadius: 14,
-        paddingHorizontal: 16,
-        paddingVertical: 14,
+        borderRadius: 16,
+        paddingHorizontal: 20,
+        paddingVertical: 18,
+        fontSize: Typography.sizes.body,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
     saveButton: {
-        backgroundColor: '#C9A84C',
-        borderRadius: 14,
-        paddingVertical: 16,
+        backgroundColor: Colors.brand.gold,
+        borderRadius: 16,
+        paddingVertical: 18,
         alignItems: 'center',
-        marginTop: 16,
+        marginTop: 20,
     },
     saveText: {
-        color: '#101818',
-        fontWeight: '700',
+        color: '#101018',
+        fontWeight: Typography.weights.black as any,
+        fontSize: Typography.sizes.body,
     },
     errorText: {
-        color: '#FF6B6B',
+        color: Colors.brand.error,
+        marginTop: 16,
+        textAlign: 'center',
+    },
+    successBadge: {
+        backgroundColor: 'rgba(76, 175, 130, 0.1)',
+        padding: 12,
+        borderRadius: 12,
         marginBottom: 16,
+        alignItems: 'center',
     },
     successText: {
-        color: '#7CD18E',
-        marginBottom: 16,
+        color: Colors.brand.success,
+        fontSize: Typography.sizes.sub,
+        fontWeight: Typography.weights.bold as any,
     },
+    toggleRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+    toggleBtn: {
+        flex: 1, paddingVertical: 10, borderRadius: 8,
+        backgroundColor: Colors.nocturne.card, alignItems: 'center',
+    },
+    toggleBtnActive: { backgroundColor: Colors.brand.gold },
+    toggleText: { color: Colors.nocturne.textSecondary, fontSize: 12, fontWeight: '600' },
+    toggleTextActive: { color: '#101018' },
 });
