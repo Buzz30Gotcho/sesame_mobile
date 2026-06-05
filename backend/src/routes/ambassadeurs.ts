@@ -89,7 +89,11 @@ router.put('/:id/profile', async (req, res) => {
 
 router.get('/:id/filleuls', async (req, res) => {
     const result = await query(
-        `SELECT u.prenom, u.nom, a.niveau, a.points_solde, u.created_at
+        `SELECT u.prenom, u.nom, a.niveau, a.points_solde, u.created_at,
+                (SELECT count(*) FROM courses c
+                 WHERE c.ambassadeur_id = a.id
+                 AND c.statut = 'terminee'
+                 AND c.code_valide_at IS NOT NULL) AS nb_courses
          FROM ambassadeurs a
          JOIN utilisateurs u ON u.id = a.utilisateur_id
          WHERE a.parrain_id = $1
@@ -97,6 +101,13 @@ router.get('/:id/filleuls', async (req, res) => {
         [req.params.id]
     );
     res.json(result.rows);
+});
+
+router.put('/:id/push-token', async (req, res) => {
+    const { push_token } = req.body;
+    if (!push_token) return res.status(400).json({ error: 'push_token requis' });
+    await query('UPDATE ambassadeurs SET push_token = $1 WHERE id = $2', [push_token, req.params.id]);
+    res.json({ success: true });
 });
 
 router.get('/:id/dashboard', async (req, res) => {
@@ -136,10 +147,15 @@ router.get('/:id/dashboard', async (req, res) => {
     const pointsToNextLevel = nextLevelTarget ? Math.max(0, nextLevelTarget - currentPoints) : 0;
 
     const coursesResult = await query(
-        `SELECT id, reference, statut, type_course, adresse_depart, adresse_destination, vehicule_type, montant, points_attribues, date_reservation
-         FROM courses
-         WHERE ambassadeur_id = $1 AND statut IN ($2, $3, $4, $5, $6)
-         ORDER BY date_acceptation DESC NULLS LAST
+        `SELECT c.id, c.reference, c.statut, c.type_course, c.adresse_depart, c.adresse_destination,
+                c.vehicule_type, c.montant, c.points_attribues, c.date_reservation, c.code_validation,
+                u.prenom AS chauffeur_prenom, u.nom AS chauffeur_nom, u.telephone AS chauffeur_telephone,
+                ch.vehicule_marque, ch.vehicule_modele, ch.vehicule_couleur, ch.vehicule_immat
+         FROM courses c
+         LEFT JOIN chauffeurs ch ON ch.id = c.chauffeur_id
+         LEFT JOIN utilisateurs u ON u.id = ch.utilisateur_id
+         WHERE c.ambassadeur_id = $1 AND c.statut IN ($2, $3, $4, $5, $6)
+         ORDER BY c.date_acceptation DESC NULLS LAST
          LIMIT 5`,
         [req.params.id, 'recherche', 'acceptee', 'en_route', 'code_valide', 'en_cours']
     );

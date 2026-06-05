@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, SafeAreaView, StatusBar, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, StatusBar, KeyboardAvoidingView, Platform, ScrollView, Modal } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { login } from '../services/api';
+import { login, demanderResetMotDePasse, reinitialiserMotDePasse } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { registerForPushNotifications } from '../services/notifications';
 import { Colors, Typography } from '../theme';
 import type { RootStackParamList, UserRole } from '../types';
 
@@ -13,6 +15,15 @@ export default function LoginScreen({ navigation }: NativeStackScreenProps<RootS
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const { setAuth } = useAuth();
+
+    // Reset mot de passe
+    const [resetStep, setResetStep] = useState<0 | 1 | 2 | 3>(0); // 0=fermé 1=téléphone 2=code 3=nouveau mdp
+    const [resetTelephone, setResetTelephone] = useState('');
+    const [resetCode, setResetCode] = useState('');
+    const [resetNewPassword, setResetNewPassword] = useState('');
+    const [resetLoading, setResetLoading] = useState(false);
+    const [resetError, setResetError] = useState<string | null>(null);
+    const [resetSuccess, setResetSuccess] = useState(false);
 
     const handleLogin = async () => {
         if (!email || !password) {
@@ -25,11 +36,11 @@ export default function LoginScreen({ navigation }: NativeStackScreenProps<RootS
 
         try {
             const response = await login(email, password);
-            const { token, userId, role, ambassadeur_id, chauffeur_id } = response.data;
+            const { token, userId, role, ambassadeur_id, chauffeur_id, type_ambassadeur, is_sous_compte } = response.data;
 
             // Optional: check if role matches selected role
             // But for now, we just redirect based on actual backend role
-            
+
             setAuth({
                 token,
                 userId,
@@ -37,13 +48,19 @@ export default function LoginScreen({ navigation }: NativeStackScreenProps<RootS
                 role,
                 ambassadorId: ambassadeur_id || null,
                 chauffeurId: chauffeur_id || null,
-                adminId: role === 'admin' ? userId : null,
+                typeAmbassadeur: type_ambassadeur || null,
+                isSousCompte: !!is_sous_compte,
             });
+
+            // Enregistrement push notifications
+            if (role === 'ambassadeur' && ambassadeur_id) {
+                registerForPushNotifications({ ambassadorId: ambassadeur_id }).catch(() => {});
+            } else if (role === 'chauffeur' && chauffeur_id) {
+                registerForPushNotifications({ chauffeurId: chauffeur_id }).catch(() => {});
+            }
 
             if (role === 'chauffeur' && chauffeur_id) {
                 navigation.replace('ChauffeurHome');
-            } else if (role === 'admin') {
-                navigation.replace('AdminDashboard');
             } else if (role === 'ambassadeur' && ambassadeur_id) {
                 navigation.replace('AmbassadorAccueil'); // Use replace to clear stack
             } else {
@@ -54,6 +71,52 @@ export default function LoginScreen({ navigation }: NativeStackScreenProps<RootS
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleDemanderReset = async () => {
+        if (!resetTelephone) { setResetError('Numéro de téléphone requis'); return; }
+        setResetLoading(true); setResetError(null);
+        try {
+            await demanderResetMotDePasse(resetTelephone);
+            setResetStep(2);
+        } catch {
+            setResetError('Erreur réseau. Réessayez.');
+        } finally {
+            setResetLoading(false);
+        }
+    };
+
+    const handleVerifierCode = async () => {
+        if (!resetCode || resetCode.length !== 6) { setResetError('Code à 6 chiffres requis'); return; }
+        setResetStep(3);
+        setResetError(null);
+    };
+
+    const handleNouveauMotDePasse = async () => {
+        if (!resetNewPassword || resetNewPassword.length < 8) {
+            setResetError('Mot de passe trop court (8 caractères minimum)');
+            return;
+        }
+        setResetLoading(true); setResetError(null);
+        try {
+            await reinitialiserMotDePasse(resetTelephone, resetCode, resetNewPassword);
+            setResetSuccess(true);
+            setTimeout(() => {
+                setResetStep(0);
+                setResetEmail(''); setResetCode(''); setResetNewPassword('');
+                setResetSuccess(false);
+            }, 2000);
+        } catch (e: any) {
+            setResetError(e.response?.data?.error || 'Erreur. Vérifiez le code.');
+        } finally {
+            setResetLoading(false);
+        }
+    };
+
+    const fermerReset = () => {
+        setResetStep(0);
+        setResetTelephone(''); setResetCode(''); setResetNewPassword('');
+        setResetError(null); setResetSuccess(false);
     };
 
     return (
@@ -123,7 +186,7 @@ export default function LoginScreen({ navigation }: NativeStackScreenProps<RootS
                             </TouchableOpacity>
 
                             <View style={styles.footerLinks}>
-                                <TouchableOpacity>
+                                <TouchableOpacity onPress={() => { setResetStep(1); }}>
                                     <Text style={styles.footerLinkText}>Mot de passe oublié ?</Text>
                                 </TouchableOpacity>
                             </View>
@@ -138,6 +201,90 @@ export default function LoginScreen({ navigation }: NativeStackScreenProps<RootS
                     )}
                 </ScrollView>
             </KeyboardAvoidingView>
+            {/* Modal reset mot de passe */}
+            <Modal visible={resetStep > 0} transparent animationType="slide" onRequestClose={fermerReset}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalCard}>
+                        <TouchableOpacity style={styles.modalClose} onPress={fermerReset}>
+                            <Text style={styles.modalCloseText}>✕</Text>
+                        </TouchableOpacity>
+
+                        {resetSuccess ? (
+                            <View style={styles.modalSuccessContainer}>
+                                <Text style={styles.modalSuccessIcon}>✓</Text>
+                                <Text style={styles.modalSuccessText}>Mot de passe modifié !</Text>
+                            </View>
+                        ) : (
+                            <>
+                                <Text style={styles.modalTitle}>
+                                    {resetStep === 1 ? 'Mot de passe oublié' : resetStep === 2 ? 'Code de vérification' : 'Nouveau mot de passe'}
+                                </Text>
+                                <Text style={styles.modalSubtitle}>
+                                    {resetStep === 1
+                                        ? 'Entrez votre numéro de téléphone pour recevoir un code par SMS.'
+                                        : resetStep === 2
+                                        ? `Un code à 6 chiffres a été envoyé par SMS au ${resetTelephone}`
+                                        : 'Choisissez un nouveau mot de passe.'}
+                                </Text>
+
+                                {resetStep === 1 && (
+                                    <TextInput
+                                        style={styles.modalInput}
+                                        placeholder="+33 6 xx xx xx xx"
+                                        placeholderTextColor={Colors.nocturne.textSecondary}
+                                        keyboardType="phone-pad"
+                                        autoCapitalize="none"
+                                        value={resetTelephone}
+                                        onChangeText={setResetTelephone}
+                                    />
+                                )}
+                                {resetStep === 2 && (
+                                    <TextInput
+                                        style={[styles.modalInput, styles.modalInputCode]}
+                                        placeholder="000000"
+                                        placeholderTextColor={Colors.nocturne.textSecondary}
+                                        keyboardType="number-pad"
+                                        maxLength={6}
+                                        value={resetCode}
+                                        onChangeText={setResetCode}
+                                    />
+                                )}
+                                {resetStep === 3 && (
+                                    <TextInput
+                                        style={styles.modalInput}
+                                        placeholder="Nouveau mot de passe"
+                                        placeholderTextColor={Colors.nocturne.textSecondary}
+                                        secureTextEntry
+                                        value={resetNewPassword}
+                                        onChangeText={setResetNewPassword}
+                                    />
+                                )}
+
+                                {resetError && <Text style={styles.modalError}>{resetError}</Text>}
+
+                                <TouchableOpacity
+                                    style={styles.modalBtn}
+                                    onPress={resetStep === 1 ? handleDemanderReset : resetStep === 2 ? handleVerifierCode : handleNouveauMotDePasse}
+                                    disabled={resetLoading}
+                                >
+                                    {resetLoading
+                                        ? <ActivityIndicator color="#101018" />
+                                        : <Text style={styles.modalBtnText}>
+                                            {resetStep === 1 ? 'ENVOYER LE CODE' : resetStep === 2 ? 'VÉRIFIER' : 'CONFIRMER'}
+                                          </Text>
+                                    }
+                                </TouchableOpacity>
+
+                                {resetStep === 2 && (
+                                    <TouchableOpacity onPress={() => { setResetCode(''); setResetStep(1); }} style={styles.modalRetry}>
+                                        <Text style={styles.modalRetryText}>Renvoyer un code</Text>
+                                    </TouchableOpacity>
+                                )}
+                            </>
+                        )}
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 }
@@ -298,6 +445,96 @@ const styles = StyleSheet.create({
     registerLink: {
         color: Colors.brand.gold,
         fontSize: Typography.sizes.sub,
+        fontWeight: Typography.weights.bold as any,
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.7)',
+        justifyContent: 'flex-end',
+    },
+    modalCard: {
+        backgroundColor: Colors.nocturne.card,
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
+        padding: 32,
+        paddingBottom: 48,
+    },
+    modalClose: {
+        alignSelf: 'flex-end',
+        marginBottom: 16,
+    },
+    modalCloseText: {
+        color: Colors.nocturne.textSecondary,
+        fontSize: 18,
+    },
+    modalTitle: {
+        color: Colors.brand.gold,
+        fontSize: Typography.sizes.header,
+        fontWeight: Typography.weights.black as any,
+        marginBottom: 8,
+    },
+    modalSubtitle: {
+        color: Colors.nocturne.textSecondary,
+        fontSize: Typography.sizes.sub,
+        marginBottom: 24,
+        lineHeight: 20,
+    },
+    modalInput: {
+        backgroundColor: Colors.nocturne.background,
+        color: '#FFFFFF',
+        borderRadius: 16,
+        paddingHorizontal: 20,
+        paddingVertical: 18,
+        fontSize: Typography.sizes.body,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+    },
+    modalInputCode: {
+        fontSize: 28,
+        letterSpacing: 12,
+        textAlign: 'center',
+        fontWeight: Typography.weights.black as any,
+    },
+    modalError: {
+        color: Colors.brand.error,
+        fontSize: Typography.sizes.sub,
+        marginBottom: 16,
+        textAlign: 'center',
+    },
+    modalBtn: {
+        backgroundColor: Colors.brand.gold,
+        paddingVertical: 18,
+        borderRadius: 16,
+        alignItems: 'center',
+    },
+    modalBtnText: {
+        color: '#101018',
+        fontWeight: Typography.weights.black as any,
+        fontSize: 14,
+        letterSpacing: 1,
+    },
+    modalRetry: {
+        marginTop: 16,
+        alignItems: 'center',
+    },
+    modalRetryText: {
+        color: Colors.nocturne.textSecondary,
+        fontSize: Typography.sizes.sub,
+        textDecorationLine: 'underline',
+    },
+    modalSuccessContainer: {
+        alignItems: 'center',
+        paddingVertical: 32,
+    },
+    modalSuccessIcon: {
+        fontSize: 48,
+        color: Colors.brand.success,
+        marginBottom: 16,
+    },
+    modalSuccessText: {
+        color: Colors.nocturne.textPrimary,
+        fontSize: Typography.sizes.header,
         fontWeight: Typography.weights.bold as any,
     },
 });

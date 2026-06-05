@@ -7,11 +7,7 @@ import type {
     ExchangeBon,
     ChauffeurDashboard,
     ChauffeurProfile,
-    AdminKpis,
-    AdminAmbassadorRow,
-    AdminChauffeurRow,
-    AdminCourseRow,
-    AdminBlacklistRow,
+    CourseRow,
     UserRole,
     ChatMessage,
     ChauffeurDocument,
@@ -21,11 +17,12 @@ import type {
 } from '../types';
 
 const manifest: any = (Constants.expoConfig ?? Constants.manifest) || {};
-const BACKEND_URL = process.env.BACKEND_URL ?? manifest.extra?.BACKEND_URL ?? 'http://localhost:4000';
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL ?? manifest.extra?.BACKEND_URL ?? 'http://localhost:4000';
 
 export const api = axios.create({
     baseURL: BACKEND_URL,
     headers: { 'Content-Type': 'application/json' },
+    timeout: 10000,
 });
 
 export function setAuthToken(token: string | null) {
@@ -44,6 +41,18 @@ export function getWsUrl(courseId: string): string {
 // Auth
 export async function login(email: string, mot_de_passe: string) {
     return api.post('/api/auth/connexion', { email, mot_de_passe });
+}
+
+export async function getChauffeurBillingPortal(chauffeurId: string) {
+    return api.get<{ url: string }>(`/api/chauffeurs/${chauffeurId}/billing-portal`);
+}
+
+export async function demanderResetMotDePasse(telephone: string) {
+    return api.post('/api/auth/mot-de-passe-oublie', { telephone });
+}
+
+export async function reinitialiserMotDePasse(telephone: string, code: string, nouveau_mot_de_passe: string) {
+    return api.post('/api/auth/reinitialiser-mot-de-passe', { telephone, code, nouveau_mot_de_passe });
 }
 
 export async function register(data: {
@@ -125,6 +134,14 @@ export async function createCourse(data: {
     return api.post(endpoint, data);
 }
 
+export async function cancelCourse(courseId: string) {
+    return api.put(`/api/courses/${courseId}/annuler`, { raison: 'ambassadeur' });
+}
+
+export async function getCoursesHistory(ambassadorId: string) {
+    return api.get('/api/courses/historique', { params: { ambassadeur_id: ambassadorId } });
+}
+
 // Chauffeur
 export async function getChauffeurDashboard(chauffeurId: string) {
     return api.get<ChauffeurDashboard>(`/api/chauffeurs/${chauffeurId}/dashboard`);
@@ -139,11 +156,19 @@ export async function setChauffeurAvailability(chauffeurId: string, disponible: 
 }
 
 export async function getChauffeurCourses(chauffeurId: string) {
-    return api.get<AdminCourseRow[]>(`/api/chauffeurs/${chauffeurId}/courses`);
+    return api.get<CourseRow[]>(`/api/chauffeurs/${chauffeurId}/courses`);
+}
+
+export async function getCoursesDisponibles(chauffeurId: string) {
+    return api.get(`/api/chauffeurs/${chauffeurId}/courses-disponibles`);
 }
 
 export async function acceptChauffeurCourse(chauffeurId: string, courseId: string) {
     return api.post(`/api/chauffeurs/${chauffeurId}/accept-course`, { course_id: courseId });
+}
+
+export async function signalerClientAbsent(chauffeurId: string, courseId: string) {
+    return api.post(`/api/chauffeurs/${chauffeurId}/client-absent`, { course_id: courseId });
 }
 
 export async function validateCourseCode(chauffeurId: string, courseId: string, code: string) {
@@ -162,67 +187,6 @@ export async function uploadChauffeurDocument(chauffeurId: string, data: {
     type: string; fichier_recto_url: string; fichier_verso_url?: string; date_expiration?: string;
 }) {
     return api.post<ChauffeurDocument>(`/api/chauffeurs/${chauffeurId}/documents`, data);
-}
-
-// Admin
-export async function getAdminDashboard() {
-    return api.get<AdminKpis>('/api/admin/dashboard');
-}
-
-export async function getAdminAmbassadeurs() {
-    return api.get<AdminAmbassadorRow[]>('/api/admin/ambassadeurs');
-}
-
-export async function getAdminChauffeurs() {
-    return api.get<AdminChauffeurRow[]>('/api/admin/chauffeurs');
-}
-
-export async function updateChauffeurTaux(chauffeurId: string, taux: number | null) {
-    return api.put(`/api/admin/chauffeurs/${chauffeurId}/taux`, { taux });
-}
-
-export async function getAdminCourses() {
-    return api.get<AdminCourseRow[]>('/api/admin/courses');
-}
-
-export async function getAdminBlacklist() {
-    return api.get<AdminBlacklistRow[]>('/api/admin/blacklist');
-}
-
-export async function addAdminBlacklist(entry: {
-    nom: string;
-    prenom: string;
-    date_naissance: string;
-    lieu_naissance: string;
-    telephone: string;
-    motif: string;
-    type_utilisateur: 'ambassadeur' | 'chauffeur';
-}) {
-    return api.post('/api/admin/blacklist', entry);
-}
-
-export async function getAdminParameters() {
-    return api.get<any[]>('/api/admin/parametres');
-}
-
-export async function updateAdminParameter(cle: string, valeur: string) {
-    return api.put(`/api/admin/parametres/${cle}`, { valeur });
-}
-
-export async function createFournisseur(data: Record<string, any>) {
-    return api.post('/api/admin/fournisseurs', data);
-}
-
-export async function updateFournisseur(id: string, data: Record<string, any>) {
-    return api.put(`/api/admin/fournisseurs/${id}`, data);
-}
-
-export async function getCommissionsMoraux() {
-    return api.get('/api/admin/commissions/moraux');
-}
-
-export async function declencherVirements() {
-    return api.post('/api/admin/commissions/declencher');
 }
 
 // Chat

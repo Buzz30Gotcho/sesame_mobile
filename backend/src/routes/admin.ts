@@ -1,6 +1,7 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
 import { query } from '../db';
+import { sendPushNotification } from '../lib/pushNotifications';
 
 const router = express.Router();
 
@@ -35,6 +36,23 @@ router.put('/echanges/:id/valider', async (req, res) => {
         `UPDATE echanges SET statut = 'valide', remis_at = now(), expire_at = now() + ($1 || ' month')::interval WHERE id = $2`,
         [months, id]
     );
+
+    // Notification BON_VALIDE à l'ambassadeur
+    try {
+        const tokenResult = await query(
+            `SELECT a.push_token, o.nom AS nom_offre
+             FROM echanges e
+             JOIN ambassadeurs a ON a.id = e.ambassadeur_id
+             JOIN offres_boutique o ON o.id = e.offre_id
+             WHERE e.id = $1`,
+            [id]
+        );
+        const row = tokenResult.rows[0];
+        if (row?.push_token) {
+            await sendPushNotification(row.push_token, 'Bon cadeau disponible !', 'Votre QR code est prêt.', { echange_id: id });
+        }
+    } catch { /* Non bloquant */ }
+
     res.json({ success: true });
 });
 
@@ -67,6 +85,25 @@ router.post('/alertes/:id/arbitrer', async (req, res) => {
     const { id } = req.params;
     const { action, points, indemnisation } = req.body;
     await query('UPDATE sanctions_en_attente SET statut = $1, execute_at = now() WHERE id = $2', ['execute', id]);
+
+    // Notification INDEMNISATION au chauffeur si indemnisation accordée
+    if (Number(indemnisation) > 0) {
+        try {
+            const row = await query(
+                `SELECT ch.push_token
+                 FROM sanctions_en_attente s
+                 JOIN courses c ON c.id = s.course_id
+                 JOIN chauffeurs ch ON ch.id = c.chauffeur_id
+                 WHERE s.id = $1`,
+                [id]
+            );
+            const token = row.rows[0]?.push_token;
+            if (token) {
+                await sendPushNotification(token, `+${Number(indemnisation).toFixed(2)} EUR crédités`, 'Indemnisation attente injustifiée.', { sanction_id: id });
+            }
+        } catch { /* Non bloquant */ }
+    }
+
     res.json({ success: true, action, points, indemnisation });
 });
 
@@ -80,7 +117,9 @@ router.post('/chat/:courseId/intervenir', async (req, res) => {
 
 router.get('/ambassadeurs', async (req, res) => {
     const result = await query(
-        `SELECT a.id AS ambassadeur_id, u.prenom, u.nom, u.email, u.telephone, a.points_solde, a.niveau, a.contrat_moral_signe
+        `SELECT a.id AS id, u.prenom, u.nom, u.email, u.telephone,
+                a.points_solde AS points, a.niveau, a.type_ambassadeur AS type,
+                a.contrat_moral_signe
          FROM ambassadeurs a
          JOIN utilisateurs u ON u.id = a.utilisateur_id
          ORDER BY a.points_solde DESC`
@@ -90,7 +129,10 @@ router.get('/ambassadeurs', async (req, res) => {
 
 router.get('/chauffeurs', async (req, res) => {
     const result = await query(
-        `SELECT c.id AS chauffeur_id, u.prenom, u.nom, u.email, u.telephone, c.disponible, c.vehicule_type, c.vehicule_marque, c.vehicule_modele, c.taux_commission_override, c.documents_valides
+        `SELECT c.id AS id, u.prenom, u.nom, u.email, u.telephone,
+                c.disponible,
+                concat(c.vehicule_type, ' ', c.vehicule_marque, ' ', c.vehicule_modele) AS vehicule,
+                c.vehicule_type, c.taux_commission_override AS taux_commission, c.documents_valides
          FROM chauffeurs c
          JOIN utilisateurs u ON u.id = c.utilisateur_id
          ORDER BY u.nom ASC`
@@ -100,9 +142,33 @@ router.get('/chauffeurs', async (req, res) => {
 
 router.get('/courses', async (req, res) => {
     const result = await query(
-        `SELECT id, reference, ambassadeur_id, chauffeur_id, statut, type_course, adresse_depart, adresse_destination, montant, date_reservation, date_acceptation, date_fin
-         FROM courses
-         ORDER BY date_acceptation DESC NULLS LAST, date_reservation DESC NULLS LAST`
+        `SELECT c.id, c.reference, c.statut, c.type_course AS type,
+                c.adresse_depart, c.adresse_destination,
+                c.montant::float AS montant,
+                c.date_acceptation, c.date_fin, c.date_annulation,
+                ua.prenom AS ambassadeur_prenom, ua.nom AS ambassadeur_nom,
+                uc.prenom AS chauffeur_prenom, uc.nom AS chauffeur_nom
+         FROM courses c
+         LEFT JOIN ambassadeurs a ON a.id = c.ambassadeur_id
+         LEFT JOIN utilisateurs ua ON ua.id = a.utilisateur_id
+         LEFT JOIN chauffeurs ch ON ch.id = c.chauffeur_id
+         LEFT JOIN utilisateurs uc ON uc.id = ch.utilisateur_id
+         ORDER BY c.date_acceptation DESC NULLS LAST, c.date_annulation DESC NULLS LAST`
+    );
+    res.json(result.rows);
+});
+
+router.get('/sanctions', async (req, res) => {
+    const result = await query(
+        `SELECT s.id, s.points, s.motif, s.statut, s.decide_at, s.execute_at,
+                c.reference AS course_reference,
+                ua.prenom AS ambassadeur_prenom, ua.nom AS ambassadeur_nom
+         FROM sanctions_en_attente s
+         LEFT JOIN courses c ON c.id = s.course_id
+         LEFT JOIN ambassadeurs a ON a.id = s.ambassadeur_id
+         LEFT JOIN utilisateurs ua ON ua.id = a.utilisateur_id
+         WHERE s.statut = 'en_attente'
+         ORDER BY s.decide_at DESC`
     );
     res.json(result.rows);
 });

@@ -18,12 +18,14 @@
     "extra": {
       "SUPABASE_URL": "https://lqjgscbqznugjeykklzx.supabase.co",
       "SUPABASE_KEY": "sb_publishable_YGXxPwOg3ANKscQo2JPZsg_NZcH3QVS",
-      "BACKEND_URL": "http://192.168.1.18:4001"
+      "BACKEND_URL": "http://10.223.117.83:4001"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
+      "bundleIdentifier": "com.sesame.mobile",
+      "googleServicesFile": "./GoogleService-Info.plist",
       "supportsTablet": true,
       "infoPlist": {
         "NSCameraUsageDescription": "SÉSAME utilise la caméra pour scanner les QR codes partenaires.",
@@ -32,6 +34,9 @@
       }
     },
     "android": {
+      "package": "com.sesame.mobile",
+      "googleServicesFile": "./google-services.json",
+      "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
         "backgroundColor": "#101018"
       },
@@ -57,7 +62,8 @@
         {
           "color": "#C9A84C"
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ]
   }
 }

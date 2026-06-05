@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import {
-    View, Text, StyleSheet, TouchableOpacity, ScrollView,
-    SafeAreaView, ActivityIndicator, StatusBar, Modal, Alert,
+    View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, StatusBar, Modal, Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Colors, Typography } from '../theme';
 import { validateFournisseurBon } from '../services/api';

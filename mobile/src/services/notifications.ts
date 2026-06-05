@@ -12,29 +12,23 @@ Notifications.setNotificationHandler({
     }),
 });
 
-export async function registerForPushNotifications(userId: string, role: string): Promise<string | null> {
+export async function registerForPushNotifications(params: { ambassadorId?: string; chauffeurId?: string }): Promise<string | null> {
     if (Platform.OS === 'web') return null;
 
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
-
-    if (existingStatus !== 'granted') {
+    const { status: existing } = await Notifications.getPermissionsAsync();
+    let finalStatus = existing;
+    if (existing !== 'granted') {
         const { status } = await Notifications.requestPermissionsAsync();
         finalStatus = status;
     }
+    if (finalStatus !== 'granted') return null;
 
-    if (finalStatus !== 'granted') {
-        return null;
-    }
+    const token = (await Notifications.getExpoPushTokenAsync()).data;
 
-    const tokenData = await Notifications.getExpoPushTokenAsync();
-    const token = tokenData.data;
-
-    // Enregistrer le token côté backend
-    try {
-        await api.post('/api/auth/push-token', { user_id: userId, role, token });
-    } catch {
-        // Non bloquant — notifications optionnelles
+    if (params.ambassadorId) {
+        await api.put(`/api/ambassadeurs/${params.ambassadorId}/push-token`, { push_token: token }).catch(() => {});
+    } else if (params.chauffeurId) {
+        await api.put(`/api/chauffeurs/${params.chauffeurId}/push-token`, { push_token: token }).catch(() => {});
     }
 
     return token;

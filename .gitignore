@@ -16,3 +16,7 @@ yarn-error.log*
 # Ignore env files in subfolders
 backend/.env
 mobile/.env
+
+# Firebase config (contiennent des clés sensibles)
+mobile/GoogleService-Info.plist
+mobile/google-services.json

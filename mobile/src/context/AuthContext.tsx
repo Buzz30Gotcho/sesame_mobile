@@ -9,7 +9,8 @@ export type AuthContextData = {
     role: UserRole | null;
     ambassadorId: string | null;
     chauffeurId: string | null;
-    adminId: string | null;
+    typeAmbassadeur: string | null;
+    isSousCompte: boolean;
     setAuth: (params: {
         token: string;
         userId: string;
@@ -17,7 +18,8 @@ export type AuthContextData = {
         role: UserRole;
         ambassadorId?: string | null;
         chauffeurId?: string | null;
-        adminId?: string | null;
+        typeAmbassadeur?: string | null;
+        isSousCompte?: boolean;
     }) => void;
     logout: () => void;
 };
@@ -31,16 +33,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [role, setRole] = useState<UserRole | null>(null);
     const [ambassadorId, setAmbassadorId] = useState<string | null>(null);
     const [chauffeurId, setChauffeurId] = useState<string | null>(null);
-    const [adminId, setAdminId] = useState<string | null>(null);
+    const [typeAmbassadeur, setTypeAmbassadeur] = useState<string | null>(null);
+    const [isSousCompte, setIsSousCompte] = useState<boolean>(false);
 
-    const setAuth = ({ token: newToken, userId: newUserId, email: newEmail, role: newRole, ambassadorId: newAmbassadorId = null, chauffeurId: newChauffeurId = null, adminId: newAdminId = null }: {
+    const setAuth = ({
+        token: newToken,
+        userId: newUserId,
+        email: newEmail,
+        role: newRole,
+        ambassadorId: newAmbassadorId = null,
+        chauffeurId: newChauffeurId = null,
+        typeAmbassadeur: newTypeAmbassadeur = null,
+        isSousCompte: newIsSousCompte = false,
+    }: {
         token: string;
         userId: string;
         email: string;
         role: UserRole;
         ambassadorId?: string | null;
         chauffeurId?: string | null;
-        adminId?: string | null;
+        typeAmbassadeur?: string | null;
+        isSousCompte?: boolean;
     }) => {
         setToken(newToken);
         setUserId(newUserId);
@@ -48,7 +61,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setRole(newRole);
         setAmbassadorId(newAmbassadorId ?? null);
         setChauffeurId(newChauffeurId ?? null);
-        setAdminId(newAdminId ?? null);
+        setTypeAmbassadeur(newTypeAmbassadeur ?? null);
+        setIsSousCompte(newIsSousCompte ?? false);
         setAuthToken(newToken);
     };
 
@@ -59,13 +73,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setRole(null);
         setAmbassadorId(null);
         setChauffeurId(null);
-        setAdminId(null);
+        setTypeAmbassadeur(null);
+        setIsSousCompte(false);
         setAuthToken(null);
     };
 
     const value = useMemo(
-        () => ({ userId, token, email, role, ambassadorId, chauffeurId, adminId, setAuth, logout }),
-        [userId, token, email, role, ambassadorId, chauffeurId, adminId]
+        () => ({ userId, token, email, role, ambassadorId, chauffeurId, typeAmbassadeur, isSousCompte, setAuth, logout }),
+        [userId, token, email, role, ambassadorId, chauffeurId, typeAmbassadeur, isSousCompte]
     );
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

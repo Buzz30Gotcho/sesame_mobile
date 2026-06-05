@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
     View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
-    KeyboardAvoidingView, Platform, SafeAreaView, StatusBar, ActivityIndicator,
+    KeyboardAvoidingView, Platform, StatusBar, ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { getChatMessages, sendChatMessage, getWsUrl } from '../services/api';
 import { Colors, Typography } from '../theme';
@@ -126,8 +127,8 @@ export default function ChatScreen() {
             ) : (
                 <KeyboardAvoidingView
                     style={styles.flex}
-                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                    keyboardVerticalOffset={90}
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
                 >
                     <FlatList
                         ref={listRef}

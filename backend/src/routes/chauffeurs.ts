@@ -1,6 +1,8 @@
 import express from 'express';
 import { query } from '../db';
 import { calculatePoints, nextAmbassadorLevel } from '../lib/rules';
+import { sendPushNotification } from '../lib/pushNotifications';
+import { stripe } from '../lib/stripeClient';
 
 const router = express.Router();
 
@@ -73,10 +75,19 @@ router.get('/:id/dashboard', async (req, res) => {
     const activeCount = assignedCourses.rows.length;
     const nextCourse = assignedCourses.rows[0] || null;
 
+    const statsJour = await query(
+        `SELECT count(*) AS nb_courses, coalesce(sum(montant), 0) AS ca_jour
+         FROM courses
+         WHERE chauffeur_id = $1 AND statut = 'terminee' AND date_fin::date = CURRENT_DATE`,
+        [req.params.id]
+    );
+
     res.json({
         ...profile,
         active_courses_count: activeCount,
         current_course: nextCourse,
+        courses_jour: Number(statsJour.rows[0]?.nb_courses || 0),
+        ca_jour: Number(statsJour.rows[0]?.ca_jour || 0),
     });
 });
 
@@ -87,6 +98,28 @@ router.get('/:id/courses', async (req, res) => {
          WHERE chauffeur_id = $1
          ORDER BY date_acceptation DESC NULLS LAST, date_fin DESC NULLS LAST`,
         [req.params.id]
+    );
+    res.json(result.rows);
+});
+
+router.get('/:id/courses-disponibles', async (req, res) => {
+    const chauffeurResult = await query(
+        'SELECT vehicule_type, disponible FROM chauffeurs WHERE id = $1',
+        [req.params.id]
+    );
+    const chauffeur = chauffeurResult.rows[0];
+    if (!chauffeur) return res.status(404).json({ error: 'Chauffeur introuvable' });
+    if (!chauffeur.disponible) return res.json([]);
+
+    const result = await query(
+        `SELECT id, reference, adresse_depart, adresse_destination, vehicule_type, montant, type_course, date_reservation
+         FROM courses
+         WHERE statut = 'recherche'
+           AND vehicule_type = $1
+           AND chauffeur_id IS NULL
+         ORDER BY date_annulation DESC NULLS LAST
+         LIMIT 1`,
+        [chauffeur.vehicule_type]
     );
     res.json(result.rows);
 });
@@ -113,6 +146,28 @@ router.post('/:id/accept-course', async (req, res) => {
 
     await query('UPDATE courses SET chauffeur_id = $1, statut = $2, date_acceptation = now(), code_validation = $3 WHERE id = $4', [req.params.id, 'acceptee', code, course_id]);
     const updated = await query('SELECT * FROM courses WHERE id = $1', [course_id]);
+
+    // Notification push à l'ambassadeur
+    try {
+        const chauffeurResult = await query('SELECT u.prenom FROM chauffeurs c JOIN utilisateurs u ON u.id = c.utilisateur_id WHERE c.id = $1', [req.params.id]);
+        const chauffeurPrenom = chauffeurResult.rows[0]?.prenom || 'Votre chauffeur';
+        const ambTokenResult = await query(
+            'SELECT a.push_token FROM ambassadeurs a JOIN courses c ON c.ambassadeur_id = a.id WHERE c.id = $1',
+            [course_id]
+        );
+        const ambToken = ambTokenResult.rows[0]?.push_token;
+        if (ambToken) {
+            await sendPushNotification(
+                ambToken,
+                'Chauffeur trouve !',
+                `Code : ${code}. ${chauffeurPrenom} arrive dans quelques minutes.`,
+                { course_id }
+            );
+        }
+    } catch {
+        // Non bloquant
+    }
+
     res.json(updated.rows[0]);
 });
 
@@ -129,6 +184,19 @@ router.post('/:id/validate-code', async (req, res) => {
     }
 
     await query('UPDATE courses SET statut = $1, code_valide_at = now() WHERE id = $2', ['code_valide', course_id]);
+
+    // Notification CODE_VALIDE à l'ambassadeur
+    try {
+        const ambTokenResult = await query(
+            'SELECT a.push_token FROM ambassadeurs a JOIN courses c ON c.ambassadeur_id = a.id WHERE c.id = $1',
+            [course_id]
+        );
+        const ambToken = ambTokenResult.rows[0]?.push_token;
+        if (ambToken) {
+            await sendPushNotification(ambToken, 'Course démarrée', 'Votre client est à bord.', { course_id });
+        }
+    } catch { /* Non bloquant */ }
+
     const updated = await query('SELECT * FROM courses WHERE id = $1', [course_id]);
     res.json(updated.rows[0]);
 });
@@ -171,6 +239,43 @@ router.post('/:id/finish-course', async (req, res) => {
                 if (solde >= sanction.points) {
                     await query('UPDATE ambassadeurs SET points_solde = points_solde - $1 WHERE id = $2', [sanction.points, course.ambassadeur_id]);
                     await query("UPDATE sanctions_en_attente SET statut = 'execute', execute_at = now() WHERE id = $1", [sanction.id]);
+
+                    // Notification SANCTION_POINTS à l'ambassadeur
+                    const sanctionTokenRes = await query('SELECT push_token FROM ambassadeurs WHERE id = $1', [course.ambassadeur_id]);
+                    const sanctionToken = sanctionTokenRes.rows[0]?.push_token;
+                    if (sanctionToken) {
+                        const date = new Date(sanction.decide_at).toLocaleDateString('fr-FR');
+                        await sendPushNotification(sanctionToken, `-${sanction.points} points prélevés`, `Suite à l'absence de votre client le ${date}.`).catch(() => {});
+                    }
+                }
+            }
+
+            // Notification push à l'ambassadeur — points crédités
+            try {
+                const ambTokenResult = await query('SELECT push_token FROM ambassadeurs WHERE id = $1', [course.ambassadeur_id]);
+                const ambToken = ambTokenResult.rows[0]?.push_token;
+                if (ambToken) {
+                    await sendPushNotification(
+                        ambToken,
+                        'Course terminee',
+                        `+${pts} points credites.`,
+                        { course_id }
+                    );
+                }
+            } catch {
+                // Non bloquant
+            }
+        } else {
+            // Pas de points — notifier quand même
+            if (course.ambassadeur_id) {
+                try {
+                    const ambTokenResult = await query('SELECT push_token FROM ambassadeurs WHERE id = $1', [course.ambassadeur_id]);
+                    const ambToken = ambTokenResult.rows[0]?.push_token;
+                    if (ambToken) {
+                        await sendPushNotification(ambToken, 'Course terminee', 'Course terminee.', { course_id });
+                    }
+                } catch {
+                    // Non bloquant
                 }
             }
         }
@@ -200,6 +305,13 @@ router.post('/:id/documents', async (req, res) => {
     res.status(201).json(result.rows[0]);
 });
 
+router.put('/:id/push-token', async (req, res) => {
+    const { push_token } = req.body;
+    if (!push_token) return res.status(400).json({ error: 'push_token requis' });
+    await query('UPDATE chauffeurs SET push_token = $1 WHERE id = $2', [push_token, req.params.id]);
+    res.json({ success: true });
+});
+
 // Refus de course — AUCUNE sanction, règle juridique absolue
 router.post('/:id/refuse-course', async (req, res) => {
     const { course_id } = req.body;
@@ -224,7 +336,49 @@ router.post('/:id/client-absent', async (req, res) => {
         [course.ambassadeur_id, course_id]
     );
 
+    // Notification CHAUFFEUR_ATTEND à l'ambassadeur
+    try {
+        const ambTokenResult = await query('SELECT push_token FROM ambassadeurs WHERE id = $1', [course.ambassadeur_id]);
+        const ambToken = ambTokenResult.rows[0]?.push_token;
+        if (ambToken) {
+            await sendPushNotification(ambToken, 'Votre chauffeur vous attend !', 'Il attend depuis quelques minutes. Contactez-le.', { course_id });
+        }
+    } catch { /* Non bloquant */ }
+
     res.json({ success: true, message: 'Alerte client absent envoyée à l\'équipe SESAME. Un opérateur va intervenir.' });
+});
+
+// Portail de facturation Stripe
+router.get('/:id/billing-portal', async (req, res) => {
+    const result = await query(
+        'SELECT stripe_customer_id FROM chauffeurs WHERE id = $1',
+        [req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Chauffeur introuvable' });
+
+    let customerId = result.rows[0].stripe_customer_id;
+
+    // Créer le customer Stripe si inexistant (chauffeurs inscrits avant l'intégration)
+    if (!customerId) {
+        const profile = await query(
+            'SELECT u.email, u.prenom, u.nom FROM chauffeurs c JOIN utilisateurs u ON u.id = c.utilisateur_id WHERE c.id = $1',
+            [req.params.id]
+        );
+        const u = profile.rows[0];
+        const customer = await stripe.customers.create({
+            email: u.email,
+            name: `${u.prenom} ${u.nom}`.trim(),
+        });
+        customerId = customer.id;
+        await query('UPDATE chauffeurs SET stripe_customer_id = $1 WHERE id = $2', [customerId, req.params.id]);
+    }
+
+    const session = await stripe.billingPortal.sessions.create({
+        customer: customerId,
+        return_url: `${process.env.BACKEND_URL || 'http://localhost:4001'}/retour-stripe`,
+    });
+
+    res.json({ url: session.url });
 });
 
 export default router;

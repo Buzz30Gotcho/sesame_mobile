@@ -2,11 +2,25 @@ import express from 'express';
 import { calculatePoints, calculateVehiclePrice, nextAmbassadorLevel } from '../lib/rules';
 import { query } from '../db';
 import { getSystemParameters, getSystemParameter } from '../lib/params';
+import { sendPushNotification } from '../lib/pushNotifications';
+
+async function notifyChauffeursDisponibles(vehicule_type: string, adresse_depart: string, adresse_destination: string, montant: number) {
+    const result = await query(
+        `SELECT push_token FROM chauffeurs WHERE disponible = true AND vehicule_type = $1 AND push_token IS NOT NULL`,
+        [vehicule_type]
+    );
+    const body = `${adresse_depart} → ${adresse_destination} · ${Number(montant).toFixed(2)} €`;
+    for (const row of result.rows) {
+        await sendPushNotification(row.push_token, 'Nouvelle course', body).catch(() => {});
+    }
+}
 
 const router = express.Router();
 
 function makeReference(prefix: string) {
-    return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    const ts = Date.now().toString().slice(-8);
+    const rand = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    return `${prefix}-${ts}-${rand}`;
 }
 
 router.post('/creer', async (req, res) => {
@@ -23,6 +37,17 @@ router.post('/creer', async (req, res) => {
         if (!isImmediateEnabled) {
             return res.status(403).json({ error: 'Le mode course immédiate est actuellement désactivé par l\'administration. Veuillez utiliser le mode réservation.' });
         }
+    }
+
+    // Vérifier restriction de commande
+    const restrictionResult = await query(
+        'SELECT restriction_commande_jusqu_au FROM ambassadeurs WHERE id = $1',
+        [ambassadeur_id]
+    );
+    const restriction = restrictionResult.rows[0]?.restriction_commande_jusqu_au;
+    if (restriction && new Date(restriction) > new Date()) {
+        const dateStr = new Date(restriction).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        return res.status(403).json({ error: `Commande suspendue jusqu'au ${dateStr}. Trop d'annulations récentes.` });
     }
 
     const sysParams = await getSystemParameters();
@@ -43,6 +68,8 @@ router.post('/creer', async (req, res) => {
         'INSERT INTO courses(reference, ambassadeur_id, statut, type_course, adresse_depart, adresse_destination, vehicule_type, montant, points_attribues) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
         [reference, ambassadeur_id, 'recherche', courseType, adresse_depart, adresse_destination, vehicule_type, montant, points_attribues]
     );
+
+    notifyChauffeursDisponibles(vehicule_type, adresse_depart, adresse_destination, montant).catch(() => {});
 
     res.status(201).json(result.rows[0]);
 });
@@ -82,8 +109,49 @@ router.put('/:id/annuler', async (req, res) => {
     const course = courseResult.rows[0];
     if (!course) return res.status(404).json({ error: 'Course introuvable' });
 
-    await query('UPDATE courses SET statut = $1, date_annulation = now(), annule_par = $2 WHERE id = $3', ['annulee', raison || 'ambassadeur', req.params.id]);
-    res.json({ success: true, courseId: req.params.id });
+    const annulePar = raison || 'ambassadeur';
+    await query('UPDATE courses SET statut = $1, date_annulation = now(), annule_par = $2 WHERE id = $3', ['annulee', annulePar, req.params.id]);
+
+    // Notification CHAUFFEUR_ANNULE à l'ambassadeur si c'est le chauffeur qui annule
+    if (annulePar === 'chauffeur' && course.ambassadeur_id) {
+        try {
+            const ambTokenResult = await query('SELECT push_token FROM ambassadeurs WHERE id = $1', [course.ambassadeur_id]);
+            const ambToken = ambTokenResult.rows[0]?.push_token;
+            if (ambToken) {
+                await sendPushNotification(ambToken, 'Chauffeur annulé', 'Relance automatique en cours...', { course_id: req.params.id });
+            }
+        } catch { /* Non bloquant */ }
+    }
+
+    // Sanctions ambassadeur si annulation par l'ambassadeur
+    if (annulePar === 'ambassadeur' && course.ambassadeur_id) {
+        const countResult = await query(
+            `SELECT count(*) AS count FROM courses
+             WHERE ambassadeur_id = $1
+               AND annule_par = 'ambassadeur'
+               AND date_annulation > now() - interval '30 days'`,
+            [course.ambassadeur_id]
+        );
+        const count = Number(countResult.rows[0]?.count || 0);
+
+        if (count >= 5) {
+            await query(
+                "UPDATE utilisateurs SET statut = 'suspendu' WHERE id = (SELECT utilisateur_id FROM ambassadeurs WHERE id = $1)",
+                [course.ambassadeur_id]
+            );
+            return res.json({ success: true, sanction: 'suspension' });
+        } else if (count >= 3) {
+            await query(
+                "UPDATE ambassadeurs SET restriction_commande_jusqu_au = now() + interval '24 hours' WHERE id = $1",
+                [course.ambassadeur_id]
+            );
+            return res.json({ success: true, sanction: 'restriction_24h' });
+        } else if (count === 1) {
+            return res.json({ success: true, sanction: 'avertissement' });
+        }
+    }
+
+    res.json({ success: true });
 });
 
 router.post('/reserver', async (req, res) => {
@@ -92,12 +160,23 @@ router.post('/reserver', async (req, res) => {
         return res.status(400).json({ error: 'Données de réservation incomplètes' });
     }
 
+    // Vérifier restriction de commande
+    const restrictionResv = await query(
+        'SELECT restriction_commande_jusqu_au FROM ambassadeurs WHERE id = $1',
+        [ambassadeur_id]
+    );
+    const restrictionResv2 = restrictionResv.rows[0]?.restriction_commande_jusqu_au;
+    if (restrictionResv2 && new Date(restrictionResv2) > new Date()) {
+        const dateStr = new Date(restrictionResv2).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        return res.status(403).json({ error: `Commande suspendue jusqu'au ${dateStr}. Trop d'annulations récentes.` });
+    }
+
     // Validate 1h minimum delay
     const minDelayHours = await getSystemParameter('delai_minimum_reservation_heures', 1);
     const reservationDate = new Date(date_reservation);
     const now = new Date();
     const diffHours = (reservationDate.getTime() - now.getTime()) / (1000 * 60 * 60);
-    
+
     if (diffHours < minDelayHours) {
         return res.status(400).json({ error: `Le délai minimum pour une réservation est de ${minDelayHours} heure(s).` });
     }
@@ -120,6 +199,8 @@ router.post('/reserver', async (req, res) => {
         'INSERT INTO courses(reference, ambassadeur_id, statut, type_course, adresse_depart, adresse_destination, vehicule_type, montant, points_attribues, date_reservation) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
         [reference, ambassadeur_id, 'recherche', 'reservation', adresse_depart, adresse_destination, vehicule_type, montant, points_attribues, date_reservation]
     );
+
+    notifyChauffeursDisponibles(vehicule_type, adresse_depart, adresse_destination, montant).catch(() => {});
 
     res.status(201).json(result.rows[0]);
 });

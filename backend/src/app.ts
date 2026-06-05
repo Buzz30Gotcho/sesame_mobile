@@ -10,10 +10,13 @@ import fournisseursRoutes from './routes/fournisseurs';
 import chatRoutes from './routes/chat';
 import chauffeursRoutes from './routes/chauffeurs';
 import adminRoutes from './routes/admin';
+import stripeWebhookRoutes from './routes/stripeWebhook';
 
 const app = express();
 
 app.use(cors());
+// Webhook Stripe doit recevoir le corps brut — enregistré avant express.json()
+app.use('/api/stripe', stripeWebhookRoutes);
 app.use(express.json());
 
 app.use('/api/auth', authRoutes);

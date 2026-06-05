@@ -1,34 +1,146 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, SafeAreaView, StatusBar } from 'react-native';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import {
+    View, Text, StyleSheet, ScrollView, ActivityIndicator,
+    TouchableOpacity, StatusBar, Alert, Linking,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
-import { getAmbassadorDashboard } from '../services/api';
+import { useTheme } from '../context/ThemeContext';
+import { useLang } from '../context/LanguageContext';
+import { getAmbassadorDashboard, getCoursesHistory, cancelCourse } from '../services/api';
 import BottomNav from '../components/BottomNav';
 import { Colors, Typography } from '../theme';
-import type { RootStackParamList, AmbassadorDashboard } from '../types';
+import type { RootStackParamList, AmbassadorDashboard, ActiveCourse } from '../types';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+
+let _vtcDashboardCache: AmbassadorDashboard | null = null;
+let _vtcHistoryCache: ActiveCourse[] = [];
+
+function formatDate(iso?: string) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function statutLabel(statut?: string) {
+    const labels: Record<string, string> = {
+        recherche: 'Recherche chauffeur…',
+        acceptee: 'Chauffeur en route',
+        en_route: 'Chauffeur arrivé',
+        code_valide: 'Course en cours',
+        en_cours: 'Course en cours',
+        terminee: 'Terminée',
+        annulee: 'Annulée',
+    };
+    return labels[statut || ''] || statut?.toUpperCase() || '—';
+}
+
+function statutColor(statut?: string) {
+    if (statut === 'terminee') return Colors.brand.success;
+    if (statut === 'annulee') return Colors.brand.error;
+    if (statut === 'code_valide' || statut === 'en_cours') return Colors.brand.info;
+    return Colors.brand.gold;
+}
+
+function buildSmsBody(course: ActiveCourse, code: string) {
+    const vehicule = [
+        course.vehicule_type === 'berline' ? 'Berline' : 'Van',
+        course.vehicule_couleur,
+        course.vehicule_marque,
+        course.vehicule_modele,
+    ].filter(Boolean).join(' ');
+    const immat = course.vehicule_immat ? `— ${course.vehicule_immat}` : '';
+    const chauffeur = course.chauffeur_prenom
+        ? `Chauffeur : ${course.chauffeur_prenom} ${course.chauffeur_nom || ''}.`
+        : '';
+    const montant = course.montant ? `Montant : ${Number(course.montant).toFixed(2)} €.` : '';
+    return (
+        `Votre véhicule SÉSAME est confirmé.\n` +
+        `${chauffeur}\n` +
+        `${vehicule} ${immat}.\n` +
+        `${montant}\n` +
+        `Votre code : ${code}\n\n` +
+        `Communiquez ce code à votre chauffeur à sa prise en charge.\n` +
+        `Bonne route. — SÉSAME`
+    ).trim();
+}
 
 export default function AmbassadorVTCScreen() {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'AmbassadorHome'>>();
     const { ambassadorId } = useAuth();
-    const [dashboard, setDashboard] = useState<AmbassadorDashboard | null>(null);
-    const [loading, setLoading] = useState(true);
+    const { colors } = useTheme();
+    const { t } = useLang();
+    const styles = useMemo(() => makeStyles(colors), [colors]);
+    const [dashboard, setDashboard] = useState<AmbassadorDashboard | null>(_vtcDashboardCache);
+    const [history, setHistory] = useState<ActiveCourse[]>(_vtcHistoryCache);
+    const [loading, setLoading] = useState(_vtcDashboardCache === null);
+    const [cancelling, setCancelling] = useState(false);
 
-    useEffect(() => {
-        async function load() {
-            if (!ambassadorId) return;
-            try {
-                const response = await getAmbassadorDashboard(ambassadorId);
-                setDashboard(response.data);
-            } finally {
-                setLoading(false);
-            }
+    const load = useCallback(async () => {
+        if (!ambassadorId) return;
+        try {
+            const [dashRes, histRes] = await Promise.all([
+                getAmbassadorDashboard(ambassadorId),
+                getCoursesHistory(ambassadorId),
+            ]);
+            _vtcDashboardCache = dashRes.data;
+            _vtcHistoryCache = histRes.data;
+            setDashboard(dashRes.data);
+            setHistory(histRes.data);
+        } finally {
+            setLoading(false);
         }
-        load();
     }, [ambassadorId]);
 
-    const activeCourse = dashboard?.active_courses.find(c => ['recherche', 'acceptee', 'en_route', 'code_valide'].includes(c.statut || ''));
-    const history = dashboard?.active_courses.filter(c => c.id !== activeCourse?.id) || [];
+    useEffect(() => {
+        load();
+        const interval = setInterval(load, 10000);
+        return () => clearInterval(interval);
+    }, [load]);
+
+    const activeCourse = dashboard?.active_courses.find(c =>
+        ['recherche', 'acceptee', 'en_route', 'code_valide', 'en_cours'].includes(c.statut || '')
+    );
+
+    const handleCancel = () => {
+        if (!activeCourse) return;
+        Alert.alert(
+            t('annuler_course_titre'),
+            t('annuler_course_msg'),
+            [
+                { text: t('non'), style: 'cancel' },
+                {
+                    text: t('oui_annuler'),
+                    style: 'destructive',
+                    onPress: async () => {
+                        setCancelling(true);
+                        try {
+                            await cancelCourse(activeCourse.id);
+                            await load();
+                        } catch {
+                            Alert.alert(t('erreur'), t('impossible_annuler'));
+                        } finally {
+                            setCancelling(false);
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
+    const handleSms = () => {
+        if (!activeCourse?.code_validation) return;
+        const body = buildSmsBody(activeCourse, activeCourse.code_validation);
+        Linking.openURL(`sms:?body=${encodeURIComponent(body)}`);
+    };
+
+    const handleCall = () => {
+        if (!activeCourse?.chauffeur_telephone) {
+            Alert.alert(t('telephone_indisponible'), t('numero_indisponible'));
+            return;
+        }
+        Linking.openURL(`tel:${activeCourse.chauffeur_telephone}`);
+    };
 
     if (loading) {
         return (
@@ -39,243 +151,386 @@ export default function AmbassadorVTCScreen() {
     }
 
     return (
-        <SafeAreaView style={styles.safeArea}>
-            <StatusBar barStyle="light-content" />
+        <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+            <StatusBar barStyle={colors.background === '#101018' ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
             <ScrollView contentContainerStyle={styles.scrollContent}>
-                <Text style={styles.title}>Mes Missions VTC</Text>
-                
-                {/* Active Course - Pinned at top (Rule 9.0 Point 3) */}
+                <Text style={styles.title}>{t('mes_courses')}</Text>
+
+                {/* Course active */}
                 {activeCourse ? (
                     <View style={styles.activeCard}>
                         <View style={styles.activeHeader}>
-                            <Text style={styles.activeStatus}>COURSE EN COURS</Text>
+                            <Text style={styles.activeStatus}>{statutLabel(activeCourse.statut)}</Text>
                             <Text style={styles.activeRef}>{activeCourse.reference}</Text>
                         </View>
-                        
+
+                        {/* Code Pivot */}
                         <View style={styles.pivotSection}>
-                            <Text style={styles.pivotLabel}>CODE CLIENT PIVOT</Text>
-                            <Text style={styles.pivotValue}>{activeCourse.code_validation || '----'}</Text>
+                            <Text style={styles.pivotLabel}>{t('code_client_pivot')}</Text>
+                            <Text style={styles.pivotValue}>{activeCourse.code_validation || '- - - -'}</Text>
+                            {!activeCourse.code_validation && (
+                                <Text style={styles.pivotWaiting}>{t('en_attente_chauffeur')}</Text>
+                            )}
                         </View>
 
+                        {/* Infos chauffeur si disponibles */}
+                        {activeCourse.chauffeur_prenom && (
+                            <View style={styles.chauffeurCard}>
+                                <Text style={styles.chauffeurTitle}>{t('chauffeur_assigne')}</Text>
+                                <Text style={styles.chauffeurName}>
+                                    {activeCourse.chauffeur_prenom} {activeCourse.chauffeur_nom}
+                                </Text>
+                                {(activeCourse.vehicule_marque || activeCourse.vehicule_couleur) && (
+                                    <View style={styles.immatRow}>
+                                        <Text style={styles.vehicleDesc}>
+                                            {[
+                                                activeCourse.vehicule_type === 'berline' ? 'Berline' : 'Van',
+                                                activeCourse.vehicule_couleur,
+                                                activeCourse.vehicule_marque,
+                                                activeCourse.vehicule_modele,
+                                            ].filter(Boolean).join(' ')}
+                                        </Text>
+                                        {activeCourse.vehicule_immat && (
+                                            <Text style={styles.immat}>{activeCourse.vehicule_immat}</Text>
+                                        )}
+                                    </View>
+                                )}
+                            </View>
+                        )}
+
                         <View style={styles.infoRow}>
-                            <Text style={styles.infoLabel}>DÉPART</Text>
+                            <Text style={styles.infoLabel}>{t('depart_label')}</Text>
                             <Text style={styles.infoValue}>{activeCourse.adresse_depart}</Text>
                         </View>
                         <View style={styles.infoRow}>
-                            <Text style={styles.infoLabel}>DESTINATION</Text>
+                            <Text style={styles.infoLabel}>{t('destination_label')}</Text>
                             <Text style={styles.infoValue}>{activeCourse.adresse_destination}</Text>
                         </View>
+                        <View style={styles.infoRow}>
+                            <Text style={styles.infoLabel}>{t('montant_label')}</Text>
+                            <Text style={[styles.infoValue, { color: Colors.brand.gold }]}>
+                                {Number(activeCourse.montant || 0).toFixed(2)} €
+                            </Text>
+                        </View>
 
+                        {/* Actions */}
                         <View style={styles.actionRow}>
-                            <TouchableOpacity style={styles.actionBtn}>
+                            {activeCourse.code_validation && (
+                                <TouchableOpacity style={styles.actionBtn} onPress={handleSms}>
+                                    <Text style={styles.actionBtnText}>📱 ENVOYER CODE</Text>
+                                </TouchableOpacity>
+                            )}
+                            <TouchableOpacity style={styles.actionBtn} onPress={handleCall}>
                                 <Text style={styles.actionBtnText}>📞 APPELER</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity style={styles.actionBtn}>
-                                <Text style={styles.actionBtnText}>💬 MESSAGE</Text>
+                            <TouchableOpacity
+                                style={styles.actionBtn}
+                                onPress={() => navigation.navigate('Chat', {
+                                    courseId: activeCourse.id,
+                                    senderRole: 'ambassadeur',
+                                    senderId: ambassadorId!,
+                                    courseRef: activeCourse.reference,
+                                })}
+                                disabled={!activeCourse.chauffeur_prenom}
+                            >
+                                <Text style={styles.actionBtnText}>💬 CHAT</Text>
                             </TouchableOpacity>
                         </View>
+
+                        {/* Annulation */}
+                        {['recherche', 'acceptee'].includes(activeCourse.statut || '') && (
+                            <TouchableOpacity
+                                style={styles.cancelBtn}
+                                onPress={handleCancel}
+                                disabled={cancelling}
+                            >
+                                {cancelling
+                                    ? <ActivityIndicator color={Colors.brand.error} size="small" />
+                                    : <Text style={styles.cancelBtnText}>{t('annuler_cette_course')}</Text>
+                                }
+                            </TouchableOpacity>
+                        )}
                     </View>
                 ) : (
                     <View style={styles.emptyCard}>
-                        <Text style={styles.emptyText}>Aucune course active.</Text>
-                        <TouchableOpacity 
+                        <Text style={styles.emptyText}>{t('aucune_course_active')}</Text>
+                        <TouchableOpacity
                             style={styles.orderBtn}
                             onPress={() => navigation.navigate('AmbassadorCommander')}
                         >
-                            <Text style={styles.orderBtnText}>COMMANDER UN VÉHICULE</Text>
+                            <Text style={styles.orderBtnText}>{t('commander_vehicule')}</Text>
                         </TouchableOpacity>
                     </View>
                 )}
 
-                <Text style={styles.sectionTitle}>HISTORIQUE RÉCENT</Text>
-                {history.length > 0 ? history.map(c => (
-                    <View key={c.id} style={styles.historyCard}>
-                        <View style={styles.historyHeader}>
-                            <Text style={styles.historyRef}>{c.reference}</Text>
-                            <Text style={styles.historyDate}>{new Date().toLocaleDateString()}</Text>
+                {/* Historique */}
+                <Text style={styles.sectionTitle}>{t('historique')}</Text>
+                {history.length === 0 ? (
+                    <Text style={styles.noHistory}>{t('historique_vide')}</Text>
+                ) : (
+                    history.map(c => (
+                        <View key={c.id} style={styles.historyCard}>
+                            <View style={styles.historyHeader}>
+                                <Text style={styles.historyRef}>{c.reference}</Text>
+                                <Text style={styles.historyDate}>{formatDate(c.date_fin || c.date_annulation)}</Text>
+                            </View>
+                            <Text style={styles.historyAddress} numberOfLines={1}>{c.adresse_destination}</Text>
+                            <View style={styles.historyFooter}>
+                                <Text style={[styles.historyStatus, { color: statutColor(c.statut) }]}>
+                                    {statutLabel(c.statut)}
+                                </Text>
+                                <View style={styles.historyRight}>
+                                    <Text style={styles.historyPrice}>{Number(c.montant || 0).toFixed(2)} €</Text>
+                                    {c.points_attribues && c.points_attribues > 0 ? (
+                                        <Text style={styles.historyPoints}>+{c.points_attribues} pts</Text>
+                                    ) : null}
+                                </View>
+                            </View>
                         </View>
-                        <Text style={styles.historyAddress} numberOfLines={1}>{c.adresse_destination}</Text>
-                        <View style={styles.historyFooter}>
-                            <Text style={styles.historyStatus}>{c.statut?.toUpperCase()}</Text>
-                            <Text style={styles.historyPrice}>{c.montant} €</Text>
-                        </View>
-                    </View>
-                )) : (
-                    <Text style={styles.noHistory}>Votre historique apparaîtra ici.</Text>
+                    ))
                 )}
-
             </ScrollView>
             <BottomNav role="ambassadeur" />
         </SafeAreaView>
     );
 }
 
-const styles = StyleSheet.create({
-    safeArea: {
-        flex: 1,
-        backgroundColor: Colors.nocturne.background,
-    },
-    container: {
-        flex: 1,
-    },
-    center: {
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    scrollContent: {
-        padding: 24,
-        paddingBottom: 100,
-    },
-    title: {
-        color: Colors.brand.gold,
-        fontSize: Typography.sizes.title,
-        fontWeight: Typography.weights.black as any,
-        marginBottom: 24,
-    },
-    activeCard: {
-        backgroundColor: Colors.nocturne.card,
-        borderRadius: 24,
-        padding: 20,
-        borderWidth: 1,
-        borderColor: Colors.brand.gold,
-        marginBottom: 32,
-    },
-    activeHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 20,
-    },
-    activeStatus: {
-        color: Colors.brand.gold,
-        fontSize: Typography.sizes.tiny,
-        fontWeight: Typography.weights.black as any,
-        letterSpacing: 1,
-    },
-    activeRef: {
-        color: Colors.nocturne.textSecondary,
-        fontSize: Typography.sizes.tiny,
-    },
-    pivotSection: {
-        alignItems: 'center',
-        marginBottom: 24,
-    },
-    pivotLabel: {
-        color: Colors.nocturne.textSecondary,
-        fontSize: Typography.sizes.tiny,
-        fontWeight: Typography.weights.bold as any,
-        marginBottom: 8,
-    },
-    pivotValue: {
-        color: Colors.brand.gold,
-        fontSize: 48,
-        fontWeight: Typography.weights.black as any,
-        letterSpacing: 8,
-    },
-    infoRow: {
-        marginBottom: 12,
-    },
-    infoLabel: {
-        color: Colors.nocturne.textSecondary,
-        fontSize: Typography.sizes.tiny,
-        fontWeight: Typography.weights.bold as any,
-        marginBottom: 2,
-    },
-    infoValue: {
-        color: '#FFFFFF',
-        fontSize: Typography.sizes.sub,
-    },
-    actionRow: {
-        flexDirection: 'row',
-        gap: 10,
-        marginTop: 12,
-    },
-    actionBtn: {
-        flex: 1,
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        paddingVertical: 12,
-        borderRadius: 12,
-        alignItems: 'center',
-    },
-    actionBtnText: {
-        color: '#FFFFFF',
-        fontSize: Typography.sizes.tiny,
-        fontWeight: Typography.weights.bold as any,
-    },
-    emptyCard: {
-        backgroundColor: Colors.nocturne.card,
-        borderRadius: 20,
-        padding: 32,
-        alignItems: 'center',
-        marginBottom: 32,
-    },
-    emptyText: {
-        color: Colors.nocturne.textSecondary,
-        marginBottom: 20,
-    },
-    orderBtn: {
-        backgroundColor: Colors.brand.gold,
-        paddingHorizontal: 20,
-        paddingVertical: 12,
-        borderRadius: 12,
-    },
-    orderBtnText: {
-        color: '#101018',
-        fontWeight: Typography.weights.black as any,
-        fontSize: Typography.sizes.sub,
-    },
-    sectionTitle: {
-        color: Colors.nocturne.textSecondary,
-        fontSize: Typography.sizes.tiny,
-        fontWeight: Typography.weights.black as any,
-        letterSpacing: 2,
-        marginBottom: 16,
-    },
-    historyCard: {
-        backgroundColor: Colors.nocturne.card,
-        borderRadius: 16,
-        padding: 16,
-        marginBottom: 12,
-    },
-    historyHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 8,
-    },
-    historyRef: {
-        color: '#FFFFFF',
-        fontWeight: Typography.weights.bold as any,
-        fontSize: Typography.sizes.sub,
-    },
-    historyDate: {
-        color: Colors.nocturne.textSecondary,
-        fontSize: Typography.sizes.tiny,
-    },
-    historyAddress: {
-        color: Colors.nocturne.textSecondary,
-        fontSize: Typography.sizes.tiny,
-        marginBottom: 12,
-    },
-    historyFooter: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        borderTopWidth: 1,
-        borderTopColor: 'rgba(255,255,255,0.05)',
-        paddingTop: 12,
-    },
-    historyStatus: {
-        color: Colors.brand.success,
-        fontSize: Typography.sizes.tiny,
-        fontWeight: Typography.weights.bold as any,
-    },
-    historyPrice: {
-        color: '#FFFFFF',
-        fontWeight: Typography.weights.black as any,
-    },
-    noHistory: {
-        color: Colors.nocturne.textSecondary,
-        textAlign: 'center',
-        marginTop: 20,
-    },
-});
+function makeStyles(colors: typeof Colors.nocturne) {
+    return StyleSheet.create({
+        safeArea: { flex: 1, backgroundColor: colors.background },
+        container: { flex: 1, backgroundColor: colors.background },
+        center: { justifyContent: 'center', alignItems: 'center' },
+        scrollContent: { padding: 24, paddingBottom: 120 },
+        title: {
+            color: Colors.brand.gold,
+            fontSize: Typography.sizes.title,
+            fontWeight: Typography.weights.black as any,
+            marginBottom: 24,
+        },
+        activeCard: {
+            backgroundColor: colors.card,
+            borderRadius: 24,
+            padding: 20,
+            borderWidth: 1,
+            borderColor: Colors.brand.gold,
+            marginBottom: 32,
+        },
+        activeHeader: {
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 20,
+        },
+        activeStatus: {
+            color: Colors.brand.gold,
+            fontSize: Typography.sizes.tiny,
+            fontWeight: Typography.weights.black as any,
+            letterSpacing: 1,
+        },
+        activeRef: {
+            color: colors.textSecondary,
+            fontSize: Typography.sizes.tiny,
+            fontFamily: 'monospace',
+        },
+        pivotSection: {
+            alignItems: 'center',
+            marginBottom: 20,
+            paddingBottom: 20,
+            borderBottomWidth: 1,
+            borderBottomColor: 'rgba(255,255,255,0.06)',
+        },
+        pivotLabel: {
+            color: colors.textSecondary,
+            fontSize: Typography.sizes.tiny,
+            fontWeight: Typography.weights.black as any,
+            letterSpacing: 2,
+            marginBottom: 10,
+        },
+        pivotValue: {
+            color: Colors.brand.gold,
+            fontSize: 52,
+            fontWeight: Typography.weights.black as any,
+            letterSpacing: 10,
+            fontFamily: 'monospace',
+        },
+        pivotWaiting: {
+            color: colors.textSecondary,
+            fontSize: Typography.sizes.tiny,
+            marginTop: 8,
+            fontStyle: 'italic',
+        },
+        chauffeurCard: {
+            backgroundColor: 'rgba(74, 158, 255, 0.07)',
+            borderRadius: 14,
+            padding: 14,
+            marginBottom: 16,
+            borderWidth: 1,
+            borderColor: 'rgba(74, 158, 255, 0.15)',
+        },
+        chauffeurTitle: {
+            color: Colors.brand.info,
+            fontSize: Typography.sizes.tiny,
+            fontWeight: Typography.weights.black as any,
+            letterSpacing: 1,
+            marginBottom: 6,
+        },
+        chauffeurName: {
+            color: colors.textPrimary,
+            fontSize: Typography.sizes.body,
+            fontWeight: Typography.weights.bold as any,
+            marginBottom: 6,
+        },
+        immatRow: {
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+        },
+        vehicleDesc: {
+            color: colors.textSecondary,
+            fontSize: Typography.sizes.tiny,
+        },
+        immat: {
+            color: Colors.brand.info,
+            fontSize: Typography.sizes.small,
+            fontWeight: Typography.weights.black as any,
+            fontFamily: 'monospace',
+            backgroundColor: 'rgba(74, 158, 255, 0.12)',
+            paddingHorizontal: 8,
+            paddingVertical: 3,
+            borderRadius: 6,
+        },
+        infoRow: { marginBottom: 12 },
+        infoLabel: {
+            color: colors.textSecondary,
+            fontSize: Typography.sizes.tiny,
+            fontWeight: Typography.weights.black as any,
+            letterSpacing: 1,
+            marginBottom: 2,
+        },
+        infoValue: {
+            color: colors.textPrimary,
+            fontSize: Typography.sizes.sub,
+            fontWeight: Typography.weights.semiBold as any,
+        },
+        actionRow: {
+            flexDirection: 'row',
+            gap: 8,
+            marginTop: 16,
+            marginBottom: 12,
+            flexWrap: 'wrap',
+        },
+        actionBtn: {
+            flex: 1,
+            minWidth: 90,
+            backgroundColor: 'rgba(255,255,255,0.05)',
+            paddingVertical: 12,
+            borderRadius: 12,
+            alignItems: 'center',
+            borderWidth: 1,
+            borderColor: 'rgba(255,255,255,0.08)',
+        },
+        actionBtnText: {
+            color: colors.textPrimary,
+            fontSize: Typography.sizes.tiny,
+            fontWeight: Typography.weights.bold as any,
+        },
+        cancelBtn: {
+            marginTop: 4,
+            paddingVertical: 10,
+            alignItems: 'center',
+            borderTopWidth: 1,
+            borderTopColor: 'rgba(255,100,100,0.15)',
+        },
+        cancelBtnText: {
+            color: Colors.brand.error,
+            fontSize: Typography.sizes.tiny,
+            fontWeight: Typography.weights.bold as any,
+        },
+        emptyCard: {
+            backgroundColor: colors.card,
+            borderRadius: 20,
+            padding: 32,
+            alignItems: 'center',
+            marginBottom: 32,
+        },
+        emptyText: {
+            color: colors.textSecondary,
+            marginBottom: 20,
+            fontSize: Typography.sizes.sub,
+        },
+        orderBtn: {
+            backgroundColor: Colors.brand.gold,
+            paddingHorizontal: 20,
+            paddingVertical: 14,
+            borderRadius: 14,
+        },
+        orderBtnText: {
+            color: '#101018',
+            fontWeight: Typography.weights.black as any,
+            fontSize: Typography.sizes.sub,
+        },
+        sectionTitle: {
+            color: colors.textSecondary,
+            fontSize: Typography.sizes.tiny,
+            fontWeight: Typography.weights.black as any,
+            letterSpacing: 2,
+            marginBottom: 16,
+        },
+        historyCard: {
+            backgroundColor: colors.card,
+            borderRadius: 16,
+            padding: 16,
+            marginBottom: 12,
+        },
+        historyHeader: {
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            marginBottom: 6,
+        },
+        historyRef: {
+            color: colors.textPrimary,
+            fontWeight: Typography.weights.bold as any,
+            fontSize: Typography.sizes.sub,
+            fontFamily: 'monospace',
+        },
+        historyDate: {
+            color: colors.textSecondary,
+            fontSize: Typography.sizes.tiny,
+        },
+        historyAddress: {
+            color: colors.textSecondary,
+            fontSize: Typography.sizes.tiny,
+            marginBottom: 12,
+        },
+        historyFooter: {
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            borderTopWidth: 1,
+            borderTopColor: 'rgba(255,255,255,0.05)',
+            paddingTop: 12,
+        },
+        historyStatus: {
+            fontSize: Typography.sizes.tiny,
+            fontWeight: Typography.weights.bold as any,
+        },
+        historyRight: { alignItems: 'flex-end' },
+        historyPrice: {
+            color: colors.textPrimary,
+            fontWeight: Typography.weights.black as any,
+            fontSize: Typography.sizes.sub,
+        },
+        historyPoints: {
+            color: Colors.brand.gold,
+            fontSize: Typography.sizes.tiny,
+            fontWeight: Typography.weights.bold as any,
+            marginTop: 2,
+        },
+        noHistory: {
+            color: colors.textSecondary,
+            textAlign: 'center',
+            marginTop: 20,
+            fontSize: Typography.sizes.sub,
+        },
+    });
+}

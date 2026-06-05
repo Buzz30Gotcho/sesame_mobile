@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { SafeAreaView, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as Notifications from 'expo-notifications';
 
 import { AuthProvider } from './src/context/AuthContext';
 import { ThemeProvider } from './src/context/ThemeContext';
@@ -28,12 +30,6 @@ import ChauffeurCoursesScreen from './src/screens/ChauffeurCoursesScreen';
 import ChauffeurProfileScreen from './src/screens/ChauffeurProfileScreen';
 import ChauffeurRevenusScreen from './src/screens/ChauffeurRevenusScreen';
 
-import AdminDashboardScreen from './src/screens/AdminDashboardScreen';
-import AdminAmbassadeursScreen from './src/screens/AdminAmbassadeursScreen';
-import AdminChauffeursScreen from './src/screens/AdminChauffeursScreen';
-import AdminCoursesScreen from './src/screens/AdminCoursesScreen';
-import AdminBlacklistScreen from './src/screens/AdminBlacklistScreen';
-
 import FournisseurScreen from './src/screens/FournisseurScreen';
 import ChatScreen from './src/screens/ChatScreen';
 
@@ -42,12 +38,48 @@ import type { RootStackParamList } from './src/types';
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function App() {
+    const notificationListener = useRef<Notifications.EventSubscription | null>(null);
+    const responseListener = useRef<Notifications.EventSubscription | null>(null);
+
+    useEffect(() => {
+        // Configurer le handler de notifications
+        Notifications.setNotificationHandler({
+            handleNotification: async () => ({
+                shouldShowAlert: true,
+                shouldPlaySound: true,
+                shouldSetBadge: true,
+                shouldShowBanner: true,
+                shouldShowList: true,
+            }),
+        });
+
+        // Listener pour les notifications reçues en foreground
+        notificationListener.current = Notifications.addNotificationReceivedListener((_notification) => {
+            // Notification reçue — pas d'action supplémentaire par défaut
+        });
+
+        // Listener pour quand l'utilisateur appuie sur une notification
+        responseListener.current = Notifications.addNotificationResponseReceivedListener((_response) => {
+            // L'utilisateur a appuyé sur la notification — navigation possible ici si besoin
+        });
+
+        return () => {
+            if (notificationListener.current) {
+                notificationListener.current.remove();
+            }
+            if (responseListener.current) {
+                responseListener.current.remove();
+            }
+        };
+    }, []);
+
     return (
+        <SafeAreaProvider>
         <ThemeProvider>
             <LanguageProvider>
                 <AuthProvider>
                     <NavigationContainer>
-                        <SafeAreaView style={styles.safeArea}>
+                        <View style={styles.safeArea}>
                             <Stack.Navigator id="Main" initialRouteName="Login" screenOptions={{ headerShown: false }}>
                                 <Stack.Screen name="Login" component={LoginScreen} />
                                 <Stack.Screen name="Register" component={RegisterScreen} />
@@ -59,7 +91,7 @@ export default function App() {
                                 <Stack.Screen name="AmbassadorCommander" component={AmbassadorCommanderScreen} />
                                 <Stack.Screen name="AmbassadorBoutique" component={AmbassadorBoutiqueScreen} />
                                 <Stack.Screen name="AmbassadorBonsCadeaux" component={AmbassadorBonsCadeauxScreen} />
-                                <Stack.Screen name="AmbassadorQRCode" component={AmbassadorQRCodeScreen} />
+                                <Stack.Screen name="AmbassadorQRCode" component={AmbassadorQRCodeScreen} options={{ animation: 'slide_from_bottom' }} />
                                 <Stack.Screen name="AmbassadorParrainage" component={AmbassadorParrainageScreen} />
                                 <Stack.Screen name="AmbassadorProfil" component={AmbassadorProfilScreen} />
                                 <Stack.Screen name="AmbassadorNiveaux" component={AmbassadorNiveauxScreen} />
@@ -72,22 +104,16 @@ export default function App() {
                                 <Stack.Screen name="ChauffeurProfile" component={ChauffeurProfileScreen} />
                                 <Stack.Screen name="ChauffeurRevenus" component={ChauffeurRevenusScreen} />
 
-                                {/* Admin */}
-                                <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} />
-                                <Stack.Screen name="AdminAmbassadeurs" component={AdminAmbassadeursScreen} />
-                                <Stack.Screen name="AdminChauffeurs" component={AdminChauffeursScreen} />
-                                <Stack.Screen name="AdminCourses" component={AdminCoursesScreen} />
-                                <Stack.Screen name="AdminBlacklist" component={AdminBlacklistScreen} />
-
                                 {/* Fournisseur & Chat */}
                                 <Stack.Screen name="FournisseurValidation" component={FournisseurScreen} />
                                 <Stack.Screen name="Chat" component={ChatScreen} />
                             </Stack.Navigator>
-                        </SafeAreaView>
+                        </View>
                     </NavigationContainer>
                 </AuthProvider>
             </LanguageProvider>
         </ThemeProvider>
+        </SafeAreaProvider>
     );
 }
 

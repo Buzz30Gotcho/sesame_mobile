@@ -1,29 +1,61 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, SafeAreaView, StatusBar } from 'react-native';
+import React, { useEffect, useState, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, StatusBar } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
-import { getAmbassadorDashboard } from '../services/api';
+import { useTheme } from '../context/ThemeContext';
+import { useLang } from '../context/LanguageContext';
+import { getAmbassadorDashboard, getAdminParameters, getCommissions } from '../services/api';
 import PointsRing from '../components/PointsRing';
 import BottomNav from '../components/BottomNav';
 import { Colors, Typography } from '../theme';
 import type { RootStackParamList, AmbassadorDashboard } from '../types';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
+let _dashboardCache: AmbassadorDashboard | null = null;
+
 export default function AmbassadorAccueilScreen() {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'AmbassadorAccueil'>>();
-    const { ambassadorId } = useAuth();
-    const [dashboard, setDashboard] = useState<AmbassadorDashboard | null>(null);
-    const [loading, setLoading] = useState(true);
+    const { ambassadorId, typeAmbassadeur } = useAuth();
+    const { colors } = useTheme();
+    const { t } = useLang();
+    const styles = useMemo(() => makeStyles(colors), [colors]);
+    const [dashboard, setDashboard] = useState<AmbassadorDashboard | null>(_dashboardCache);
+    const [loading, setLoading] = useState(_dashboardCache === null);
     const [error, setError] = useState<string | null>(null);
+    const [isImmediateEnabled, setIsImmediateEnabled] = useState(true);
+    const [commissionDuMois, setCommissionDuMois] = useState<number | null>(null);
 
     useEffect(() => {
         async function load() {
             if (!ambassadorId) return;
             try {
-                const response = await getAmbassadorDashboard(ambassadorId);
-                setDashboard(response.data);
+                const [dashRes, paramsRes] = await Promise.all([
+                    getAmbassadorDashboard(ambassadorId),
+                    getAdminParameters(),
+                ]);
+                _dashboardCache = dashRes.data;
+                setDashboard(dashRes.data);
+
+                const p: Record<string, string> = {};
+                paramsRes.data.forEach((item: any) => { p[item.cle] = item.valeur; });
+                setIsImmediateEnabled(p.mode_course_immediate === 'true');
+
+                if (typeAmbassadeur === 'moral') {
+                    try {
+                        const commRes = await getCommissions(ambassadorId);
+                        const mois = commRes.data.mois;
+                        if (mois && mois.length > 0) {
+                            setCommissionDuMois(Number(mois[0].commission));
+                        } else {
+                            setCommissionDuMois(0);
+                        }
+                    } catch {
+                        setCommissionDuMois(0);
+                    }
+                }
             } catch {
-                setError('Impossible de récupérer les données.');
+                setError(t('impossible_donnees'));
             } finally {
                 setLoading(false);
             }
@@ -31,7 +63,7 @@ export default function AmbassadorAccueilScreen() {
         load();
         const interval = setInterval(load, 10000);
         return () => clearInterval(interval);
-    }, [ambassadorId]);
+    }, [ambassadorId, typeAmbassadeur]);
 
     const activeCourse = dashboard?.active_courses.find(c => ['recherche', 'acceptee', 'en_route', 'code_valide'].includes(c.statut || ''));
 
@@ -43,22 +75,24 @@ export default function AmbassadorAccueilScreen() {
         );
     }
 
+    const isMoral = typeAmbassadeur === 'moral';
+
     return (
-        <SafeAreaView style={styles.safeArea}>
-            <StatusBar barStyle="light-content" />
-            
+        <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+            <StatusBar barStyle={colors.background === '#101018' ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
+
             {/* Active Course Banner - PIVOT CONTEXT (Rule 1.4 & 9.0) */}
             {activeCourse && (
-                <TouchableOpacity 
+                <TouchableOpacity
                     style={styles.activeBanner}
                     onPress={() => navigation.navigate('AmbassadorHome')}
                 >
                     <View>
-                        <Text style={styles.bannerTitle}>Course active</Text>
+                        <Text style={styles.bannerTitle}>{t('en_cours_label')}</Text>
                         <Text style={styles.bannerSub}>{activeCourse.reference} • {activeCourse.statut?.toUpperCase()}</Text>
                     </View>
                     <View style={styles.bannerCode}>
-                        <Text style={styles.bannerCodeText}>CODE PIVOT</Text>
+                        <Text style={styles.bannerCodeText}>{t('code_client_pivot')}</Text>
                         <Text style={styles.bannerCodeValue}>{activeCourse.code_validation || '----'}</Text>
                     </View>
                 </TouchableOpacity>
@@ -66,59 +100,116 @@ export default function AmbassadorAccueilScreen() {
 
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 <View style={styles.header}>
-                    <Text style={styles.welcomeText}>Bonjour {dashboard?.prenom} 👋</Text>
+                    <Text style={styles.welcomeText}>{t('bonjour')} {dashboard?.prenom}</Text>
                     <View style={styles.pointsBadge}>
                         <Text style={styles.pointsBadgeText}>{dashboard?.points_solde} pts</Text>
                     </View>
                 </View>
 
-                {/* Points Ring - Progression Card (Rule 1.3) */}
-                <View style={styles.ringCard}>
-                    <PointsRing 
-                        points={dashboard?.points_solde || 0} 
-                        level={dashboard?.niveau || 'starter'} 
-                        nextLevelPoints={dashboard?.next_level_target || 500} 
-                    />
-                    <Text style={styles.levelLabel}>Niveau {dashboard?.niveau.toUpperCase()}</Text>
-                </View>
+                {/* Affichage différent selon type ambassadeur */}
+                {isMoral ? (
+                    /* Ambassadeur Moral — Commission du mois en grand */
+                    <View style={styles.commissionCard}>
+                        <Text style={styles.commissionLabel}>{t('commission_du_mois')}</Text>
+                        <Text style={styles.commissionValue}>
+                            {commissionDuMois !== null ? `${commissionDuMois.toFixed(2)} €` : '—'}
+                        </Text>
+                        <Text style={styles.commissionSub}>{t('basee_equipe')}</Text>
+                    </View>
+                ) : (
+                    /* Ambassadeur Physique — Points Ring */
+                    <View style={styles.ringCard}>
+                        <PointsRing
+                            points={dashboard?.points_solde || 0}
+                            level={dashboard?.niveau || 'starter'}
+                            nextLevelPoints={dashboard?.next_level_target || 500}
+                        />
+                        <Text style={styles.levelLabel}>{t('niveau_label')} {dashboard?.niveau.toUpperCase()}</Text>
+                    </View>
+                )}
 
-                {/* Main Action - Commander (Section 3.2) */}
-                <TouchableOpacity 
-                    style={styles.mainButton}
-                    onPress={() => navigation.navigate('AmbassadorCommander')}
-                >
-                    <Text style={styles.mainButtonText}>🚗 Commander un véhicule</Text>
-                </TouchableOpacity>
+                {/* Badge mode course */}
+                {isImmediateEnabled ? (
+                    <View style={styles.modeBadgeGreen}>
+                        <Text style={styles.modeBadgeText}>{t('deux_modes_actifs')}</Text>
+                    </View>
+                ) : (
+                    <View style={styles.modeBadgeBlue}>
+                        <Text style={styles.modeBadgeText}>{t('reservation_seul')}</Text>
+                    </View>
+                )}
+
+                {/* Boutons commander */}
+                {isImmediateEnabled ? (
+                    <>
+                        <TouchableOpacity
+                            style={styles.mainButton}
+                            onPress={() => navigation.navigate('AmbassadorCommander', { defaultType: 'immediate' })}
+                        >
+                            <Text style={styles.mainButtonText}>{t('commander_maintenant')}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.reservationButton}
+                            onPress={() => navigation.navigate('AmbassadorCommander', { defaultType: 'reservation' })}
+                        >
+                            <Text style={styles.reservationButtonText}>{t('reserver_avance')}</Text>
+                        </TouchableOpacity>
+                    </>
+                ) : (
+                    <>
+                        <TouchableOpacity
+                            style={styles.reservationButton}
+                            onPress={() => navigation.navigate('AmbassadorCommander', { defaultType: 'reservation' })}
+                        >
+                            <Text style={styles.reservationButtonText}>{t('reserver_avance')}</Text>
+                        </TouchableOpacity>
+                        <View style={styles.disabledButton}>
+                            <Text style={styles.disabledButtonText}>{t('course_immediate_bientot')}</Text>
+                        </View>
+                    </>
+                )}
 
                 {/* Week Stats - Performance Row */}
                 <View style={styles.statsCard}>
-                    <Text style={styles.statsTitle}>PERFORMANCE SEMAINE</Text>
+                    <Text style={styles.statsTitle}>{t('mon_compte')}</Text>
                     <View style={styles.statsGrid}>
                         <View style={styles.statItem}>
                             <Text style={styles.statValue}>{dashboard?.active_course_count || 0}</Text>
-                            <Text style={styles.statLabel}>Courses</Text>
+                            <Text style={styles.statLabel}>{t('en_cours_label')}</Text>
                         </View>
                         <View style={styles.statItem}>
-                            <Text style={[styles.statValue, { color: Colors.brand.gold }]}>+8</Text>
-                            <Text style={styles.statLabel}>Points</Text>
+                            <Text style={[styles.statValue, { color: Colors.brand.gold }]}>{dashboard?.points_solde || 0}</Text>
+                            <Text style={styles.statLabel}>{t('points')}</Text>
                         </View>
                         <View style={styles.statItem}>
-                            <Text style={[styles.statValue, { color: Colors.brand.success }]}>100%</Text>
-                            <Text style={styles.statLabel}>Qualité</Text>
+                            <Text style={[styles.statValue, { color: Colors.brand.warning }]}>{dashboard?.pending_bons_count || 0}</Text>
+                            <Text style={styles.statLabel}>{t('bons_attente_label')}</Text>
                         </View>
                     </View>
                 </View>
 
-                {/* Simplified Grid - No double Profil, No double Boutique (aligned with Section 3.1) */}
+                {/* Quick links */}
                 <View style={styles.quickLinks}>
                     <TouchableOpacity style={styles.linkCard} onPress={() => navigation.navigate('AmbassadorParrainage')}>
                         <Text style={styles.linkEmoji}>🤝</Text>
-                        <Text style={styles.linkLabel}>Parrainage</Text>
+                        <Text style={styles.linkLabel}>{t('parrainage')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.linkCard} onPress={() => navigation.navigate('AmbassadorBonsCadeaux')}>
                         <Text style={styles.linkEmoji}>🎫</Text>
-                        <Text style={styles.linkLabel}>Mes Bons</Text>
+                        <Text style={styles.linkLabel}>{t('mes_bons')}</Text>
                     </TouchableOpacity>
+                    {isMoral && (
+                        <>
+                            <TouchableOpacity style={styles.linkCard} onPress={() => navigation.navigate('AmbassadorCommissions')}>
+                                <Text style={styles.linkEmoji}>💶</Text>
+                                <Text style={styles.linkLabel}>{t('commissions')}</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.linkCard} onPress={() => navigation.navigate('AmbassadorEquipe')}>
+                                <Text style={styles.linkEmoji}>👥</Text>
+                                <Text style={styles.linkLabel}>{t('equipe')}</Text>
+                            </TouchableOpacity>
+                        </>
+                    )}
                 </View>
 
             </ScrollView>
@@ -128,169 +219,248 @@ export default function AmbassadorAccueilScreen() {
     );
 }
 
-const styles = StyleSheet.create({
-    safeArea: {
-        flex: 1,
-        backgroundColor: Colors.nocturne.background,
-    },
-    container: {
-        flex: 1,
-        backgroundColor: Colors.nocturne.background,
-    },
-    center: {
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    activeBanner: {
-        backgroundColor: 'rgba(201, 168, 76, 0.15)',
-        borderBottomWidth: 1,
-        borderBottomColor: 'rgba(201, 168, 76, 0.3)',
-        paddingHorizontal: 20,
-        paddingVertical: 12,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-    bannerTitle: {
-        color: Colors.brand.gold,
-        fontSize: Typography.sizes.small,
-        fontWeight: Typography.weights.black as any,
-        textTransform: 'uppercase',
-    },
-    bannerSub: {
-        color: Colors.nocturne.textSecondary,
-        fontSize: Typography.sizes.small,
-        marginTop: 2,
-    },
-    bannerCode: {
-        backgroundColor: Colors.nocturne.card,
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 8,
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: Colors.brand.gold,
-    },
-    bannerCodeText: {
-        color: Colors.nocturne.textSecondary,
-        fontSize: Typography.sizes.tiny,
-        fontWeight: Typography.weights.bold as any,
-    },
-    bannerCodeValue: {
-        color: Colors.brand.gold,
-        fontSize: Typography.sizes.body,
-        fontWeight: Typography.weights.black as any,
-        fontFamily: 'monospace',
-    },
-    scrollContent: {
-        paddingHorizontal: 20,
-        paddingTop: 20,
-        paddingBottom: 100,
-    },
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 20,
-    },
-    welcomeText: {
-        color: '#FFFFFF',
-        fontSize: Typography.sizes.header,
-        fontWeight: Typography.weights.bold as any,
-    },
-    pointsBadge: {
-        backgroundColor: 'rgba(201, 168, 76, 0.15)',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 20,
-    },
-    pointsBadgeText: {
-        color: Colors.brand.gold,
-        fontWeight: Typography.weights.bold as any,
-        fontSize: Typography.sizes.sub,
-    },
-    ringCard: {
-        backgroundColor: Colors.nocturne.card,
-        borderRadius: 24,
-        paddingVertical: 20,
-        alignItems: 'center',
-        marginBottom: 20,
-    },
-    levelLabel: {
-        color: Colors.brand.gold,
-        fontSize: Typography.sizes.small,
-        fontWeight: Typography.weights.black as any,
-        marginTop: 10,
-        letterSpacing: 1,
-    },
-    mainButton: {
-        backgroundColor: Colors.brand.gold,
-        borderRadius: 16,
-        paddingVertical: 18,
-        alignItems: 'center',
-        marginBottom: 20,
-    },
-    mainButtonText: {
-        color: '#09090F',
-        fontSize: Typography.sizes.body,
-        fontWeight: Typography.weights.black as any,
-    },
-    statsCard: {
-        backgroundColor: Colors.nocturne.card,
-        borderRadius: 18,
-        padding: 18,
-        marginBottom: 20,
-    },
-    statsTitle: {
-        color: Colors.nocturne.textSecondary,
-        fontSize: Typography.sizes.tiny,
-        fontWeight: Typography.weights.bold as any,
-        letterSpacing: 1,
-        marginBottom: 16,
-    },
-    statsGrid: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-    },
-    statItem: {
-        alignItems: 'center',
-        flex: 1,
-    },
-    statValue: {
-        color: '#FFFFFF',
-        fontSize: Typography.sizes.title,
-        fontWeight: Typography.weights.black as any,
-        marginBottom: 4,
-    },
-    statLabel: {
-        color: Colors.nocturne.textSecondary,
-        fontSize: Typography.sizes.tiny,
-    },
-    quickLinks: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        justifyContent: 'space-between',
-    },
-    linkCard: {
-        backgroundColor: Colors.nocturne.card,
-        width: '48%',
-        borderRadius: 18,
-        padding: 16,
-        marginBottom: 16,
-        alignItems: 'center',
-    },
-    linkEmoji: {
-        fontSize: Typography.sizes.title,
-        marginBottom: 8,
-    },
-    linkLabel: {
-        color: Colors.nocturne.textPrimary,
-        fontSize: Typography.sizes.sub,
-        fontWeight: Typography.weights.bold as any,
-        textAlign: 'center',
-    },
-    errorText: {
-        color: Colors.brand.error,
-        marginTop: 16,
-    },
-});
+function makeStyles(colors: typeof Colors.nocturne) {
+    return StyleSheet.create({
+        safeArea: {
+            flex: 1,
+            backgroundColor: colors.background,
+        },
+        container: {
+            flex: 1,
+            backgroundColor: colors.background,
+        },
+        center: {
+            justifyContent: 'center',
+            alignItems: 'center',
+        },
+        activeBanner: {
+            backgroundColor: 'rgba(201, 168, 76, 0.15)',
+            borderBottomWidth: 1,
+            borderBottomColor: 'rgba(201, 168, 76, 0.3)',
+            paddingHorizontal: 20,
+            paddingVertical: 12,
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+        },
+        bannerTitle: {
+            color: Colors.brand.gold,
+            fontSize: Typography.sizes.small,
+            fontWeight: Typography.weights.black as any,
+            textTransform: 'uppercase',
+        },
+        bannerSub: {
+            color: colors.textSecondary,
+            fontSize: Typography.sizes.small,
+            marginTop: 2,
+        },
+        bannerCode: {
+            backgroundColor: colors.card,
+            paddingHorizontal: 12,
+            paddingVertical: 6,
+            borderRadius: 8,
+            alignItems: 'center',
+            borderWidth: 1,
+            borderColor: Colors.brand.gold,
+        },
+        bannerCodeText: {
+            color: colors.textSecondary,
+            fontSize: Typography.sizes.tiny,
+            fontWeight: Typography.weights.bold as any,
+        },
+        bannerCodeValue: {
+            color: Colors.brand.gold,
+            fontSize: Typography.sizes.body,
+            fontWeight: Typography.weights.black as any,
+            fontFamily: 'monospace',
+        },
+        scrollContent: {
+            paddingHorizontal: 20,
+            paddingTop: 20,
+            paddingBottom: 120,
+        },
+        header: {
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 20,
+        },
+        welcomeText: {
+            color: colors.textPrimary,
+            fontSize: Typography.sizes.header,
+            fontWeight: Typography.weights.bold as any,
+        },
+        pointsBadge: {
+            backgroundColor: 'rgba(201, 168, 76, 0.15)',
+            paddingHorizontal: 12,
+            paddingVertical: 6,
+            borderRadius: 20,
+        },
+        pointsBadgeText: {
+            color: Colors.brand.gold,
+            fontWeight: Typography.weights.bold as any,
+            fontSize: Typography.sizes.sub,
+        },
+        ringCard: {
+            backgroundColor: colors.card,
+            borderRadius: 24,
+            paddingVertical: 20,
+            alignItems: 'center',
+            marginBottom: 16,
+        },
+        levelLabel: {
+            color: Colors.brand.gold,
+            fontSize: Typography.sizes.small,
+            fontWeight: Typography.weights.black as any,
+            marginTop: 10,
+            letterSpacing: 1,
+        },
+        commissionCard: {
+            backgroundColor: colors.card,
+            borderRadius: 24,
+            paddingVertical: 28,
+            alignItems: 'center',
+            marginBottom: 16,
+            borderWidth: 1,
+            borderColor: 'rgba(201, 168, 76, 0.2)',
+        },
+        commissionLabel: {
+            color: colors.textSecondary,
+            fontSize: Typography.sizes.tiny,
+            fontWeight: Typography.weights.black as any,
+            letterSpacing: 2,
+            marginBottom: 8,
+        },
+        commissionValue: {
+            color: Colors.brand.gold,
+            fontSize: Typography.sizes.giant,
+            fontWeight: Typography.weights.black as any,
+            marginBottom: 6,
+        },
+        commissionSub: {
+            color: colors.textSecondary,
+            fontSize: Typography.sizes.small,
+        },
+        modeBadgeGreen: {
+            alignSelf: 'center',
+            backgroundColor: 'rgba(76, 175, 130, 0.15)',
+            borderRadius: 20,
+            paddingHorizontal: 14,
+            paddingVertical: 5,
+            marginBottom: 12,
+            borderWidth: 1,
+            borderColor: 'rgba(76, 175, 130, 0.3)',
+        },
+        modeBadgeBlue: {
+            alignSelf: 'center',
+            backgroundColor: 'rgba(74, 158, 255, 0.15)',
+            borderRadius: 20,
+            paddingHorizontal: 14,
+            paddingVertical: 5,
+            marginBottom: 12,
+            borderWidth: 1,
+            borderColor: 'rgba(74, 158, 255, 0.3)',
+        },
+        modeBadgeText: {
+            color: colors.textPrimary,
+            fontSize: Typography.sizes.tiny,
+            fontWeight: Typography.weights.black as any,
+            letterSpacing: 1,
+        },
+        mainButton: {
+            backgroundColor: Colors.brand.gold,
+            borderRadius: 16,
+            paddingVertical: 18,
+            alignItems: 'center',
+            marginBottom: 12,
+        },
+        mainButtonText: {
+            color: '#09090F',
+            fontSize: Typography.sizes.body,
+            fontWeight: Typography.weights.black as any,
+        },
+        reservationButton: {
+            backgroundColor: Colors.brand.info,
+            borderRadius: 16,
+            paddingVertical: 18,
+            alignItems: 'center',
+            marginBottom: 12,
+        },
+        reservationButtonText: {
+            color: '#FFFFFF',
+            fontSize: Typography.sizes.body,
+            fontWeight: Typography.weights.black as any,
+        },
+        disabledButton: {
+            backgroundColor: colors.card,
+            borderRadius: 16,
+            paddingVertical: 18,
+            alignItems: 'center',
+            marginBottom: 20,
+            opacity: 0.4,
+        },
+        disabledButtonText: {
+            color: colors.textSecondary,
+            fontSize: Typography.sizes.body,
+            fontWeight: Typography.weights.bold as any,
+        },
+        statsCard: {
+            backgroundColor: colors.card,
+            borderRadius: 18,
+            padding: 18,
+            marginBottom: 20,
+        },
+        statsTitle: {
+            color: colors.textSecondary,
+            fontSize: Typography.sizes.tiny,
+            fontWeight: Typography.weights.bold as any,
+            letterSpacing: 1,
+            marginBottom: 16,
+        },
+        statsGrid: {
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+        },
+        statItem: {
+            alignItems: 'center',
+            flex: 1,
+        },
+        statValue: {
+            color: colors.textPrimary,
+            fontSize: Typography.sizes.title,
+            fontWeight: Typography.weights.black as any,
+            marginBottom: 4,
+        },
+        statLabel: {
+            color: colors.textSecondary,
+            fontSize: Typography.sizes.tiny,
+        },
+        quickLinks: {
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            justifyContent: 'space-between',
+        },
+        linkCard: {
+            backgroundColor: colors.card,
+            width: '48%',
+            borderRadius: 18,
+            padding: 16,
+            marginBottom: 16,
+            alignItems: 'center',
+        },
+        linkEmoji: {
+            fontSize: Typography.sizes.title,
+            marginBottom: 8,
+        },
+        linkLabel: {
+            color: colors.textPrimary,
+            fontSize: Typography.sizes.sub,
+            fontWeight: Typography.weights.bold as any,
+            textAlign: 'center',
+        },
+        errorText: {
+            color: Colors.brand.error,
+            marginTop: 16,
+        },
+    });
+}

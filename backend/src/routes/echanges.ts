@@ -5,7 +5,9 @@ import { calculatePoints } from '../lib/rules';
 const router = express.Router();
 
 function makeReference(prefix: string) {
-    return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    const ts = Date.now().toString().slice(-8);
+    const rand = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    return `${prefix}-${ts}-${rand}`;
 }
 
 router.post('/creer', async (req, res) => {
@@ -55,7 +57,14 @@ router.post('/creer', async (req, res) => {
 
 router.get('/mes-bons', async (req, res) => {
     const { ambassadeur_id } = req.query;
-    const result = await query('SELECT * FROM echanges WHERE ambassadeur_id = $1 ORDER BY remis_at DESC NULLS LAST', [ambassadeur_id]);
+    const result = await query(
+        `SELECT e.*, o.nom AS nom_offre
+         FROM echanges e
+         LEFT JOIN offres_boutique o ON o.id = e.offre_id
+         WHERE e.ambassadeur_id = $1
+         ORDER BY e.remis_at DESC NULLS LAST`,
+        [ambassadeur_id]
+    );
     res.json(result.rows);
 });
 

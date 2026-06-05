@@ -1,12 +1,13 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, StatusBar, TouchableOpacity } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import React, { useEffect, useState, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, StatusBar, TouchableOpacity, Linking, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
-import { getChauffeurCourses } from '../services/api';
-import { Colors } from '../theme';
+import { useTheme } from '../context/ThemeContext';
+import { useLang } from '../context/LanguageContext';
+import { getChauffeurCourses, getChauffeurBillingPortal } from '../services/api';
+import { Colors, Typography } from '../theme';
 import BottomNav from '../components/BottomNav';
-import type { RootStackParamList, ActiveCourse } from '../types';
+import type { ActiveCourse } from '../types';
 
 type Periode = 'jour' | 'semaine' | 'mois';
 
@@ -27,11 +28,15 @@ function isInPeriod(date: string | undefined, periode: Periode): boolean {
 }
 
 export default function ChauffeurRevenusScreen() {
-    const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const { chauffeurId } = useAuth();
+    const { colors } = useTheme();
+    const { t } = useLang();
     const [courses, setCourses] = useState<ActiveCourse[]>([]);
     const [periode, setPeriode] = useState<Periode>('semaine');
     const [loading, setLoading] = useState(true);
+    const [portalLoading, setPortalLoading] = useState(false);
+
+    const styles = useMemo(() => makeStyles(colors), [colors]);
 
     useEffect(() => {
         if (!chauffeurId) return;
@@ -45,10 +50,10 @@ export default function ChauffeurRevenusScreen() {
     const nbCourses = filtered.length;
 
     return (
-        <SafeAreaView style={styles.safe}>
-            <StatusBar barStyle="light-content" backgroundColor={Colors.nocturne.background} />
+        <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+            <StatusBar barStyle="light-content" backgroundColor={colors.background} />
             <ScrollView contentContainerStyle={styles.scroll}>
-                <Text style={styles.title}>Revenus</Text>
+                <Text style={styles.title}>{t('revenus')}</Text>
 
                 {/* Sélecteur période */}
                 <View style={styles.tabs}>
@@ -73,11 +78,10 @@ export default function ChauffeurRevenusScreen() {
                     </View>
                     <View style={styles.kpiCard}>
                         <Text style={styles.kpiValue}>{nbCourses}</Text>
-                        <Text style={styles.kpiLabel}>courses</Text>
+                        <Text style={styles.kpiLabel}>{t('courses')}</Text>
                     </View>
                 </View>
 
-                {/* Graphique simplifié — barres par jour */}
                 {nbCourses > 0 && (
                     <View style={styles.section}>
                         <Text style={styles.sectionTitle}>Détail par course</Text>
@@ -106,48 +110,71 @@ export default function ChauffeurRevenusScreen() {
                     <Text style={styles.empty}>Aucune course terminée sur cette période.</Text>
                 )}
 
-                {/* Lien Stripe discret */}
-                <TouchableOpacity style={styles.stripeLink}>
-                    <Text style={styles.stripeLinkText}>Mes factures → Stripe</Text>
+                {/* Portail de facturation Stripe */}
+                <TouchableOpacity
+                    style={styles.stripeLink}
+                    disabled={portalLoading}
+                    onPress={async () => {
+                        if (!chauffeurId) return;
+                        setPortalLoading(true);
+                        try {
+                            const r = await getChauffeurBillingPortal(chauffeurId);
+                            await Linking.openURL(r.data.url);
+                        } catch { /* Ignorer */ } finally {
+                            setPortalLoading(false);
+                        }
+                    }}
+                >
+                    {portalLoading
+                        ? <ActivityIndicator size="small" color={colors.textSecondary} />
+                        : <Text style={styles.stripeLinkText}>Mes factures → Stripe</Text>
+                    }
                 </TouchableOpacity>
             </ScrollView>
-            <BottomNav role="chauffeur" active="revenus" navigation={navigation} />
+            <BottomNav role="chauffeur" />
         </SafeAreaView>
     );
 }
 
-const styles = StyleSheet.create({
-    safe: { flex: 1, backgroundColor: Colors.nocturne.background },
-    scroll: { padding: 20, paddingBottom: 100 },
-    title: { fontSize: 24, fontWeight: '700', color: Colors.brand.gold, marginBottom: 20 },
-    tabs: { flexDirection: 'row', gap: 8, marginBottom: 24 },
-    tab: {
-        flex: 1, paddingVertical: 10, borderRadius: 8,
-        backgroundColor: Colors.nocturne.card, alignItems: 'center',
-    },
-    tabActive: { backgroundColor: Colors.brand.gold },
-    tabText: { color: Colors.nocturne.textSecondary, fontWeight: '600' },
-    tabTextActive: { color: '#101018' },
-    kpiRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
-    kpiCard: {
-        flex: 1, backgroundColor: Colors.nocturne.card,
-        borderRadius: 12, padding: 20, alignItems: 'center',
-    },
-    kpiValue: { fontSize: 26, fontWeight: '700', color: Colors.nocturne.textPrimary },
-    kpiLabel: { fontSize: 12, color: Colors.nocturne.textSecondary, marginTop: 4 },
-    section: { backgroundColor: Colors.nocturne.card, borderRadius: 12, padding: 16, marginBottom: 16 },
-    sectionTitle: { fontSize: 14, color: Colors.nocturne.textSecondary, marginBottom: 12 },
-    courseRow: {
-        flexDirection: 'row', justifyContent: 'space-between',
-        alignItems: 'center', paddingVertical: 10,
-        borderBottomWidth: 1, borderBottomColor: '#1E1E30',
-    },
-    courseLeft: { flex: 1, marginRight: 12 },
-    courseRef: { fontSize: 13, fontWeight: '600', color: Colors.nocturne.textPrimary },
-    courseAddr: { fontSize: 11, color: Colors.nocturne.textSecondary, marginTop: 2 },
-    courseDate: { fontSize: 11, color: Colors.nocturne.textSecondary, marginTop: 2 },
-    courseMontant: { fontSize: 15, fontWeight: '700', color: Colors.brand.success },
-    empty: { textAlign: 'center', color: Colors.nocturne.textSecondary, marginTop: 40 },
-    stripeLink: { marginTop: 32, alignItems: 'center' },
-    stripeLinkText: { color: Colors.nocturne.textSecondary, fontSize: 12, textDecorationLine: 'underline' },
-});
+function makeStyles(colors: typeof Colors.nocturne) {
+    return StyleSheet.create({
+        safe: { flex: 1, backgroundColor: colors.background },
+        scroll: { padding: 20, paddingBottom: 120 },
+        title: {
+            fontSize: Typography.sizes.title,
+            fontWeight: Typography.weights.black as any,
+            color: Colors.brand.gold,
+            marginBottom: 20,
+        },
+        tabs: { flexDirection: 'row', gap: 8, marginBottom: 24 },
+        tab: {
+            flex: 1, paddingVertical: 10, borderRadius: 8,
+            backgroundColor: colors.card, alignItems: 'center',
+        },
+        tabActive: { backgroundColor: Colors.brand.gold },
+        tabText: { color: colors.textSecondary, fontWeight: Typography.weights.semiBold as any },
+        tabTextActive: { color: '#101018' },
+        kpiRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
+        kpiCard: {
+            flex: 1, backgroundColor: colors.card,
+            borderRadius: 12, padding: 20, alignItems: 'center',
+        },
+        kpiValue: { fontSize: 26, fontWeight: Typography.weights.bold as any, color: colors.textPrimary },
+        kpiLabel: { fontSize: 12, color: colors.textSecondary, marginTop: 4 },
+        section: { backgroundColor: colors.card, borderRadius: 12, padding: 16, marginBottom: 16 },
+        sectionTitle: { fontSize: 14, color: colors.textSecondary, marginBottom: 12 },
+        courseRow: {
+            flexDirection: 'row', justifyContent: 'space-between',
+            alignItems: 'center', paddingVertical: 10,
+            borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)',
+        },
+        courseLeft: { flex: 1, marginRight: 12 },
+        courseRef: { fontSize: 13, fontWeight: Typography.weights.semiBold as any, color: colors.textPrimary },
+        courseAddr: { fontSize: 11, color: colors.textSecondary, marginTop: 2 },
+        courseDate: { fontSize: 11, color: colors.textSecondary, marginTop: 2 },
+        courseMontant: { fontSize: 15, fontWeight: Typography.weights.bold as any, color: Colors.brand.success },
+        empty: { textAlign: 'center', color: colors.textSecondary, marginTop: 40 },
+        stripeLink: { marginTop: 32, alignItems: 'center' },
+        stripeLinkText: { color: colors.textSecondary, fontSize: 12, textDecorationLine: 'underline' },
+    });
+}
