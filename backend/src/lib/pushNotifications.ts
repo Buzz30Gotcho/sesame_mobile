@@ -3,7 +3,7 @@ import admin from 'firebase-admin';
 import path from 'path';
 
 // Initialisation Firebase Admin SDK
-const serviceAccountPath = path.join(__dirname, '../../sesame-708a3-firebase-adminsdk-fbsvc-0f6ec43f57.json');
+const serviceAccountPath = path.join(__dirname, '../../sesame-708a3-firebase-adminsdk-fbsvc-038ce93144.json');
 try {
     if (!admin.apps.length) {
         admin.initializeApp({

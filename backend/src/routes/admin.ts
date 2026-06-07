@@ -213,7 +213,6 @@ router.put('/documents/:id/valider', async (req, res) => {
         `UPDATE documents_chauffeur SET statut = 'valide' WHERE id = $1`,
         [req.params.id]
     );
-    // Vérifie si tous les docs obligatoires sont validés
     const doc = await query('SELECT chauffeur_id FROM documents_chauffeur WHERE id = $1', [req.params.id]);
     const chauffeurId = doc.rows[0]?.chauffeur_id;
     if (chauffeurId) {
@@ -225,6 +224,33 @@ router.put('/documents/:id/valider', async (req, res) => {
         const tousValides = docsOblig.every(t => valid.rows.some((r: any) => r.type === t));
         if (tousValides) {
             await query('UPDATE chauffeurs SET documents_valides = true WHERE id = $1', [chauffeurId]);
+            // Notification KYC complet
+            try {
+                const tokenRow = await query('SELECT push_token FROM chauffeurs WHERE id = $1', [chauffeurId]);
+                const pushToken = tokenRow.rows[0]?.push_token;
+                if (pushToken) {
+                    await sendPushNotification(
+                        pushToken,
+                        'Profil validé !',
+                        'Tous vos documents ont été approuvés. Vous pouvez accepter des courses.',
+                        { type: 'kyc_valide' }
+                    );
+                }
+            } catch { /* Non bloquant */ }
+        } else {
+            // Notification document individuel validé
+            try {
+                const tokenRow = await query('SELECT push_token FROM chauffeurs WHERE id = $1', [chauffeurId]);
+                const pushToken = tokenRow.rows[0]?.push_token;
+                if (pushToken) {
+                    await sendPushNotification(
+                        pushToken,
+                        'Document approuvé',
+                        'Un de vos documents a été validé. Déposez les documents restants.',
+                        { type: 'kyc_doc_valide' }
+                    );
+                }
+            } catch { /* Non bloquant */ }
         }
     }
     res.json({ success: true });
@@ -240,6 +266,19 @@ router.put('/documents/:id/refuser', async (req, res) => {
     const chauffeurId = doc.rows[0]?.chauffeur_id;
     if (chauffeurId) {
         await query('UPDATE chauffeurs SET documents_valides = false WHERE id = $1', [chauffeurId]);
+        // Notification document refusé
+        try {
+            const tokenRow = await query('SELECT push_token FROM chauffeurs WHERE id = $1', [chauffeurId]);
+            const pushToken = tokenRow.rows[0]?.push_token;
+            if (pushToken) {
+                await sendPushNotification(
+                    pushToken,
+                    'Document refusé',
+                    motif ? `Motif : ${motif}. Merci de déposer un nouveau document.` : 'Un document a été refusé. Merci de le soumettre à nouveau.',
+                    { type: 'kyc_doc_refuse' }
+                );
+            }
+        } catch { /* Non bloquant */ }
     }
     res.json({ success: true });
 });
