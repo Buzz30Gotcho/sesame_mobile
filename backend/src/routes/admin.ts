@@ -1,9 +1,37 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 import { query } from '../db';
 import { sendPushNotification } from '../lib/pushNotifications';
 
 const router = express.Router();
+const JWT_SECRET = process.env.JWT_SECRET || 'sesame-secret';
+
+// Login admin
+router.post('/login', async (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'Email et mot de passe requis' });
+    if (email !== process.env.ADMIN_EMAIL || password !== process.env.ADMIN_PASSWORD) {
+        return res.status(401).json({ error: 'Identifiants incorrects' });
+    }
+    const token = jwt.sign({ sub: 'admin', role: 'admin' }, JWT_SECRET, { expiresIn: '8h' });
+    res.json({ token });
+});
+
+// Middleware — protège toutes les routes admin suivantes
+function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+    const auth = req.headers.authorization;
+    if (!auth?.startsWith('Bearer ')) return res.status(401).json({ error: 'Non autorisé' });
+    try {
+        const payload = jwt.verify(auth.slice(7), JWT_SECRET) as any;
+        if (payload.role !== 'admin') return res.status(403).json({ error: 'Accès refusé' });
+        next();
+    } catch {
+        return res.status(401).json({ error: 'Token invalide ou expiré' });
+    }
+}
+
+router.use(requireAdmin);
 
 router.get('/dashboard', async (req, res) => {
     const kpis = {
@@ -117,27 +145,103 @@ router.post('/chat/:courseId/intervenir', async (req, res) => {
 
 router.get('/ambassadeurs', async (req, res) => {
     const result = await query(
-        `SELECT a.id AS id, u.prenom, u.nom, u.email, u.telephone,
+        `SELECT a.id AS id, u.id AS utilisateur_id, u.prenom, u.nom, u.email, u.telephone,
                 a.points_solde AS points, a.niveau, a.type_ambassadeur AS type,
-                a.contrat_moral_signe
+                a.contrat_moral_signe, u.statut AS compte_statut, a.note_interne,
+                u.created_at
          FROM ambassadeurs a
          JOIN utilisateurs u ON u.id = a.utilisateur_id
-         ORDER BY a.points_solde DESC`
+         ORDER BY u.created_at DESC`
     );
     res.json(result.rows);
 });
 
 router.get('/chauffeurs', async (req, res) => {
     const result = await query(
-        `SELECT c.id AS id, u.prenom, u.nom, u.email, u.telephone,
+        `SELECT c.id AS id, u.id AS utilisateur_id, u.prenom, u.nom, u.email, u.telephone,
                 c.disponible,
                 concat(c.vehicule_type, ' ', c.vehicule_marque, ' ', c.vehicule_modele) AS vehicule,
-                c.vehicule_type, c.taux_commission_override AS taux_commission, c.documents_valides
+                c.vehicule_type, c.taux_commission_override AS taux_commission, c.documents_valides,
+                u.statut AS compte_statut, c.note_interne
          FROM chauffeurs c
          JOIN utilisateurs u ON u.id = c.utilisateur_id
          ORDER BY u.nom ASC`
     );
     res.json(result.rows);
+});
+
+router.get('/chauffeurs/:id/documents', async (req, res) => {
+    const result = await query(
+        `SELECT d.id, d.type, d.fichier_recto_url, d.fichier_verso_url,
+                d.date_expiration, d.statut, d.motif_refus, d.uploaded_at
+         FROM documents_chauffeur d
+         WHERE d.chauffeur_id = $1
+         ORDER BY d.uploaded_at DESC`,
+        [req.params.id]
+    );
+
+    const SUPABASE_URL = process.env.SUPABASE_URL!;
+    const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const BUCKET = 'documents-kyc_sesame_chauffeur';
+
+    const signUrl = async (storagePath: string | null) => {
+        if (!storagePath) return null;
+        try {
+            const r = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/${BUCKET}/${storagePath}`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${SERVICE_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ expiresIn: 3600 }),
+            });
+            if (!r.ok) return null;
+            const { signedURL } = await r.json() as { signedURL: string };
+            const path = signedURL.startsWith('/storage/v1') ? signedURL : `/storage/v1${signedURL}`;
+            return `${SUPABASE_URL}${path}`;
+        } catch { return null; }
+    };
+
+    const docs = await Promise.all(result.rows.map(async (doc) => ({
+        ...doc,
+        fichier_recto_url: await signUrl(doc.fichier_recto_url),
+        fichier_verso_url: await signUrl(doc.fichier_verso_url),
+    })));
+
+    res.json(docs);
+});
+
+router.put('/documents/:id/valider', async (req, res) => {
+    await query(
+        `UPDATE documents_chauffeur SET statut = 'valide' WHERE id = $1`,
+        [req.params.id]
+    );
+    // Vérifie si tous les docs obligatoires sont validés
+    const doc = await query('SELECT chauffeur_id FROM documents_chauffeur WHERE id = $1', [req.params.id]);
+    const chauffeurId = doc.rows[0]?.chauffeur_id;
+    if (chauffeurId) {
+        const docsOblig = ['carte_identite', 'carte_vtc', 'permis', 'carte_grise'];
+        const valid = await query(
+            `SELECT type FROM documents_chauffeur WHERE chauffeur_id = $1 AND statut = 'valide' AND type = ANY($2)`,
+            [chauffeurId, docsOblig]
+        );
+        const tousValides = docsOblig.every(t => valid.rows.some((r: any) => r.type === t));
+        if (tousValides) {
+            await query('UPDATE chauffeurs SET documents_valides = true WHERE id = $1', [chauffeurId]);
+        }
+    }
+    res.json({ success: true });
+});
+
+router.put('/documents/:id/refuser', async (req, res) => {
+    const { motif } = req.body;
+    await query(
+        `UPDATE documents_chauffeur SET statut = 'refuse', motif_refus = $1 WHERE id = $2`,
+        [motif || null, req.params.id]
+    );
+    const doc = await query('SELECT chauffeur_id FROM documents_chauffeur WHERE id = $1', [req.params.id]);
+    const chauffeurId = doc.rows[0]?.chauffeur_id;
+    if (chauffeurId) {
+        await query('UPDATE chauffeurs SET documents_valides = false WHERE id = $1', [chauffeurId]);
+    }
+    res.json({ success: true });
 });
 
 router.get('/courses', async (req, res) => {
@@ -185,7 +289,7 @@ router.get('/blacklist', async (req, res) => {
 
 router.post('/blacklist', async (req, res) => {
     const { nom, prenom, date_naissance, lieu_naissance, telephone, motif, type_utilisateur, admin_id } = req.body;
-    if (!nom || !prenom || !date_naissance || !lieu_naissance || !telephone || !type_utilisateur) {
+    if (!nom || !prenom || !date_naissance || !telephone || !type_utilisateur) {
         return res.status(400).json({ error: 'Données blacklist manquantes' });
     }
     const adminUuid = admin_id || '00000000-0000-0000-0000-000000000000';
@@ -256,6 +360,50 @@ router.put('/chauffeurs/:id/taux', async (req, res) => {
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Chauffeur introuvable' });
     res.json({ success: true, ...result.rows[0] });
+});
+
+router.put('/utilisateurs/:id/statut', async (req, res) => {
+    const { statut } = req.body;
+    if (!['actif', 'suspendu'].includes(statut)) return res.status(400).json({ error: 'statut invalide' });
+    const result = await query(
+        'UPDATE utilisateurs SET statut = $1 WHERE id = $2 RETURNING id, statut',
+        [statut, req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Utilisateur introuvable' });
+    res.json({ success: true, ...result.rows[0] });
+});
+
+router.put('/ambassadeurs/:id/note', async (req, res) => {
+    const { note } = req.body;
+    const result = await query(
+        'UPDATE ambassadeurs SET note_interne = $1 WHERE id = $2 RETURNING id',
+        [note ?? null, req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Ambassadeur introuvable' });
+    res.json({ success: true });
+});
+
+router.put('/chauffeurs/:id/note', async (req, res) => {
+    const { note } = req.body;
+    const result = await query(
+        'UPDATE chauffeurs SET note_interne = $1 WHERE id = $2 RETURNING id',
+        [note ?? null, req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Chauffeur introuvable' });
+    res.json({ success: true });
+});
+
+router.delete('/chauffeurs/:chauffeur_id', async (req, res) => {
+    const { chauffeur_id } = req.params;
+    // Récupère l'utilisateur_id avant suppression
+    const ch = await query('SELECT utilisateur_id FROM chauffeurs WHERE id = $1', [chauffeur_id]);
+    if (!ch.rows.length) return res.status(404).json({ error: 'Chauffeur introuvable' });
+    const utilisateur_id = ch.rows[0].utilisateur_id;
+    // Nullifie chauffeur_id dans les courses pour conserver l'historique
+    await query('UPDATE courses SET chauffeur_id = NULL WHERE chauffeur_id = $1', [chauffeur_id]);
+    // Supprime l'utilisateur (CASCADE supprime chauffeurs + documents_chauffeur)
+    await query('DELETE FROM utilisateurs WHERE id = $1', [utilisateur_id]);
+    res.json({ success: true });
 });
 
 // Créer un fournisseur

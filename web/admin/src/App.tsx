@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getDashboard } from './api';
+import { getDashboard, adminLogin } from './api';
 
 // Sections
 import Dashboard from './sections/Dashboard';
@@ -43,7 +43,6 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'blacklist', label: 'Blacklist', icon: '🔕' },
   { key: 'alertes', label: 'Alertes', icon: '⚠️' },
   { key: 'support', label: 'Support', icon: '💬' },
-  { key: 'commissions', label: 'Commissions', icon: '💸' },
   { key: 'parametres', label: 'Paramètres', icon: '⚙️' },
 ];
 
@@ -61,7 +60,59 @@ const SECTION_COMPONENTS: Record<SectionKey, React.ComponentType> = {
   parametres: Parametres,
 };
 
+function LoginPage({ onLogin }: { onLogin: () => void }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true); setError('');
+    try {
+      const token = await adminLogin(email, password);
+      localStorage.setItem('admin_token', token);
+      onLogin();
+    } catch {
+      setError('Email ou mot de passe incorrect.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#F2F2F7' }}>
+      <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
+        <div className="flex flex-col items-center mb-8">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-white text-2xl font-bold mb-3" style={{ backgroundColor: '#C9A84C' }}>S</div>
+          <h1 className="text-xl font-bold text-gray-900">SESAME</h1>
+          <p className="text-sm text-gray-500">Administration</p>
+        </div>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <input
+            type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} required
+            className="border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-yellow-400"
+          />
+          <input
+            type="password" placeholder="Mot de passe" value={password} onChange={e => setPassword(e.target.value)} required
+            className="border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-yellow-400"
+          />
+          {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+          <button
+            type="submit" disabled={loading}
+            className="py-3 rounded-xl text-sm font-bold text-white transition-opacity disabled:opacity-50"
+            style={{ backgroundColor: '#C9A84C' }}
+          >
+            {loading ? 'Connexion...' : 'Se connecter'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('admin_token'));
   const [activeSection, setActiveSection] = useState<SectionKey>('dashboard');
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -80,10 +131,13 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     loadBadges();
     const interval = setInterval(loadBadges, 30000);
     return () => clearInterval(interval);
-  }, [loadBadges]);
+  }, [isAuthenticated, loadBadges]);
+
+  if (!isAuthenticated) return <LoginPage onLogin={() => setIsAuthenticated(true)} />;
 
   const navigate = (key: SectionKey) => {
     setActiveSection(key);
@@ -230,6 +284,12 @@ export default function App() {
             >
               A
             </div>
+            <button
+              onClick={() => { localStorage.removeItem('admin_token'); setIsAuthenticated(false); }}
+              className="text-xs text-gray-400 hover:text-red-500 transition-colors px-2 py-1 rounded-lg hover:bg-red-50"
+            >
+              Déconnexion
+            </button>
           </div>
         </header>
 

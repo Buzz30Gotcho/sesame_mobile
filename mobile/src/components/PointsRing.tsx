@@ -6,10 +6,10 @@ type Props = {
     points: number;
     level: string;
     nextLevelPoints: number;
+    size?: number;
 };
 
-export default function PointsRing({ points, level, nextLevelPoints }: Props) {
-    const size = 180;
+export default function PointsRing({ points, level, nextLevelPoints, size = 180 }: Props) {
     const strokeWidth = 10;
     const radius = (size - strokeWidth) / 2;
     const circumference = 2 * Math.PI * radius;
@@ -52,7 +52,7 @@ const styles = StyleSheet.create({
     container: {
         alignItems: 'center',
         justifyContent: 'center',
-        marginVertical: 20,
+        marginVertical: 8,
     },
     textContainer: {
         position: 'absolute',

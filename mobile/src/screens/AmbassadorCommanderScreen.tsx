@@ -16,36 +16,56 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 type Coords = { lat: number; lon: number };
 type Suggestion = { label: string; lat: number; lon: number };
 
+const FRANCE_BBOX = '-5.142,41.333,9.561,51.089';
+
 async function searchAddress(query: string, bias?: Coords): Promise<Suggestion[]> {
     if (query.length < 3) return [];
-    try {
-        let url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=5&lang=fr&countrycode=fr`;
-        if (bias) url += `&lat=${bias.lat}&lon=${bias.lon}&location_bias_scale=0.5`;
-        const res = await fetch(url, { headers: { 'User-Agent': 'SesameApp/1.0' } });
-        const data = await res.json();
-        if (!data.features) return [];
-        return data.features.map((f: any) => {
-            const p = f.properties;
-            const streetPart = [p.housenumber, p.street].filter(Boolean).join(' ');
-            const cityPart = [p.postcode, p.city].filter(Boolean).join(' ');
-            const label = [p.name || streetPart, cityPart, p.country].filter(Boolean).join(', ');
-            return {
-                label,
+    const biasLat = bias?.lat ?? 43.6119;
+    const biasLon = bias?.lon ?? 3.8772;
+
+    const [govResults, photonResults] = await Promise.allSettled([
+        fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=5&lat=${biasLat}&lon=${biasLon}`)
+            .then(r => r.json())
+            .then(data => (data.features || []).map((f: any) => ({
+                label: f.properties.label,
                 lat: f.geometry.coordinates[1],
                 lon: f.geometry.coordinates[0],
-            };
-        }).filter((s: Suggestion) => s.label.length > 0);
-    } catch {
-        return [];
+            } as Suggestion))),
+        fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=5&lang=fr&lat=${biasLat}&lon=${biasLon}&bbox=${FRANCE_BBOX}`, { headers: { 'User-Agent': 'SesameApp/1.0' } })
+            .then(r => r.json())
+            .then(data => (data.features || []).map((f: any) => {
+                const p = f.properties;
+                const name = p.name || '';
+                const street = [p.housenumber, p.street].filter(Boolean).join(' ');
+                const city = [p.postcode, p.city].filter(Boolean).join(' ');
+                const label = [name || street, city].filter(Boolean).join(', ');
+                return { label, lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] } as Suggestion;
+            }).filter((s: Suggestion) => s.label.length > 0)),
+    ]);
+
+    const gov: Suggestion[] = govResults.status === 'fulfilled' ? govResults.value : [];
+    const photon: Suggestion[] = photonResults.status === 'fulfilled' ? photonResults.value : [];
+
+    // Fusion avec déduplication (rayon ~200m)
+    const merged: Suggestion[] = [];
+    for (const s of [...photon, ...gov]) {
+        const isDup = merged.some(m => Math.abs(m.lat - s.lat) < 0.002 && Math.abs(m.lon - s.lon) < 0.002);
+        if (!isDup) merged.push(s);
     }
+    return merged.slice(0, 5);
 }
 
 async function geocodeAddress(address: string): Promise<Coords | null> {
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1&countrycodes=fr`;
-    const res = await fetch(url, { headers: { 'User-Agent': 'SesameApp/1.0' } });
-    const data = await res.json();
-    if (!data || data.length === 0) return null;
-    return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+    try {
+        const url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(address)}&limit=1`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (!data.features?.length) return null;
+        const [lon, lat] = data.features[0].geometry.coordinates;
+        return { lat, lon };
+    } catch {
+        return null;
+    }
 }
 
 async function getRouteDistance(from: Coords, to: Coords): Promise<number> {
@@ -204,7 +224,11 @@ export default function AmbassadorCommanderScreen() {
                 setMinDateStr(`${md} a ${mt}`);
                 if (p.mode_course_immediate !== 'true') setType('reservation');
                 if (profileRes && profileRes.data.etablissement) {
-                    setAdresseDepart(profileRes.data.etablissement);
+                    const etab = profileRes.data.etablissement;
+                    setAdresseDepart(etab);
+                    geocodeAddress(etab).then(coords => {
+                        if (coords) setDepartCoords(coords);
+                    }).catch(() => {});
                 }
             } catch {}
         }
@@ -394,15 +418,14 @@ export default function AmbassadorCommanderScreen() {
                     {/* Distance */}
                     <Text style={[styles.label, { marginTop: 16 }]}>DISTANCE (KM)</Text>
                     <View style={styles.distanceRow}>
-                        <TextInput
-                            style={[styles.input, { flex: 1 }]}
-                            value={kilometrage}
-                            onChangeText={setKilometrage}
-                            keyboardType="numeric"
-                            placeholder="—"
-                            placeholderTextColor="#6A6680"
-                        />
-                        {distanceLoading && <ActivityIndicator size="small" color={Colors.brand.gold} />}
+                        <View style={[styles.input, { flex: 1, justifyContent: 'center' }]}>
+                            {distanceLoading
+                                ? <ActivityIndicator size="small" color={Colors.brand.gold} />
+                                : <Text style={{ color: kilometrage && kilometrage !== '12' ? '#E0DBD2' : '#6A6680' }}>
+                                    {kilometrage && kilometrage !== '12' ? `${kilometrage} km` : '—'}
+                                  </Text>
+                            }
+                        </View>
                     </View>
                     {distanceError && <Text style={styles.distanceErrorText}>{distanceError}</Text>}
                     {!distanceError && !distanceLoading && departCoords && destCoords && (

@@ -1,4 +1,5 @@
 import express from 'express';
+import multer from 'multer';
 import { query } from '../db';
 import { calculatePoints, nextAmbassadorLevel } from '../lib/rules';
 import { sendPushNotification } from '../lib/pushNotifications';
@@ -65,10 +66,13 @@ router.get('/:id/dashboard', async (req, res) => {
 
     const profile = profileResult.rows[0];
     const assignedCourses = await query(
-        `SELECT id, reference, statut, type_course, adresse_depart, adresse_destination, montant, date_reservation, date_acceptation
-         FROM courses
-         WHERE chauffeur_id = $1 AND statut IN ($2,$3,$4,$5,$6)
-         ORDER BY date_acceptation DESC NULLS LAST`,
+        `SELECT c.id, c.reference, c.statut, c.type_course, c.adresse_depart, c.adresse_destination, c.montant, c.date_reservation, c.date_acceptation,
+                u.telephone AS ambassadeur_telephone, u.prenom AS ambassadeur_prenom
+         FROM courses c
+         LEFT JOIN ambassadeurs a ON a.id = c.ambassadeur_id
+         LEFT JOIN utilisateurs u ON u.id = a.utilisateur_id
+         WHERE c.chauffeur_id = $1 AND c.statut IN ($2,$3,$4,$5,$6)
+         ORDER BY c.date_acceptation DESC NULLS LAST`,
         [req.params.id, 'recherche', 'acceptee', 'en_route', 'code_valide', 'en_cours']
     );
 
@@ -89,6 +93,36 @@ router.get('/:id/dashboard', async (req, res) => {
         courses_jour: Number(statsJour.rows[0]?.nb_courses || 0),
         ca_jour: Number(statsJour.rows[0]?.ca_jour || 0),
     });
+});
+
+router.put('/:id/profile', async (req, res) => {
+    const { prenom, nom, telephone, iban, siret } = req.body;
+    const profileResult = await query('SELECT utilisateur_id FROM chauffeurs WHERE id = $1', [req.params.id]);
+    if (!profileResult.rows.length) return res.status(404).json({ error: 'Chauffeur introuvable' });
+    const utilisateurId = profileResult.rows[0].utilisateur_id;
+
+    await query(
+        `UPDATE utilisateurs SET
+            prenom = COALESCE($1, prenom),
+            nom = COALESCE($2, nom),
+            telephone = COALESCE($3, telephone)
+         WHERE id = $4`,
+        [prenom || null, nom || null, telephone || null, utilisateurId]
+    );
+    await query(
+        `UPDATE chauffeurs SET
+            iban = COALESCE($1, iban),
+            siret = COALESCE($2, siret)
+         WHERE id = $3`,
+        [iban || null, siret || null, req.params.id]
+    );
+
+    const updated = await query(
+        `SELECT c.id AS chauffeur_id, u.prenom, u.nom, u.email, u.telephone, c.iban, c.siret
+         FROM chauffeurs c JOIN utilisateurs u ON u.id = c.utilisateur_id WHERE c.id = $1`,
+        [req.params.id]
+    );
+    res.json(updated.rows[0]);
 });
 
 router.get('/:id/courses', async (req, res) => {
@@ -285,12 +319,100 @@ router.post('/:id/finish-course', async (req, res) => {
     res.json(updated.rows[0]);
 });
 
+const SUPABASE_URL = process.env.SUPABASE_URL!;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const BUCKET = 'documents-kyc_sesame_chauffeur';
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+// Upload document — reçoit le fichier du mobile, le transfère vers Supabase Storage
+router.post('/:id/documents/upload', upload.single('file'), async (req: any, res) => {
+    const { type, side } = req.body;
+    if (!type || !side || !req.file) {
+        return res.status(400).json({ error: 'type, side et fichier requis' });
+    }
+    const mimeType = req.file.mimetype;
+    const ext = mimeType === 'application/pdf' ? 'pdf' : mimeType === 'image/png' ? 'png' : 'jpg';
+    const storagePath = `${req.params.id}/${type}_${side}_${Date.now()}.${ext}`;
+
+    try {
+        const upRes = await fetch(
+            `${SUPABASE_URL}/storage/v1/object/${BUCKET}/${storagePath}`,
+            {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+                    'Content-Type': mimeType,
+                    'x-upsert': 'true',
+                },
+                body: req.file.buffer,
+            }
+        );
+        if (!upRes.ok) {
+            const err = await upRes.text();
+            return res.status(500).json({ error: 'Erreur Supabase Storage', detail: err });
+        }
+
+        // Chercher si ce type de document existe déjà
+        const existing = await query(
+            'SELECT id FROM documents_chauffeur WHERE chauffeur_id = $1 AND type = $2',
+            [req.params.id, type]
+        );
+
+        let doc;
+        if (existing.rows.length > 0) {
+            const col = side === 'recto' ? 'fichier_recto_url' : 'fichier_verso_url';
+            const result = await query(
+                `UPDATE documents_chauffeur SET ${col} = $1 WHERE id = $2 RETURNING *`,
+                [storagePath, existing.rows[0].id]
+            );
+            doc = result.rows[0];
+        } else {
+            const rectoPath = side === 'recto' ? storagePath : null;
+            const versoPath = side === 'verso' ? storagePath : null;
+            const result = await query(
+                'INSERT INTO documents_chauffeur(chauffeur_id, type, fichier_recto_url, fichier_verso_url) VALUES ($1,$2,$3,$4) RETURNING *',
+                [req.params.id, type, rectoPath, versoPath]
+            );
+            doc = result.rows[0];
+        }
+        res.json(doc);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 router.get('/:id/documents', async (req, res) => {
     const result = await query(
         'SELECT * FROM documents_chauffeur WHERE chauffeur_id = $1 ORDER BY uploaded_at DESC',
         [req.params.id]
     );
-    res.json(result.rows);
+    // Génère des URLs signées de lecture (valides 1h) pour les fichiers privés
+    const docs = await Promise.all(result.rows.map(async (doc) => {
+        const signUrl = async (storagePath: string | null) => {
+            if (!storagePath) return null;
+            try {
+                const r = await fetch(
+                    `${SUPABASE_URL}/storage/v1/object/sign/${BUCKET}/${storagePath}`,
+                    {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ expiresIn: 3600 }),
+                    }
+                );
+                if (!r.ok) return storagePath;
+                const { signedURL } = await r.json() as { signedURL: string };
+                const path = signedURL.startsWith('/storage/v1') ? signedURL : `/storage/v1${signedURL}`;
+                return `${SUPABASE_URL}${path}`;
+            } catch { return storagePath; }
+        };
+        return {
+            ...doc,
+            fichier_recto_url: await signUrl(doc.fichier_recto_url),
+            fichier_verso_url: await signUrl(doc.fichier_verso_url),
+        };
+    }));
+    res.json(docs);
 });
 
 router.post('/:id/documents', async (req, res) => {
@@ -303,6 +425,20 @@ router.post('/:id/documents', async (req, res) => {
         [req.params.id, type, fichier_recto_url, fichier_verso_url || null, date_expiration || null]
     );
     res.status(201).json(result.rows[0]);
+});
+
+router.put('/:id/documents/:docId', async (req, res) => {
+    const { fichier_recto_url, fichier_verso_url, date_expiration } = req.body;
+    const result = await query(
+        `UPDATE documents_chauffeur SET
+            fichier_recto_url = COALESCE($1, fichier_recto_url),
+            fichier_verso_url = COALESCE($2, fichier_verso_url),
+            date_expiration   = COALESCE($3, date_expiration)
+         WHERE id = $4 AND chauffeur_id = $5 RETURNING *`,
+        [fichier_recto_url || null, fichier_verso_url || null, date_expiration || null, req.params.docId, req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Document introuvable' });
+    res.json(result.rows[0]);
 });
 
 router.put('/:id/push-token', async (req, res) => {

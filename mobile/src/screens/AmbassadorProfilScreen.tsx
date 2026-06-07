@@ -120,12 +120,17 @@ export default function AmbassadorProfilScreen() {
                                 <Text style={styles.successText}>{message}</Text>
                             </View>
                         )}
-                        
+
                         <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={saving}>
                             {saving ? <ActivityIndicator color="#101018" /> : <Text style={styles.saveText}>{t('enregistrer')}</Text>}
                         </TouchableOpacity>
 
+                        {/* Séparateur */}
+                        <View style={styles.divider} />
+
                         {/* Thème */}
+                        <Text style={styles.sectionTitle}>PREFERENCES</Text>
+
                         <Text style={styles.label}>{t('theme').toUpperCase()}</Text>
                         <View style={styles.toggleRow}>
                             {(['nocturne', 'clair', 'auto'] as const).map(m => (
@@ -255,13 +260,26 @@ function makeStyles(colors: typeof Colors.nocturne) {
             fontSize: Typography.sizes.sub,
             fontWeight: Typography.weights.bold as any,
         },
-        toggleRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-        toggleBtn: {
-            flex: 1, paddingVertical: 10, borderRadius: 8,
-            backgroundColor: colors.card, alignItems: 'center',
+        divider: {
+            height: 1,
+            backgroundColor: 'rgba(255,255,255,0.07)',
+            marginVertical: 32,
         },
-        toggleBtnActive: { backgroundColor: Colors.brand.gold },
-        toggleText: { color: colors.textSecondary, fontSize: 12, fontWeight: '600' },
-        toggleTextActive: { color: '#101018' },
+        sectionTitle: {
+            color: Colors.brand.gold,
+            fontSize: Typography.sizes.tiny,
+            fontWeight: Typography.weights.black as any,
+            letterSpacing: 2,
+            marginBottom: 24,
+        },
+        toggleRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+        toggleBtn: {
+            flex: 1, paddingVertical: 10, borderRadius: 10,
+            backgroundColor: colors.card, alignItems: 'center',
+            borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)',
+        },
+        toggleBtnActive: { backgroundColor: Colors.brand.gold, borderColor: Colors.brand.gold },
+        toggleText: { color: colors.textSecondary, fontSize: 13, fontWeight: '600' },
+        toggleTextActive: { color: '#101018', fontWeight: '700' },
     });
 }

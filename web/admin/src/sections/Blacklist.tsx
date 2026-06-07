@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { getBlacklist, addBlacklist } from '../api';
+import { getBlacklist, addBlacklist, deleteBlacklist } from '../api';
 import type { BlacklistEntry } from '../api';
 import Badge from '../components/Badge';
 import Spinner from '../components/Spinner';
@@ -38,6 +38,17 @@ export default function Blacklist() {
 
   useEffect(() => { load(); }, [load]);
 
+  const handleDelete = async (id: number) => {
+    if (!confirm('Retirer cette personne de la liste noire ?')) return;
+    try {
+      await deleteBlacklist(id);
+      showToast('Entrée supprimée.');
+      load();
+    } catch {
+      showToast('Erreur lors de la suppression.');
+    }
+  };
+
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(''), 3500);
@@ -50,7 +61,7 @@ export default function Blacklist() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const required: (keyof BlacklistEntry)[] = ['nom', 'prenom', 'date_naissance', 'lieu_naissance', 'telephone', 'motif'];
+    const required: (keyof BlacklistEntry)[] = ['nom', 'prenom', 'date_naissance', 'telephone', 'motif'];
     for (const field of required) {
       if (!form[field]?.toString().trim()) {
         setFormError(`Le champ "${field.replace('_', ' ')}" est obligatoire.`);
@@ -129,7 +140,7 @@ export default function Blacklist() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Lieu de naissance *</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Lieu de naissance</label>
               <input
                 type="text"
                 name="lieu_naissance"
@@ -211,7 +222,7 @@ export default function Blacklist() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100">
-                    {['Nom Prénom', 'Date naissance', 'Lieu naissance', 'Téléphone', 'Type', 'Motif', 'Ajouté le'].map(h => (
+                    {['Nom Prénom', 'Date naissance', 'Lieu naissance', 'Téléphone', 'Type', 'Motif', 'Ajouté le', ''].map(h => (
                       <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3">{h}</th>
                     ))}
                   </tr>
@@ -234,6 +245,13 @@ export default function Blacklist() {
                       <td className="px-4 py-3 text-gray-500 text-xs max-w-[200px] truncate">{entry.motif}</td>
                       <td className="px-4 py-3 text-gray-400 text-xs">
                         {entry.created_at ? new Date(entry.created_at).toLocaleDateString('fr-FR') : '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => handleDelete(entry.id!)}
+                          className="text-red-400 hover:text-red-600 transition-colors text-lg"
+                          title="Supprimer"
+                        >🗑</button>
                       </td>
                     </tr>
                   ))}

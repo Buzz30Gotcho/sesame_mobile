@@ -1,0 +1,1477 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SESAME — Dossier Architecture & Avancement</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+  :root {
+    --gold: #C9A84C;
+    --gold-light: #E8C96A;
+    --gold-pale: #F5E4B0;
+    --dark: #101018;
+    --card: #161624;
+    --card2: #1E1E2E;
+    --text: #E0DBD2;
+    --text-sec: #9A95A8;
+    --green: #4CAF82;
+    --blue: #4A9EFF;
+    --orange: #FF9A3C;
+    --red: #FF6464;
+    --purple: #8B5CF6;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--dark);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 13px;
+  }
+
+  /* ─── PAGE BREAKS ─── */
+  .page-break { page-break-before: always; }
+  .no-break { page-break-inside: avoid; }
+
+  /* ─── COVER PAGE ─── */
+  .cover {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(160deg, #0D0D18 0%, #101018 50%, #14121E 100%);
+    position: relative;
+    overflow: hidden;
+    padding: 60px 40px;
+    text-align: center;
+  }
+
+  .cover::before {
+    content: '';
+    position: absolute;
+    top: -200px; left: 50%; transform: translateX(-50%);
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(201,168,76,0.12) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .cover-badge {
+    background: linear-gradient(135deg, rgba(201,168,76,0.15), rgba(201,168,76,0.05));
+    border: 1px solid rgba(201,168,76,0.3);
+    border-radius: 100px;
+    padding: 6px 20px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 40px;
+  }
+
+  .cover-logo {
+    font-size: 80px;
+    font-weight: 900;
+    letter-spacing: -2px;
+    background: linear-gradient(135deg, var(--gold-light), var(--gold), #A07830);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 16px;
+    line-height: 1;
+  }
+
+  .cover-tagline {
+    font-size: 18px;
+    color: var(--text-sec);
+    font-weight: 300;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 60px;
+  }
+
+  .cover-divider {
+    width: 80px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    margin: 0 auto 60px;
+  }
+
+  .cover-title {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 12px;
+  }
+
+  .cover-subtitle {
+    font-size: 15px;
+    color: var(--text-sec);
+    max-width: 500px;
+    line-height: 1.8;
+    margin-bottom: 80px;
+  }
+
+  .cover-meta {
+    display: flex;
+    gap: 40px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .cover-meta-item {
+    text-align: center;
+  }
+
+  .cover-meta-label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-sec);
+    margin-bottom: 4px;
+  }
+
+  .cover-meta-value {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--gold);
+  }
+
+  .cover-bottom {
+    position: absolute;
+    bottom: 40px;
+    left: 0; right: 0;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 60px;
+    font-size: 11px;
+    color: var(--text-sec);
+  }
+
+  /* ─── SECTIONS ─── */
+  .section {
+    padding: 60px 60px 40px;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 40px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid rgba(201,168,76,0.2);
+  }
+
+  .section-number {
+    width: 48px; height: 48px;
+    background: linear-gradient(135deg, var(--gold), #A07830);
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 800;
+    color: var(--dark);
+    flex-shrink: 0;
+  }
+
+  .section-title {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .section-desc {
+    font-size: 13px;
+    color: var(--text-sec);
+    margin-top: 4px;
+  }
+
+  /* ─── CARDS ─── */
+  .card {
+    background: var(--card);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+
+  .card-gold {
+    border-color: rgba(201,168,76,0.25);
+    background: linear-gradient(135deg, rgba(201,168,76,0.06), rgba(201,168,76,0.02));
+  }
+
+  .card-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .card-icon {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  /* ─── GRID ─── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+  /* ─── ROLE CARDS ─── */
+  .role-card {
+    background: var(--card);
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.06);
+    page-break-inside: avoid;
+  }
+
+  .role-header {
+    padding: 20px 24px 16px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .role-header::before {
+    content: '';
+    position: absolute;
+    top: -30px; right: -30px;
+    width: 120px; height: 120px;
+    border-radius: 50%;
+    opacity: 0.08;
+  }
+
+  .role-header.amb { background: linear-gradient(135deg, #C9A84C22, #C9A84C08); border-bottom: 2px solid rgba(201,168,76,0.3); }
+  .role-header.amb::before { background: var(--gold); }
+  .role-header.chauf { background: linear-gradient(135deg, #4A9EFF22, #4A9EFF08); border-bottom: 2px solid rgba(74,158,255,0.3); }
+  .role-header.chauf::before { background: var(--blue); }
+  .role-header.admin { background: linear-gradient(135deg, #8B5CF622, #8B5CF608); border-bottom: 2px solid rgba(139,92,246,0.3); }
+  .role-header.admin::before { background: var(--purple); }
+  .role-header.fourn { background: linear-gradient(135deg, #4CAF8222, #4CAF8208); border-bottom: 2px solid rgba(76,175,130,0.3); }
+  .role-header.fourn::before { background: var(--green); }
+
+  .role-emoji { font-size: 32px; margin-bottom: 10px; display: block; }
+  .role-name { font-size: 18px; font-weight: 800; }
+  .role-name.amb { color: var(--gold); }
+  .role-name.chauf { color: var(--blue); }
+  .role-name.admin { color: var(--purple); }
+  .role-name.fourn { color: var(--green); }
+  .role-platform { font-size: 11px; color: var(--text-sec); margin-top: 4px; }
+
+  .role-body { padding: 20px 24px; }
+
+  .role-desc {
+    font-size: 12px;
+    color: var(--text-sec);
+    line-height: 1.7;
+    margin-bottom: 16px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+
+  .feature-list { list-style: none; }
+  .feature-list li {
+    font-size: 12px;
+    color: var(--text);
+    padding: 5px 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    line-height: 1.5;
+  }
+
+  .feature-list li::before {
+    content: '›';
+    font-size: 14px;
+    font-weight: 700;
+    flex-shrink: 0;
+    margin-top: 0;
+  }
+
+  .feature-list.amb li::before { color: var(--gold); }
+  .feature-list.chauf li::before { color: var(--blue); }
+  .feature-list.admin li::before { color: var(--purple); }
+  .feature-list.fourn li::before { color: var(--green); }
+
+  /* ─── ARCHITECTURE DIAGRAM ─── */
+  .arch-box {
+    background: var(--card);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 16px 20px;
+    text-align: center;
+  }
+
+  .arch-box-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .arch-box-sub { font-size: 11px; color: var(--text-sec); }
+
+  .arch-arrow {
+    text-align: center;
+    font-size: 20px;
+    color: var(--gold);
+    padding: 8px 0;
+  }
+
+  .arch-row { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+  .arch-row .arch-box { flex: 1; }
+
+  /* ─── TODO ITEMS ─── */
+  .todo-item {
+    background: var(--card);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 12px;
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    page-break-inside: avoid;
+  }
+
+  .todo-icon {
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+
+  .todo-content { flex: 1; }
+
+  .todo-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .todo-desc {
+    font-size: 12px;
+    color: var(--text-sec);
+    line-height: 1.7;
+    margin-bottom: 10px;
+  }
+
+  .todo-tasks { list-style: none; }
+  .todo-tasks li {
+    font-size: 12px;
+    color: var(--text);
+    padding: 3px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .todo-tasks li::before {
+    content: '□';
+    font-size: 13px;
+    color: var(--text-sec);
+    flex-shrink: 0;
+  }
+
+  /* ─── BADGES ─── */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 100px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  .badge-done { background: rgba(76,175,130,0.15); color: var(--green); border: 1px solid rgba(76,175,130,0.3); }
+  .badge-todo { background: rgba(255,154,60,0.15); color: var(--orange); border: 1px solid rgba(255,154,60,0.3); }
+  .badge-critical { background: rgba(255,100,100,0.15); color: var(--red); border: 1px solid rgba(255,100,100,0.3); }
+  .badge-mobile { background: rgba(74,158,255,0.15); color: var(--blue); border: 1px solid rgba(74,158,255,0.3); }
+  .badge-web { background: rgba(139,92,246,0.15); color: var(--purple); border: 1px solid rgba(139,92,246,0.3); }
+
+  /* ─── STACK TABLE ─── */
+  .stack-table { width: 100%; border-collapse: collapse; }
+  .stack-table th {
+    background: rgba(201,168,76,0.1);
+    color: var(--gold);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 12px 16px;
+    text-align: left;
+  }
+  .stack-table th:first-child { border-radius: 8px 0 0 8px; }
+  .stack-table th:last-child { border-radius: 0 8px 8px 0; }
+  .stack-table td {
+    padding: 11px 16px;
+    font-size: 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    color: var(--text);
+  }
+  .stack-table td:first-child { color: var(--text-sec); font-weight: 500; }
+  .stack-table tr:last-child td { border-bottom: none; }
+
+  /* ─── DONE LIST ─── */
+  .done-section {
+    background: var(--card);
+    border: 1px solid rgba(76,175,130,0.15);
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+
+  .done-section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--green);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .done-list { list-style: none; }
+  .done-list li {
+    font-size: 12px;
+    color: var(--text);
+    padding: 4px 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    line-height: 1.6;
+  }
+
+  .done-list li::before {
+    content: '✓';
+    color: var(--green);
+    font-weight: 700;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  /* ─── COLORS PALETTE ─── */
+  .color-swatch {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 0;
+  }
+
+  .color-dot {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .color-name { font-size: 12px; font-weight: 600; color: var(--text); }
+  .color-hex { font-size: 11px; color: var(--text-sec); font-family: monospace; }
+
+  /* ─── RULES ─── */
+  .rule-item {
+    padding: 10px 16px;
+    border-left: 3px solid;
+    border-radius: 0 8px 8px 0;
+    background: rgba(255,255,255,0.02);
+    margin-bottom: 8px;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .rule-item.legal { border-color: var(--red); }
+  .rule-item.financial { border-color: var(--gold); }
+  .rule-item.ux { border-color: var(--blue); }
+
+  .rule-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 3px;
+  }
+
+  .rule-item.legal .rule-label { color: var(--red); }
+  .rule-item.financial .rule-label { color: var(--gold); }
+  .rule-item.ux .rule-label { color: var(--blue); }
+
+  /* ─── PROGRESS BAR ─── */
+  .progress-container { margin-bottom: 16px; }
+  .progress-label {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .progress-bar {
+    height: 8px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 100px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    border-radius: 100px;
+    background: linear-gradient(90deg, var(--gold), var(--gold-light));
+  }
+
+  /* ─── FOOTER ─── */
+  .doc-footer {
+    margin-top: 60px;
+    padding: 30px 60px;
+    border-top: 1px solid rgba(201,168,76,0.15);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-sec);
+  }
+
+  .footer-logo { font-size: 20px; font-weight: 900; color: var(--gold); letter-spacing: -1px; }
+
+  /* ─── PRINT ─── */
+  @media print {
+    body { background: #101018; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .cover { min-height: 100vh; }
+    .section { padding: 40px 50px 30px; }
+  }
+
+  /* ─── HORIZONTAL LINE ─── */
+  .sep {
+    border: none;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    margin: 30px 0;
+  }
+
+  .highlight {
+    background: rgba(201,168,76,0.08);
+    border: 1px solid rgba(201,168,76,0.2);
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-size: 12px;
+    color: var(--gold-pale);
+    line-height: 1.7;
+    margin-bottom: 16px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!--  PAGE 1 — COUVERTURE                                   -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="cover">
+  <div class="cover-badge">Document Technique Confidentiel</div>
+  <div class="cover-logo">SESAME</div>
+  <div class="cover-tagline">Ouvre-toi au monde</div>
+  <div class="cover-divider"></div>
+  <div class="cover-title">Architecture & Dossier Projet</div>
+  <div class="cover-subtitle">
+    Vue d'ensemble de l'architecture technique, des rôles utilisateurs,
+    de l'avancement et des intégrations restantes à déployer.
+  </div>
+  <div class="cover-meta">
+    <div class="cover-meta-item">
+      <div class="cover-meta-label">Fondateur</div>
+      <div class="cover-meta-value">NAJAH Abdallah</div>
+    </div>
+    <div class="cover-meta-item">
+      <div class="cover-meta-label">Version</div>
+      <div class="cover-meta-value">1.0 — Juin 2026</div>
+    </div>
+    <div class="cover-meta-item">
+      <div class="cover-meta-label">Beta</div>
+      <div class="cover-meta-value">Montpellier J+90</div>
+    </div>
+    <div class="cover-meta-item">
+      <div class="cover-meta-label">Contact</div>
+      <div class="cover-meta-value">support@sesame-pro.com</div>
+    </div>
+  </div>
+  <div class="cover-bottom">
+    <span>SESAME — Document confidentiel</span>
+    <span>sesame-pro.com</span>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!--  PAGE 2 — PRÉSENTATION & STACK TECHNIQUE               -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="page-break"></div>
+<div class="section">
+  <div class="section-header">
+    <div class="section-number">1</div>
+    <div>
+      <div class="section-title">Présentation du Projet</div>
+      <div class="section-desc">Concept, stack technique et organisation du code</div>
+    </div>
+  </div>
+
+  <div class="highlight">
+    SESAME est une application de <strong>prescription rémunérée en points</strong>. Les Ambassadeurs (réceptionnistes, barmen, concierges) commandent des véhicules VTC pour leurs clients. En échange, ils accumulent des points SESAME échangeables contre des récompenses chez des fournisseurs partenaires.
+  </div>
+
+  <div class="grid-2" style="margin-bottom:24px;">
+    <div class="card card-gold no-break">
+      <div class="card-title">
+        <div class="card-icon" style="background:rgba(201,168,76,0.15);">📍</div>
+        Concept Clé
+      </div>
+      <ul class="feature-list amb" style="margin-bottom:0;">
+        <li>Ambassadeur commande un VTC pour son client</li>
+        <li>Le chauffeur valide un code 4 chiffres = départ juridique</li>
+        <li>L'ambassadeur gagne des points (1pt / 10€)</li>
+        <li>Les points s'échangent contre des bons cadeaux QR code</li>
+        <li>Le fournisseur scanne le QR code pour valider la prestation</li>
+      </ul>
+    </div>
+    <div class="card no-break">
+      <div class="card-title">
+        <div class="card-icon" style="background:rgba(74,158,255,0.15);">🌍</div>
+        Lancement
+      </div>
+      <ul class="feature-list chauf" style="margin-bottom:0;">
+        <li>Beta lancée à <strong>Montpellier</strong></li>
+        <li>Cible initiale : hôtels, bars, restaurants</li>
+        <li>Modèle : frais 20% SESAME sur CA chauffeur</li>
+        <li>Hébergement prévu : Vercel + Railway</li>
+        <li>Applications iOS + Android via EAS Build</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:0;">
+    <div class="card-title" style="margin-bottom:16px;">
+      <div class="card-icon" style="background:rgba(139,92,246,0.15);">⚙️</div>
+      Stack Technique Complète
+    </div>
+    <table class="stack-table">
+      <thead>
+        <tr>
+          <th>Couche</th>
+          <th>Technologie</th>
+          <th>Usage</th>
+          <th>Statut</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>App Mobile</td>
+          <td>React Native (Expo SDK)</td>
+          <td>Ambassadeur & Chauffeur — iOS + Android</td>
+          <td><span class="badge badge-done">✓ Fait</span></td>
+        </tr>
+        <tr>
+          <td>Dashboard Web</td>
+          <td>React + Vite + Tailwind CSS</td>
+          <td>Interface Admin navigateur</td>
+          <td><span class="badge badge-done">✓ Fait</span></td>
+        </tr>
+        <tr>
+          <td>Page Fournisseur</td>
+          <td>HTML / CSS / JS standalone</td>
+          <td>Validation bons QR code</td>
+          <td><span class="badge badge-done">✓ Fait</span></td>
+        </tr>
+        <tr>
+          <td>Backend / API</td>
+          <td>Node.js + Express</td>
+          <td>REST API + WebSocket</td>
+          <td><span class="badge badge-done">✓ Fait</span></td>
+        </tr>
+        <tr>
+          <td>Base de Données</td>
+          <td>PostgreSQL</td>
+          <td>14 tables — schéma complet</td>
+          <td><span class="badge badge-done">✓ Fait</span></td>
+        </tr>
+        <tr>
+          <td>Authentification</td>
+          <td>JWT + Refresh Tokens</td>
+          <td>Connexion, refresh, déconnexion</td>
+          <td><span class="badge badge-done">✓ Fait</span></td>
+        </tr>
+        <tr>
+          <td>Temps réel</td>
+          <td>WebSocket natif</td>
+          <td>Chat ambassadeur ↔ chauffeur</td>
+          <td><span class="badge badge-done">✓ Fait</span></td>
+        </tr>
+        <tr>
+          <td>QR Code</td>
+          <td>react-native-qrcode-svg</td>
+          <td>Bons cadeaux échangeables</td>
+          <td><span class="badge badge-done">✓ Fait</span></td>
+        </tr>
+        <tr>
+          <td>Push Notifications</td>
+          <td>Firebase Cloud Messaging</td>
+          <td>11 événements iOS + Android</td>
+          <td><span class="badge badge-todo">À faire</span></td>
+        </tr>
+        <tr>
+          <td>Cartographie</td>
+          <td>Google Maps API</td>
+          <td>Position temps réel, ETA, geofencing</td>
+          <td><span class="badge badge-todo">À faire</span></td>
+        </tr>
+        <tr>
+          <td>Paiements</td>
+          <td>Stripe</td>
+          <td>Facturation chauffeurs hebdomadaire</td>
+          <td><span class="badge badge-todo">À faire</span></td>
+        </tr>
+        <tr>
+          <td>Déploiement</td>
+          <td>Vercel + Railway + EAS</td>
+          <td>Mise en production complète</td>
+          <td><span class="badge badge-todo">À faire</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!--  PAGE 3 — ARCHITECTURE DES FICHIERS                    -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="page-break"></div>
+<div class="section">
+  <div class="section-header">
+    <div class="section-number">2</div>
+    <div>
+      <div class="section-title">Architecture des Fichiers</div>
+      <div class="section-desc">Organisation du monorepo — 3 modules principaux</div>
+    </div>
+  </div>
+
+  <!-- Diagram global -->
+  <div class="card card-gold" style="margin-bottom:24px; text-align:center; padding:30px;">
+    <div style="font-size:13px; color:var(--text-sec); letter-spacing:2px; text-transform:uppercase; margin-bottom:20px;">sesame_mobile/ — Monorepo</div>
+    <div style="display:flex; justify-content:center; gap:20px; flex-wrap:wrap;">
+      <div style="background:rgba(201,168,76,0.1); border:1px solid rgba(201,168,76,0.3); border-radius:12px; padding:16px 24px; min-width:140px;">
+        <div style="font-size:24px; margin-bottom:8px;">📱</div>
+        <div style="font-size:14px; font-weight:700; color:var(--gold);">mobile/</div>
+        <div style="font-size:11px; color:var(--text-sec); margin-top:4px;">React Native (Expo)</div>
+      </div>
+      <div style="background:rgba(74,158,255,0.08); border:1px solid rgba(74,158,255,0.25); border-radius:12px; padding:16px 24px; min-width:140px;">
+        <div style="font-size:24px; margin-bottom:8px;">⚡</div>
+        <div style="font-size:14px; font-weight:700; color:var(--blue);">backend/</div>
+        <div style="font-size:11px; color:var(--text-sec); margin-top:4px;">Node.js + Express</div>
+      </div>
+      <div style="background:rgba(139,92,246,0.08); border:1px solid rgba(139,92,246,0.25); border-radius:12px; padding:16px 24px; min-width:140px;">
+        <div style="font-size:24px; margin-bottom:8px;">🌐</div>
+        <div style="font-size:14px; font-weight:700; color:var(--purple);">web/</div>
+        <div style="font-size:11px; color:var(--text-sec); margin-top:4px;">React + Tailwind</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2" style="margin-bottom:16px;">
+    <!-- Mobile -->
+    <div class="card no-break">
+      <div class="card-title">
+        <div class="card-icon" style="background:rgba(201,168,76,0.15); color:var(--gold);">📱</div>
+        mobile/
+      </div>
+      <div style="font-family:monospace; font-size:11px; color:var(--text-sec); line-height:2;">
+        <span style="color:var(--gold);">App.tsx</span> — Navigation principale<br>
+        <span style="color:var(--text-sec);">src/</span><br>
+        &nbsp;&nbsp;<span style="color:var(--blue);">screens/</span> — 20+ écrans<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;Ambassador*.tsx (10 écrans)<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;Chauffeur*.tsx (4 écrans)<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;Admin*.tsx (5 écrans)<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;Login / Register / Onboarding<br>
+        &nbsp;&nbsp;<span style="color:var(--blue);">context/</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;AuthContext.tsx<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;ThemeContext.tsx<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;LanguageContext.tsx<br>
+        &nbsp;&nbsp;<span style="color:var(--blue);">components/</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;BottomNav.tsx<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;IncomingCourseModal.tsx<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;CountdownRing.tsx<br>
+        &nbsp;&nbsp;<span style="color:var(--blue);">services/</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;api.ts — Appels REST<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;notifications.ts — FCM<br>
+        &nbsp;&nbsp;<span style="color:var(--blue);">types.ts</span> — TypeScript global
+      </div>
+    </div>
+
+    <!-- Backend -->
+    <div class="card no-break">
+      <div class="card-title">
+        <div class="card-icon" style="background:rgba(74,158,255,0.15); color:var(--blue);">⚡</div>
+        backend/
+      </div>
+      <div style="font-family:monospace; font-size:11px; color:var(--text-sec); line-height:2;">
+        <span style="color:var(--blue);">src/</span><br>
+        &nbsp;&nbsp;<span style="color:var(--blue);">routes/</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;auth.ts — Inscription/connexion<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;courses.ts — CRUD courses<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;chauffeurs.ts — Profil/docs<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;ambassadeurs.ts — Dashboard<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;boutique.ts — Offres<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;echanges.ts — Bons QR<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;fournisseurs.ts — Validation<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;admin.ts — Back-office<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;chat.ts — Messages<br>
+        &nbsp;&nbsp;<span style="color:var(--blue);">lib/</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;pushNotifications.ts<br>
+        &nbsp;&nbsp;<span style="color:var(--blue);">migrations/</span> — Scripts SQL<br>
+        &nbsp;&nbsp;<span style="color:var(--gold);">schema.sql</span> — 14 tables BDD
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <!-- Web Admin -->
+    <div class="card no-break">
+      <div class="card-title">
+        <div class="card-icon" style="background:rgba(139,92,246,0.15); color:var(--purple);">🖥️</div>
+        web/admin/
+      </div>
+      <div style="font-family:monospace; font-size:11px; color:var(--text-sec); line-height:2;">
+        <span style="color:var(--purple);">src/</span><br>
+        &nbsp;&nbsp;<span style="color:var(--purple);">sections/</span> — Vues dashboard<br>
+        &nbsp;&nbsp;<span style="color:var(--purple);">components/</span> — UI partagés<br>
+        &nbsp;&nbsp;<span style="color:var(--purple);">App.tsx</span> — Router principal<br>
+        <span style="color:var(--text-sec);">index.html</span><br>
+        <span style="color:var(--text-sec);">vite.config.ts</span><br>
+        <span style="color:var(--text-sec);">tailwind.config.js</span>
+      </div>
+    </div>
+
+    <!-- Web Fournisseur -->
+    <div class="card no-break">
+      <div class="card-title">
+        <div class="card-icon" style="background:rgba(76,175,130,0.15); color:var(--green);">🏪</div>
+        web/fournisseur/
+      </div>
+      <div style="font-family:monospace; font-size:11px; color:var(--text-sec); line-height:2;">
+        <span style="color:var(--green);">index.html</span> — Page standalone<br>
+        <br>
+        Page autonome (pas de build)<br>
+        CSS + JS inline<br>
+        Fond clair #F2F2F7<br>
+        URL : sesame-pro.com/valider<br>
+        Paramètre : ?token=TOKEN_QR<br>
+        6 états d'interface
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!--  PAGE 4 — RÔLES & FONCTIONS                            -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="page-break"></div>
+<div class="section">
+  <div class="section-header">
+    <div class="section-number">3</div>
+    <div>
+      <div class="section-title">Rôles & Fonctions</div>
+      <div class="section-desc">Les 4 profils de l'écosystème SESAME</div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+
+    <!-- AMBASSADEUR -->
+    <div class="role-card no-break">
+      <div class="role-header amb">
+        <span class="role-emoji">🎖️</span>
+        <div class="role-name amb">Ambassadeur</div>
+        <div class="role-platform">📱 Application Mobile — iOS & Android</div>
+      </div>
+      <div class="role-body">
+        <div class="role-desc">
+          Réceptionniste, barman, concierge ou professionnel de l'accueil. Il commande des VTC pour ses clients et accumule des points SESAME à chaque course validée.
+        </div>
+        <ul class="feature-list amb">
+          <li>Tableau de bord avec anneau SVG de progression de niveau</li>
+          <li>Commander un VTC immédiat ou réserver à l'avance</li>
+          <li>Suivi en temps réel : code 4 chiffres affiché en permanence</li>
+          <li>Boutique de récompenses — échange de points contre bons</li>
+          <li>Bons cadeaux QR code avec alertes J-7 et J-1</li>
+          <li>Parrainage d'autres ambassadeurs (code unique 6 car.)</li>
+          <li>4 niveaux : STARTER → PRO → ELITE → BLACK</li>
+          <li>Chat temps réel avec le chauffeur</li>
+          <li>Profil : thème nocturne/clair/auto + langue FR/EN/IT/ES</li>
+          <li>Sous-comptes Moral (Entreprise) — équipe + commissions</li>
+          <li>Historique complet des courses et des échanges</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- CHAUFFEUR -->
+    <div class="role-card no-break">
+      <div class="role-header chauf">
+        <span class="role-emoji">🚗</span>
+        <div class="role-name chauf">Chauffeur VTC</div>
+        <div class="role-platform">📱 Application Mobile — iOS & Android</div>
+      </div>
+      <div class="role-body">
+        <div class="role-desc">
+          Chauffeur VTC indépendant. Il active ou désactive sa disponibilité, reçoit des missions et valide les courses via le code 4 chiffres. Aucune sanction pour refus.
+        </div>
+        <ul class="feature-list chauf">
+          <li>Toggle ON/OFF disponibilité (bloqué si course active)</li>
+          <li>Alerte course entrante : anneau countdown SVG 10 secondes</li>
+          <li>Refus de course sans aucune pénalité (règle juridique)</li>
+          <li>Saisie du code 4 chiffres (pivot juridique et financier)</li>
+          <li>Chat temps réel avec l'ambassadeur</li>
+          <li>Gestion client absent — bouton contacter SESAME uniquement</li>
+          <li>Revenus : CA encaissé par période (frais SESAME jamais affichés)</li>
+          <li>Profil KYC : 11 types de documents à télécharger</li>
+          <li>IBAN + SIRET pour facturation Stripe hebdomadaire</li>
+          <li>Note moyenne des courses effectuées</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ADMIN -->
+    <div class="role-card no-break" style="margin-top:16px;">
+      <div class="role-header admin">
+        <span class="role-emoji">🛡️</span>
+        <div class="role-name admin">Administrateur SESAME</div>
+        <div class="role-platform">🌐 Dashboard Web — Navigateur (React + Tailwind)</div>
+      </div>
+      <div class="role-body">
+        <div class="role-desc">
+          Équipe interne SESAME. Gestion complète de la plateforme : validation KYC, arbitrage des litiges, gestion des partenaires et déclenchement des virements.
+        </div>
+        <ul class="feature-list admin">
+          <li>KPIs temps réel : CA, courses, ambassadeurs, chauffeurs</li>
+          <li>Graphique d'activité sur 7 jours</li>
+          <li>Validation des bons cadeaux en attente (→ envoi QR)</li>
+          <li>Refus de bons avec remboursement automatique des points</li>
+          <li>Gestion des chauffeurs : KYC, statut, taux individuel</li>
+          <li>Gestion des ambassadeurs : niveaux, sanctions, profil</li>
+          <li>Arbitrage client absent : moduler points + indemnisation</li>
+          <li>Chat : supervision et intervention avec badge SESAME</li>
+          <li>Blacklist : blocage silencieux par critères biométriques</li>
+          <li>Gestion des fournisseurs : créer, modifier, régénérer codes</li>
+          <li>Déclenchement des virements chauffeurs</li>
+          <li>Paramètres système globaux</li>
+          <li>Exports CSV complets (courses, ambassadeurs, finances)</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- FOURNISSEUR -->
+    <div class="role-card no-break" style="margin-top:16px;">
+      <div class="role-header fourn">
+        <span class="role-emoji">🏪</span>
+        <div class="role-name fourn">Fournisseur Partenaire</div>
+        <div class="role-platform">🌐 Page Web Standalone — sesame-pro.com/valider</div>
+      </div>
+      <div class="role-body">
+        <div class="role-desc">
+          Spa, restaurant, boutique ou prestataire partenaire. Il dispose d'une page web dédiée pour scanner et valider les bons cadeaux QR code des ambassadeurs.
+        </div>
+        <ul class="feature-list fourn">
+          <li>Page web accessible sur n'importe quel appareil</li>
+          <li>Accès via lien QR code + code secret 4 chiffres</li>
+          <li>Triple vérification serveur : code, appartenance, offre active</li>
+          <li>Blocage automatique après 3 tentatives échouées</li>
+          <li>6 états distincts : saisie, erreur, bloqué, validé, déjà utilisé, expiré</li>
+          <li>Confirmation verte + récapitulatif de la prestation</li>
+          <li>Affichage du contact SESAME en cas de blocage</li>
+          <li>Fond clair (#F2F2F7) — adapté à l'usage professionnel</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!--  PAGE 5 — BASE DE DONNÉES                              -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="page-break"></div>
+<div class="section">
+  <div class="section-header">
+    <div class="section-number">4</div>
+    <div>
+      <div class="section-title">Base de Données</div>
+      <div class="section-desc">14 tables PostgreSQL — schéma complet et conforme au CDC</div>
+    </div>
+  </div>
+
+  <div class="grid-3">
+    <div class="card no-break">
+      <div class="card-title" style="color:var(--gold);">utilisateurs</div>
+      <div style="font-size:11px; color:var(--text-sec); line-height:1.9;">
+        id, type (amb/chauf/admin)<br>
+        prenom, nom, email, telephone<br>
+        date_naissance, lieu_naissance<br>
+        pays_naissance, mot_de_passe<br>
+        statut (actif/suspendu/blacklisté)<br>
+        theme, langue, date_creation
+      </div>
+    </div>
+    <div class="card no-break">
+      <div class="card-title" style="color:var(--gold);">ambassadeurs</div>
+      <div style="font-size:11px; color:var(--text-sec); line-height:1.9;">
+        utilisateur_id (FK)<br>
+        etablissement, metier<br>
+        code_parrainage (6 car., unique)<br>
+        parrain_id (FK nullable)<br>
+        points_solde, niveau<br>
+        nb_annulations, statut_commande
+      </div>
+    </div>
+    <div class="card no-break">
+      <div class="card-title" style="color:var(--gold);">chauffeurs</div>
+      <div style="font-size:11px; color:var(--text-sec); line-height:1.9;">
+        utilisateur_id (FK)<br>
+        disponible, vehicule_type<br>
+        vehicule_marque/modele<br>
+        vehicule_couleur/immat<br>
+        note_moyenne, iban, siret<br>
+        documents_valides
+      </div>
+    </div>
+    <div class="card no-break">
+      <div class="card-title" style="color:var(--blue);">courses</div>
+      <div style="font-size:11px; color:var(--text-sec); line-height:1.9;">
+        reference (CRS-2026-XXXX)<br>
+        ambassadeur_id, chauffeur_id<br>
+        statut, type (imm./réserv.)<br>
+        adresse_depart/destination<br>
+        montant, code_validation (4 ch.)<br>
+        <strong style="color:var(--gold);">code_valide_at</strong> — PIVOT JURIDIQUE
+      </div>
+    </div>
+    <div class="card no-break">
+      <div class="card-title" style="color:var(--blue);">documents_chauffeur</div>
+      <div style="font-size:11px; color:var(--text-sec); line-height:1.9;">
+        chauffeur_id (FK)<br>
+        type (11 types de doc.)<br>
+        fichier_recto/verso_url<br>
+        date_expiration<br>
+        statut (en_attente/valide/refusé)<br>
+        valide_par_admin
+      </div>
+    </div>
+    <div class="card no-break">
+      <div class="card-title" style="color:var(--blue);">sanctions_en_attente</div>
+      <div style="font-size:11px; color:var(--text-sec); line-height:1.9;">
+        ambassadeur_id (FK)<br>
+        points, motif, course_id<br>
+        decide_at, execute_at<br>
+        statut (en_attente/exécuté)<br>
+        <em>Différées si solde insuffisant</em>
+      </div>
+    </div>
+    <div class="card no-break">
+      <div class="card-title" style="color:var(--green);">fournisseurs</div>
+      <div style="font-size:11px; color:var(--text-sec); line-height:1.9;">
+        nom_societe, siret, iban<br>
+        contact juridique (legal_*)<br>
+        contact prestation (prest_*)<br>
+        code_secret (hash bcrypt)<br>
+        nb_tentatives_echouees, bloque<br>
+        option_paiement (a/b/c)
+      </div>
+    </div>
+    <div class="card no-break">
+      <div class="card-title" style="color:var(--green);">offres_boutique</div>
+      <div style="font-size:11px; color:var(--text-sec); line-height:1.9;">
+        fournisseur_id (FK)<br>
+        reference (KRT-30MIN)<br>
+        nom, stock (null = illimité)<br>
+        pts_requis<br>
+        tarif_fournisseur (CONFIDENTIEL)<br>
+        validite_bon_mois, statut
+      </div>
+    </div>
+    <div class="card no-break">
+      <div class="card-title" style="color:var(--green);">echanges</div>
+      <div style="font-size:11px; color:var(--text-sec); line-height:1.9;">
+        reference (BON-KRT-2026-X7K2)<br>
+        ambassadeur_id, offre_id, fourn_id<br>
+        points_deduits, token_qr (serveur)<br>
+        statut (att_admin/valide/refusé…)<br>
+        remis_at, expire_at, utilise_at<br>
+        <em>Expiration à la minute exacte</em>
+      </div>
+    </div>
+    <div class="card no-break">
+      <div class="card-title" style="color:var(--red);">blacklist</div>
+      <div style="font-size:11px; color:var(--text-sec); line-height:1.9;">
+        nom, prenom<br>
+        date_naissance, lieu_naissance<br>
+        telephone<br>
+        motif, type_utilisateur<br>
+        tentatives_reinscription (JSONB)<br>
+        <em>Blocage silencieux auto</em>
+      </div>
+    </div>
+    <div class="card no-break">
+      <div class="card-title" style="color:var(--text-sec);">messages_chat</div>
+      <div style="font-size:11px; color:var(--text-sec); line-height:1.9;">
+        course_id (FK)<br>
+        expediteur_type (amb/chauf/admin)<br>
+        expediteur_id<br>
+        contenu (TEXT)<br>
+        envoye_at<br>
+        <em>WebSocket /ws/chat/:courseId</em>
+      </div>
+    </div>
+    <div class="card no-break" style="background:rgba(201,168,76,0.05); border-color:rgba(201,168,76,0.15);">
+      <div style="font-size:11px; color:var(--text-sec); line-height:1.9; text-align:center; padding-top:8px;">
+        <div style="font-size:18px; margin-bottom:8px;">📊</div>
+        <strong style="color:var(--gold);">14 tables</strong> au total<br>
+        Toutes conformes au CDC<br>
+        Schéma versionné<br>
+        Migrations incluses
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!--  PAGE 6 — AVANCEMENT & CE QUI RESTE                    -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="page-break"></div>
+<div class="section">
+  <div class="section-header">
+    <div class="section-number">5</div>
+    <div>
+      <div class="section-title">Avancement — Juin 2026</div>
+      <div class="section-desc">Ce qui est fait vs ce qui reste à intégrer</div>
+    </div>
+  </div>
+
+  <!-- Barre de progression globale -->
+  <div class="card card-gold" style="margin-bottom:24px;">
+    <div class="card-title">Progression globale du projet</div>
+    <div class="progress-container">
+      <div class="progress-label"><span>Base de données (14 tables)</span><span style="color:var(--green);">100%</span></div>
+      <div class="progress-bar"><div class="progress-fill" style="width:100%; background:linear-gradient(90deg,var(--green),#6BCF9E);"></div></div>
+    </div>
+    <div class="progress-container">
+      <div class="progress-label"><span>Backend API (toutes les routes)</span><span style="color:var(--green);">100%</span></div>
+      <div class="progress-bar"><div class="progress-fill" style="width:100%; background:linear-gradient(90deg,var(--green),#6BCF9E);"></div></div>
+    </div>
+    <div class="progress-container">
+      <div class="progress-label"><span>App Mobile (ambassadeur + chauffeur + admin)</span><span style="color:var(--green);">100%</span></div>
+      <div class="progress-bar"><div class="progress-fill" style="width:100%; background:linear-gradient(90deg,var(--green),#6BCF9E);"></div></div>
+    </div>
+    <div class="progress-container">
+      <div class="progress-label"><span>Dashboard Admin Web</span><span style="color:var(--green);">100%</span></div>
+      <div class="progress-bar"><div class="progress-fill" style="width:100%; background:linear-gradient(90deg,var(--green),#6BCF9E);"></div></div>
+    </div>
+    <div class="progress-container">
+      <div class="progress-label"><span>Page Web Fournisseur</span><span style="color:var(--green);">100%</span></div>
+      <div class="progress-bar"><div class="progress-fill" style="width:100%; background:linear-gradient(90deg,var(--green),#6BCF9E);"></div></div>
+    </div>
+    <div class="progress-container">
+      <div class="progress-label"><span>Intégrations tierces (Firebase / Maps / Stripe)</span><span style="color:var(--orange);">0%</span></div>
+      <div class="progress-bar"><div class="progress-fill" style="width:5%; background:linear-gradient(90deg,var(--orange),#FFB86C);"></div></div>
+    </div>
+    <div class="progress-container" style="margin-bottom:0;">
+      <div class="progress-label"><span>Déploiement (Vercel + Railway + EAS)</span><span style="color:var(--orange);">0%</span></div>
+      <div class="progress-bar"><div class="progress-fill" style="width:5%; background:linear-gradient(90deg,var(--orange),#FFB86C);"></div></div>
+    </div>
+  </div>
+
+  <!-- Ce qui est FAIT -->
+  <div class="done-section no-break">
+    <div class="done-section-title">✅ Réalisé — Backend</div>
+    <ul class="done-list" style="columns:2; column-gap:30px;">
+      <li>Auth : inscription, connexion, refresh token, MDP oublié</li>
+      <li>Courses : créer, réserver, annuler, historique, actives</li>
+      <li>Pivot code 4 chiffres (code_valide_at)</li>
+      <li>Terminer course, refus, client absent</li>
+      <li>Boutique : offres actives</li>
+      <li>Échanges : créer bon, QR code, mes-bons</li>
+      <li>Fournisseurs : valider-bon (triple vérification)</li>
+      <li>Chat : messages GET/POST + WebSocket broadcast</li>
+      <li>Admin : dashboard KPIs, alertes, gestion complète</li>
+      <li>Admin : exports CSV, paramètres système</li>
+      <li>Blacklist CRUD + vérification inscription</li>
+      <li>Commissions Moral (sous-comptes entreprises)</li>
+    </ul>
+  </div>
+
+  <div class="done-section no-break" style="border-color:rgba(74,158,255,0.15);">
+    <div class="done-section-title" style="color:var(--blue);">✅ Réalisé — Application Mobile</div>
+    <ul class="done-list" style="columns:2; column-gap:30px;">
+      <li>Onboarding 6 étapes (première installation)</li>
+      <li>Login / Register avec contrôle blacklist</li>
+      <li>Ambassadeur : Accueil + anneau SVG niveaux</li>
+      <li>Ambassadeur : Commander / Réserver VTC</li>
+      <li>Ambassadeur : Suivi VTC en cours (code visible)</li>
+      <li>Ambassadeur : Boutique + Bons cadeaux</li>
+      <li>Ambassadeur : QR Code avec heure exacte expiration</li>
+      <li>Ambassadeur : Parrainage + Niveaux gamification</li>
+      <li>Ambassadeur : Profil (thème + langue)</li>
+      <li>Ambassadeur : Équipe Moral + Commissions</li>
+      <li>Chauffeur : Toggle ON/OFF + modal course entrante</li>
+      <li>Chauffeur : Saisie code 4 chiffres + validation</li>
+      <li>Chauffeur : Revenus (CA par période)</li>
+      <li>Chauffeur : Profil + KYC documents</li>
+      <li>Admin mobile : Dashboard, Chauffeurs, Courses</li>
+      <li>Admin mobile : Blacklist CRUD</li>
+      <li>Chat WebSocket natif (fallback polling)</li>
+      <li>ThemeContext : nocturne / clair / auto (AsyncStorage)</li>
+      <li>LanguageContext : FR / EN / IT / ES (AsyncStorage)</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!--  PAGE 7 — CE QUI RESTE À FAIRE                         -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="page-break"></div>
+<div class="section">
+  <div class="section-header">
+    <div class="section-number">6</div>
+    <div>
+      <div class="section-title">Ce qui Reste à Faire</div>
+      <div class="section-desc">3 intégrations tierces + déploiement complet</div>
+    </div>
+  </div>
+
+  <!-- Firebase -->
+  <div class="todo-item no-break">
+    <div class="todo-icon" style="background:rgba(255,154,60,0.15);">🔥</div>
+    <div class="todo-content">
+      <div class="todo-title">
+        Firebase Cloud Messaging (FCM)
+        <span class="badge badge-mobile">Mobile</span>
+        <span class="badge badge-todo">À faire</span>
+      </div>
+      <div class="todo-desc">
+        Envoyer les <strong>11 notifications push</strong> listées dans les specs (iOS + Android). Le backend possède déjà le fichier <code>pushNotifications.ts</code> et le service <code>notifications.ts</code> côté mobile — il faut connecter les vraies credentials Firebase.
+      </div>
+      <ul class="todo-tasks">
+        <li>Créer le projet Firebase Console et télécharger <code>google-services.json</code> + <code>GoogleService-Info.plist</code></li>
+        <li>Configurer Expo EAS Build avec les fichiers Firebase</li>
+        <li>Implémenter l'envoi serveur via <code>firebase-admin</code> SDK dans <code>pushNotifications.ts</code></li>
+        <li>Notifications Ambassadeur : CHAUFFEUR_ACCEPTE, CHAUFFEUR_ANNULE, CODE_VALIDE, COURSE_TERMINEE, BON_VALIDE, BON_EXPIRE_J7, BON_EXPIRE_J1, SANCTION_POINTS, CHAUFFEUR_ATTEND</li>
+        <li>Notifications Chauffeur : NOUVELLE_COURSE, INDEMNISATION</li>
+        <li>Notification persistante code visible si app en arrière-plan</li>
+        <li>Badge rouge sur icône application si non lue</li>
+        <li>Cron job J-7 et J-1 pour alertes expiration bons</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Google Maps -->
+  <div class="todo-item no-break">
+    <div class="todo-icon" style="background:rgba(74,158,255,0.15);">🗺️</div>
+    <div class="todo-content">
+      <div class="todo-title">
+        Google Maps API
+        <span class="badge badge-mobile">Mobile</span>
+        <span class="badge badge-todo">À faire</span>
+      </div>
+      <div class="todo-desc">
+        Intégration cartographique pour la géolocalisation temps réel du chauffeur, le calcul d'ETA et le geofencing à 300m pour débloquer le bouton "Terminer la course".
+      </div>
+      <ul class="todo-tasks">
+        <li>Créer la clé API Google Maps Console (Maps SDK for Android + iOS)</li>
+        <li>Installer <code>react-native-maps</code> via Expo Config Plugin</li>
+        <li>Afficher position chauffeur en temps réel sur carte (Chauffeur Home)</li>
+        <li>Calcul ETA + affichage "~X min" dans le message client et la modal course</li>
+        <li>Geofencing 300m : activer le bouton "Terminer" uniquement à proximité de la destination</li>
+        <li>Mode dégradé : si Maps hors ligne → saisie manuelle adresse, prix non calculable</li>
+        <li>Affichage itinéraire dans l'écran course entrante (10s countdown)</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Stripe -->
+  <div class="todo-item no-break">
+    <div class="todo-icon" style="background:rgba(139,92,246,0.15);">💳</div>
+    <div class="todo-content">
+      <div class="todo-title">
+        Stripe — Facturation Chauffeurs
+        <span class="badge badge-web">Backend</span>
+        <span class="badge badge-todo">À faire</span>
+      </div>
+      <div class="todo-desc">
+        Facturation hebdomadaire automatique des frais SESAME (20% du CA). Cycle lundi 01h00 → 13h00 → mardi 01h00 avec suspension et réactivation par webhook.
+      </div>
+      <ul class="todo-tasks">
+        <li>Configurer compte Stripe + clés API (test → production)</li>
+        <li>Créer customer Stripe à l'inscription chauffeur (stripe_customer_id en BDD)</li>
+        <li>Cron lundi 01h00 : générer factures des frais semaine précédente</li>
+        <li>Cron lundi 13h00 : relance paiement si en attente</li>
+        <li>Cron mardi 01h00 : suspension chauffeur si toujours impayé</li>
+        <li>Webhook Stripe : réactiver chauffeur instantanément après paiement</li>
+        <li>Frais JAMAIS affichés dans les interfaces chauffeur (seulement dans les factures Stripe)</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Déploiement -->
+  <div class="todo-item no-break">
+    <div class="todo-icon" style="background:rgba(201,168,76,0.15);">🚀</div>
+    <div class="todo-content">
+      <div class="todo-title">
+        Déploiement Complet
+        <span class="badge badge-critical">Priorité 4</span>
+        <span class="badge badge-todo">Dernière étape</span>
+      </div>
+      <div class="todo-desc">
+        Mise en production de l'ensemble de la plateforme. 4 cibles de déploiement indépendantes. À effectuer après la validation des 3 intégrations tierces ci-dessus.
+      </div>
+      <ul class="todo-tasks">
+        <li><strong>Vercel</strong> — Dashboard Admin web (<code>web/admin/</code>) + Page Fournisseur (<code>web/fournisseur/</code>)</li>
+        <li><strong>Railway ou Render</strong> — Backend Node.js/Express + base PostgreSQL</li>
+        <li><strong>EAS Build (Expo)</strong> — Build iOS (.ipa) + Android (.apk/.aab) en production</li>
+        <li><strong>App Store Connect + Google Play Console</strong> — Soumission et publication des apps</li>
+        <li>Configuration variables d'environnement (DATABASE_URL, JWT_SECRET, STRIPE_KEY, FIREBASE_KEY, MAPS_KEY)</li>
+        <li>Configuration domaine : sesame-pro.com + sous-domaine API</li>
+        <li>Tests de charge avant beta Montpellier</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!--  PAGE 8 — RÈGLES MÉTIER & CHARTE GRAPHIQUE             -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="page-break"></div>
+<div class="section">
+  <div class="section-header">
+    <div class="section-number">7</div>
+    <div>
+      <div class="section-title">Règles Métier & Charte Graphique</div>
+      <div class="section-desc">Règles non négociables et identité visuelle</div>
+    </div>
+  </div>
+
+  <div class="grid-2" style="margin-bottom:24px;">
+    <div>
+      <div style="font-size:13px; font-weight:700; color:var(--red); margin-bottom:12px; display:flex; align-items:center; gap:8px;">⚖️ Règles Juridiques Absolues</div>
+      <div class="rule-item legal">
+        <div class="rule-label">Refus de course</div>
+        Aucune sanction, pénalité ou conséquence pour un chauffeur qui refuse une course. Risque de requalification en contrat salarié.
+      </div>
+      <div class="rule-item legal">
+        <div class="rule-label">Course partagée</div>
+        Strictement INTERDITE. 1 course = 1 véhicule = 1 code = 1 client. Aucun covoiturage.
+      </div>
+      <div class="rule-item legal">
+        <div class="rule-label">Mot "objectif"</div>
+        BANNI de toute l'interface chauffeur. Ne jamais l'afficher.
+      </div>
+      <div class="rule-item legal">
+        <div class="rule-label">Vouvoiement</div>
+        Obligatoire dans TOUS les messages envoyés au client.
+      </div>
+
+      <div style="font-size:13px; font-weight:700; color:var(--gold); margin:20px 0 12px; display:flex; align-items:center; gap:8px;">💰 Règles Financières</div>
+      <div class="rule-item financial">
+        <div class="rule-label">Pivot code 4 chiffres</div>
+        Les points ne sont crédités QUE si <code>code_valide_at IS NOT NULL</code>. Avant validation : 0 obligation, 0 frais, 0 compensation.
+      </div>
+      <div class="rule-item financial">
+        <div class="rule-label">Calcul des points</div>
+        <code>Math.floor(montant / 10)</code> — SANS PLAFOND. Jamais de maximum.
+      </div>
+      <div class="rule-item financial">
+        <div class="rule-label">Frais SESAME</div>
+        JAMAIS affichés dans les interfaces chauffeur. Visibles uniquement dans les factures Stripe.
+      </div>
+      <div class="rule-item financial">
+        <div class="rule-label">Sanctions différées</div>
+        Si solde insuffisant : différer silencieusement. Aucune notification avant exécution.
+      </div>
+    </div>
+
+    <div>
+      <div style="font-size:13px; font-weight:700; color:var(--gold); margin-bottom:16px; display:flex; align-items:center; gap:8px;">🎨 Charte Graphique Exacte</div>
+
+      <div class="color-swatch">
+        <div class="color-dot" style="background:#C9A84C;"></div>
+        <div><div class="color-name">Or SESAME — Couleur principale</div><div class="color-hex">#C9A84C</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="color-dot" style="background:#101018;"></div>
+        <div><div class="color-name">Fond Nocturne</div><div class="color-hex">#101018</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="color-dot" style="background:#161624;"></div>
+        <div><div class="color-name">Cartes Nocturne</div><div class="color-hex">#161624</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="color-dot" style="background:#E0DBD2;"></div>
+        <div><div class="color-name">Texte Principal Nocturne</div><div class="color-hex">#E0DBD2</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="color-dot" style="background:#6A6680;"></div>
+        <div><div class="color-name">Texte Secondaire Nocturne</div><div class="color-hex">#6A6680</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="color-dot" style="background:#F2F2F7;"></div>
+        <div><div class="color-name">Fond Clair (Fournisseur)</div><div class="color-hex">#F2F2F7</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="color-dot" style="background:#4CAF82;"></div>
+        <div><div class="color-name">Vert Succès</div><div class="color-hex">#4CAF82</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="color-dot" style="background:#4A9EFF;"></div>
+        <div><div class="color-name">Bleu Info</div><div class="color-hex">#4A9EFF</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="color-dot" style="background:#FF9A3C;"></div>
+        <div><div class="color-name">Orange Alerte</div><div class="color-hex">#FF9A3C</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="color-dot" style="background:#FF6464;"></div>
+        <div><div class="color-name">Rouge Erreur</div><div class="color-hex">#FF6464</div></div>
+      </div>
+
+      <div style="margin-top:20px; padding:14px; background:rgba(255,255,255,0.03); border-radius:8px; font-size:11px; color:var(--text-sec);">
+        Police : <strong style="color:var(--text);">Inter</strong> ou System font<br>
+        Niveaux : <span style="color:var(--text);">STARTER 0 pts / PRO 500 / ELITE 2 000 / BLACK 5 000</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer du document -->
+  <div class="doc-footer">
+    <div>
+      <div class="footer-logo">SESAME</div>
+      <div style="margin-top:4px;">Ouvre-toi au monde</div>
+    </div>
+    <div style="text-align:center;">
+      <div>Document confidentiel — Ne pas diffuser</div>
+      <div style="margin-top:4px; color:var(--gold);">Version 1.0 — Juin 2026</div>
+    </div>
+    <div style="text-align:right;">
+      <div>NAJAH Abdallah — Fondateur</div>
+      <div style="margin-top:4px;">support@sesame-pro.com</div>
+      <div style="margin-top:2px;">07 45 20 70 06</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

@@ -125,6 +125,8 @@ router.get('/:id/dashboard', async (req, res) => {
         [req.params.id]
     );
 
+    console.log('[dashboard] id:', req.params.id, 'rows:', profileResult.rows.length, 'data:', profileResult.rows[0]);
+
     if (!profileResult.rows.length) {
         return res.status(404).json({ error: 'Ambassadeur introuvable' });
     }

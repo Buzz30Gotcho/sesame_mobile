@@ -10,10 +10,36 @@ const JWT_SECRET = process.env.JWT_SECRET || 'sesame-secret';
 
 const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 
+function toE164(phone: string): string {
+    const digits = phone.replace(/\D/g, '');
+    if (phone.startsWith('+')) return '+' + digits;
+    // Numéro français : 10 chiffres commençant par 0
+    if (digits.length === 10 && digits.startsWith('0')) return '+33' + digits.slice(1);
+    // Numéro sénégalais : 9 chiffres commençant par 7
+    if (digits.length === 9 && digits.startsWith('7')) return '+221' + digits;
+    // Déjà un indicatif sans le +
+    if (digits.length > 10) return '+' + digits;
+    return '+' + digits;
+}
+
+function luhnCheck(num: string): boolean {
+    let sum = 0;
+    for (let i = 0; i < num.length; i++) {
+        let d = parseInt(num[num.length - 1 - i]);
+        if (i % 2 === 1) { d *= 2; if (d > 9) d -= 9; }
+        sum += d;
+    }
+    return sum % 10 === 0;
+}
+
 async function sendSMS(to: string, body: string): Promise<void> {
+    if (process.env.SMS_DEV_MODE === 'true') {
+        console.log(`[SMS DEV] To: ${toE164(to)} | Message: ${body}`);
+        return;
+    }
     await twilioClient.messages.create({
         from: process.env.TWILIO_PHONE_NUMBER!,
-        to,
+        to: toE164(to),
         body,
     });
 }
@@ -65,72 +91,115 @@ router.post('/inscription', async (req, res) => {
         vehicule_immat
     } = req.body;
 
-    if (!type || !email || !telephone || !mot_de_passe) {
-        return res.status(400).json({ error: 'Champs obligatoires manquants' });
-    }
+    try {
+        if (!type) return res.status(400).json({ error: 'Type de compte manquant' });
+        if (!email) return res.status(400).json({ error: 'Email obligatoire' });
+        if (!telephone) return res.status(400).json({ error: 'Téléphone obligatoire' });
+        if (!mot_de_passe) return res.status(400).json({ error: 'Mot de passe obligatoire' });
 
-    const dateNaissanceISO = parseDateNaissance(date_naissance);
-
-    // Vérification blacklist avant création (critères : nom + prénom + date_naissance + lieu_naissance + telephone)
-    if (nom && prenom && dateNaissanceISO && lieu_naissance) {
-        const blacklistCheck = await query(
-            `SELECT id FROM blacklist WHERE LOWER(telephone) = LOWER($1) OR (LOWER(nom) = LOWER($2) AND LOWER(prenom) = LOWER($3) AND date_naissance = $4 AND LOWER(lieu_naissance) = LOWER($5))`,
-            [telephone, nom, prenom, dateNaissanceISO, lieu_naissance]
-        );
-        if (blacklistCheck.rows.length > 0) {
-            // Blocage silencieux — ne jamais mentionner la blacklist
-            return res.status(400).json({ error: 'Difficulté technique pour valider votre inscription. Contactez support@sesame-pro.com' });
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+            return res.status(400).json({ error: 'Adresse email invalide.' });
         }
-    }
-
-    const hashed = await bcrypt.hash(mot_de_passe, 10);
-
-    const userResult = await query(
-        `INSERT INTO utilisateurs(type, prenom, nom, email, telephone, mot_de_passe_hash, date_naissance, lieu_naissance, pays_naissance)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-        [type, prenom || '', nom || '', email, telephone, hashed, dateNaissanceISO, lieu_naissance || null, pays_naissance || null]
-    );
-
-    const userId = userResult.rows[0].id;
-
-    if (type === 'ambassadeur') {
-        // Générer un code_parrainage unique à 6 caractères
-        let codeParrainage = generateCodeParrainage();
-        let exists = await query('SELECT id FROM ambassadeurs WHERE code_parrainage = $1', [codeParrainage]);
-        while (exists.rows.length > 0) {
-            codeParrainage = generateCodeParrainage();
-            exists = await query('SELECT id FROM ambassadeurs WHERE code_parrainage = $1', [codeParrainage]);
+        const phoneClean = telephone.replace(/[\s\-\.]/g, '');
+        if (!/^(\+?\d{9,15})$/.test(phoneClean)) {
+            return res.status(400).json({ error: 'Numéro de téléphone invalide.' });
         }
 
-        await query(
-            `INSERT INTO ambassadeurs(utilisateur_id, type_ambassadeur, etablissement, metier, siret, iban, responsable_legal_nom, code_parrainage)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-            [
-                userId,
-                ambassador_type || 'physique',
-                etablissement || null,
-                metier || null,
-                siret || null,
-                iban || null,
-                ambassador_type === 'moral' ? `${prenom} ${nom}` : null,
-                codeParrainage
-            ]
-        );
-    } else if (type === 'chauffeur') {
-        const customer = await stripe.customers.create({
-            email,
-            name: `${prenom || ''} ${nom || ''}`.trim(),
-            metadata: { sesame_user_id: userId },
-        }).catch(() => null);
+        if (siret) {
+            const s = siret.replace(/\s/g, '');
+            if (!/^\d{14}$/.test(s) || !luhnCheck(s)) {
+                return res.status(400).json({ error: 'SIRET invalide (14 chiffres).' });
+            }
+        }
+        if (iban) {
+            const i = iban.replace(/\s/g, '').toUpperCase();
+            if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(i)) {
+                return res.status(400).json({ error: 'IBAN invalide.' });
+            }
+        }
 
-        await query(
-            `INSERT INTO chauffeurs(utilisateur_id, vehicule_type, vehicule_marque, vehicule_modele, vehicule_couleur, vehicule_immat, iban, siret, stripe_customer_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-            [userId, vehicule_type || 'berline', vehicule_marque || null, vehicule_modele || null, vehicule_couleur || null, vehicule_immat || null, iban || null, siret || null, customer?.id || null]
+        const dateNaissanceISO = parseDateNaissance(date_naissance);
+
+        // Vérification blacklist — toujours par téléphone, et par identité si les champs sont présents
+        {
+            let blacklistQuery = `SELECT id FROM blacklist WHERE LOWER(telephone) = LOWER($1)`;
+            const blacklistParams: any[] = [telephone];
+            if (nom && prenom && dateNaissanceISO && lieu_naissance) {
+                blacklistQuery += ` OR (LOWER(nom) = LOWER($2) AND LOWER(prenom) = LOWER($3) AND date_naissance = $4 AND LOWER(lieu_naissance) = LOWER($5))`;
+                blacklistParams.push(nom, prenom, dateNaissanceISO, lieu_naissance);
+            }
+            const blacklistCheck = await query(blacklistQuery, blacklistParams);
+            if (blacklistCheck.rows.length > 0) {
+                return res.status(400).json({ error: 'Difficulté technique pour valider votre inscription. Contactez support@sesame-pro.com' });
+            }
+        }
+
+        const hashed = await bcrypt.hash(mot_de_passe, 10);
+
+        const userResult = await query(
+            `INSERT INTO utilisateurs(type, prenom, nom, email, telephone, mot_de_passe_hash, date_naissance, lieu_naissance, pays_naissance)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+            [type, prenom || '', nom || '', email, telephone, hashed, dateNaissanceISO, lieu_naissance || null, pays_naissance || null]
         );
+
+        const userId = userResult.rows[0].id;
+
+        if (type === 'ambassadeur') {
+            // Générer un code_parrainage unique à 6 caractères
+            let codeParrainage = generateCodeParrainage();
+            let exists = await query('SELECT id FROM ambassadeurs WHERE code_parrainage = $1', [codeParrainage]);
+            while (exists.rows.length > 0) {
+                codeParrainage = generateCodeParrainage();
+                exists = await query('SELECT id FROM ambassadeurs WHERE code_parrainage = $1', [codeParrainage]);
+            }
+
+            await query(
+                `INSERT INTO ambassadeurs(utilisateur_id, type_ambassadeur, etablissement, metier, siret, iban, responsable_legal_nom, code_parrainage)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                [
+                    userId,
+                    ambassador_type || 'physique',
+                    etablissement || null,
+                    metier || null,
+                    siret || null,
+                    iban || null,
+                    ambassador_type === 'moral' ? `${prenom} ${nom}` : null,
+                    codeParrainage
+                ]
+            );
+        } else if (type === 'chauffeur') {
+            const customer = await stripe.customers.create({
+                email,
+                name: `${prenom || ''} ${nom || ''}`.trim(),
+                metadata: { sesame_user_id: userId },
+            }).catch(() => null);
+
+            await query(
+                `INSERT INTO chauffeurs(utilisateur_id, vehicule_type, vehicule_marque, vehicule_modele, vehicule_couleur, vehicule_immat, iban, siret, stripe_customer_id)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+                [userId, vehicule_type || 'berline', vehicule_marque || null, vehicule_modele || null, vehicule_couleur || null, vehicule_immat || null, iban || null, siret || null, customer?.id || null]
+            );
+        }
+
+        let ambassadeur_id: string | null = null;
+        let chauffeur_id: string | null = null;
+
+        if (type === 'ambassadeur') {
+            const r = await query('SELECT id FROM ambassadeurs WHERE utilisateur_id = $1', [userId]);
+            ambassadeur_id = r.rows[0]?.id || null;
+        } else if (type === 'chauffeur') {
+            const r = await query('SELECT id FROM chauffeurs WHERE utilisateur_id = $1', [userId]);
+            chauffeur_id = r.rows[0]?.id || null;
+        }
+
+        res.status(201).json({ token: signToken(userId), userId, role: type, ambassadeur_id, chauffeur_id });
+    } catch (err: any) {
+        console.error('[inscription]', err);
+        if (err.code === '23505') {
+            return res.status(400).json({ error: 'Cet email ou ce numéro de téléphone est déjà utilisé.' });
+        }
+        res.status(500).json({ error: err.message || 'Erreur serveur lors de l\'inscription' });
     }
-
-    res.status(201).json({ token: signToken(userId), userId });
 });
 
 router.post('/connexion', async (req, res) => {
@@ -156,11 +225,15 @@ router.post('/connexion', async (req, res) => {
     );
 
     const user = result.rows[0];
+    console.log('[connexion] email:', email, 'user_id:', user?.id, 'ambassadeur_id:', user?.ambassadeur_id, 'prenom:', user?.prenom);
     if (!user || !(await bcrypt.compare(mot_de_passe, user.mot_de_passe_hash))) {
         return res.status(401).json({ error: 'Identifiants invalides' });
     }
     if (user.statut === 'suspendu') {
-        return res.status(403).json({ error: 'Compte suspendu. Réglez votre facture depuis l\'app pour réactiver votre accès.' });
+        const msg = user.utilisateur_type === 'chauffeur'
+            ? 'Compte suspendu.\nRéglez votre facture depuis l\'app pour réactiver votre accès.'
+            : 'Votre compte a été suspendu.\nContactez support@sesame-pro.com pour plus d\'informations.';
+        return res.status(403).json({ error: msg });
     }
     if (user.statut === 'blackliste') {
         return res.status(403).json({ error: 'Difficulté technique pour valider votre connexion. Contactez support@sesame-pro.com' });

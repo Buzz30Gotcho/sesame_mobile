@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator,
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { login, demanderResetMotDePasse, reinitialiserMotDePasse } from '../services/api';
+import { clearDashboardCache } from './AmbassadorAccueilScreen';
 import { useAuth } from '../context/AuthContext';
 import { registerForPushNotifications } from '../services/notifications';
 import { Colors, Typography } from '../theme';
@@ -62,7 +63,8 @@ export default function LoginScreen({ navigation }: NativeStackScreenProps<RootS
             if (role === 'chauffeur' && chauffeur_id) {
                 navigation.replace('ChauffeurHome');
             } else if (role === 'ambassadeur' && ambassadeur_id) {
-                navigation.replace('AmbassadorAccueil'); // Use replace to clear stack
+                clearDashboardCache();
+                navigation.replace('AmbassadorAccueil');
             } else {
                 setError('Type de compte non géré.');
             }
@@ -93,8 +95,8 @@ export default function LoginScreen({ navigation }: NativeStackScreenProps<RootS
     };
 
     const handleNouveauMotDePasse = async () => {
-        if (!resetNewPassword || resetNewPassword.length < 8) {
-            setResetError('Mot de passe trop court (8 caractères minimum)');
+        if (!resetNewPassword || resetNewPassword.length < 4) {
+            setResetError('Mot de passe trop court (4 caractères minimum)');
             return;
         }
         setResetLoading(true); setResetError(null);
@@ -103,7 +105,7 @@ export default function LoginScreen({ navigation }: NativeStackScreenProps<RootS
             setResetSuccess(true);
             setTimeout(() => {
                 setResetStep(0);
-                setResetEmail(''); setResetCode(''); setResetNewPassword('');
+                setResetTelephone(''); setResetCode(''); setResetNewPassword('');
                 setResetSuccess(false);
             }, 2000);
         } catch (e: any) {
@@ -149,9 +151,6 @@ export default function LoginScreen({ navigation }: NativeStackScreenProps<RootS
                                 <Text style={styles.roleLabel}>CHAUFFEUR</Text>
                             </TouchableOpacity>
 
-                            <TouchableOpacity style={[styles.roleBtn, styles.roleBtnAdmin]} onPress={() => setSelectedRole('admin')}>
-                                <Text style={styles.roleLabelSmall}>ADMINISTRATION</Text>
-                            </TouchableOpacity>
                         </View>
                     ) : (
                         <View style={styles.formContainer}>

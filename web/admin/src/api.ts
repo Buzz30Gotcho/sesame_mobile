@@ -7,6 +7,30 @@ const api = axios.create({
   timeout: 10000,
 });
 
+// Injecte le token admin dans chaque requête
+api.interceptors.request.use(config => {
+  const token = localStorage.getItem('admin_token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+// Si 401 → déconnexion
+api.interceptors.response.use(
+  r => r,
+  err => {
+    if (err.response?.status === 401) {
+      localStorage.removeItem('admin_token');
+      window.location.reload();
+    }
+    return Promise.reject(err);
+  }
+);
+
+export async function adminLogin(email: string, password: string): Promise<string> {
+  const res = await axios.post(`${BASE_URL}/admin/login`, { email, password });
+  return res.data.token;
+}
+
 // Types
 export interface DashboardStats {
   totalCourses: number;
@@ -24,6 +48,7 @@ export interface DashboardStats {
 
 export interface Ambassadeur {
   id: number;
+  utilisateur_id?: string;
   prenom: string;
   nom: string;
   type: 'physique' | 'moral';
@@ -32,7 +57,10 @@ export interface Ambassadeur {
   commission?: number;
   telephone?: string;
   statut?: string;
+  compte_statut?: 'actif' | 'suspendu' | 'blackliste';
   societe?: string;
+  note_interne?: string;
+  created_at?: string;
 }
 
 export interface Chauffeur {
@@ -43,7 +71,11 @@ export interface Chauffeur {
   disponible?: boolean;
   taux_commission?: number;
   documents_complets?: boolean;
+  documents_valides?: boolean;
   telephone?: string;
+  compte_statut?: 'actif' | 'suspendu' | 'blackliste';
+  utilisateur_id?: string;
+  note_interne?: string;
 }
 
 export interface Course {
@@ -126,9 +158,17 @@ export const getAmbassadeurs = () => api.get<Ambassadeur[]>('/admin/ambassadeurs
 
 // Chauffeurs
 export const getChauffeurs = () => api.get<Chauffeur[]>('/admin/chauffeurs').then(r => r.data);
-export const getChauffeurDocuments = (id: number) => api.get(`/chauffeurs/${id}/documents`).then(r => r.data);
+export const getChauffeurDocuments = (id: string) => api.get(`/admin/chauffeurs/${id}/documents`).then(r => r.data);
+export const validerDocument = (id: string) => api.put(`/admin/documents/${id}/valider`).then(r => r.data);
+export const refuserDocument = (id: string, motif?: string) => api.put(`/admin/documents/${id}/refuser`, { motif }).then(r => r.data);
 export const updateChauffeurTaux = (id: number, taux: number) =>
   api.put(`/admin/chauffeurs/${id}/taux`, { taux }).then(r => r.data);
+export const updateChauffeurStatut = (utilisateur_id: string, statut: 'actif' | 'suspendu') =>
+  api.put(`/admin/utilisateurs/${utilisateur_id}/statut`, { statut }).then(r => r.data);
+export const updateChauffeurNote = (id: number, note: string) =>
+  api.put(`/admin/chauffeurs/${id}/note`, { note }).then(r => r.data);
+export const updateAmbassadeurNote = (id: number, note: string) =>
+  api.put(`/admin/ambassadeurs/${id}/note`, { note }).then(r => r.data);
 
 // Courses
 export const getCourses = () => api.get<Course[]>('/admin/courses').then(r => r.data);
@@ -145,6 +185,7 @@ export const refuserEchange = (id: number) => api.put(`/admin/echanges/${id}/ref
 // Blacklist
 export const getBlacklist = () => api.get<BlacklistEntry[]>('/admin/blacklist').then(r => r.data);
 export const addBlacklist = (entry: BlacklistEntry) => api.post('/admin/blacklist', entry).then(r => r.data);
+export const deleteBlacklist = (id: number) => api.delete(`/admin/blacklist/${id}`).then(r => r.data);
 
 // Alertes / Sanctions
 export const getSanctionsEnAttente = () => api.get<Sanction[]>('/admin/sanctions').then(r => r.data);

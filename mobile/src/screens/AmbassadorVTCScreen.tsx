@@ -164,6 +164,33 @@ export default function AmbassadorVTCScreen() {
                             <Text style={styles.activeRef}>{activeCourse.reference}</Text>
                         </View>
 
+                        {/* Infos chauffeur — toujours visible */}
+                        <View style={styles.chauffeurCard}>
+                            <Text style={styles.chauffeurTitle}>{t('chauffeur_assigne')}</Text>
+                            {activeCourse.chauffeur_prenom ? (
+                                <>
+                                    <Text style={styles.chauffeurName}>
+                                        {activeCourse.chauffeur_prenom} {activeCourse.chauffeur_nom}
+                                    </Text>
+                                    <View style={styles.immatRow}>
+                                        <Text style={styles.vehicleDesc}>
+                                            {[
+                                                activeCourse.vehicule_type === 'berline' ? 'Berline' : 'Van',
+                                                activeCourse.vehicule_couleur,
+                                                activeCourse.vehicule_marque,
+                                                activeCourse.vehicule_modele,
+                                            ].filter(Boolean).join(' ') || '—'}
+                                        </Text>
+                                        {activeCourse.vehicule_immat && (
+                                            <Text style={styles.immat}>{activeCourse.vehicule_immat}</Text>
+                                        )}
+                                    </View>
+                                </>
+                            ) : (
+                                <Text style={styles.pivotWaiting}>Recherche en cours…</Text>
+                            )}
+                        </View>
+
                         {/* Code Pivot */}
                         <View style={styles.pivotSection}>
                             <Text style={styles.pivotLabel}>{t('code_client_pivot')}</Text>
@@ -172,31 +199,6 @@ export default function AmbassadorVTCScreen() {
                                 <Text style={styles.pivotWaiting}>{t('en_attente_chauffeur')}</Text>
                             )}
                         </View>
-
-                        {/* Infos chauffeur si disponibles */}
-                        {activeCourse.chauffeur_prenom && (
-                            <View style={styles.chauffeurCard}>
-                                <Text style={styles.chauffeurTitle}>{t('chauffeur_assigne')}</Text>
-                                <Text style={styles.chauffeurName}>
-                                    {activeCourse.chauffeur_prenom} {activeCourse.chauffeur_nom}
-                                </Text>
-                                {(activeCourse.vehicule_marque || activeCourse.vehicule_couleur) && (
-                                    <View style={styles.immatRow}>
-                                        <Text style={styles.vehicleDesc}>
-                                            {[
-                                                activeCourse.vehicule_type === 'berline' ? 'Berline' : 'Van',
-                                                activeCourse.vehicule_couleur,
-                                                activeCourse.vehicule_marque,
-                                                activeCourse.vehicule_modele,
-                                            ].filter(Boolean).join(' ')}
-                                        </Text>
-                                        {activeCourse.vehicule_immat && (
-                                            <Text style={styles.immat}>{activeCourse.vehicule_immat}</Text>
-                                        )}
-                                    </View>
-                                )}
-                            </View>
-                        )}
 
                         <View style={styles.infoRow}>
                             <Text style={styles.infoLabel}>{t('depart_label')}</Text>

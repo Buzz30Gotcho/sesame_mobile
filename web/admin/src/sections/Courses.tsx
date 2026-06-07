@@ -168,6 +168,7 @@ export default function Courses() {
                   <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3">Statut</th>
                   <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3">Type</th>
                   <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3">Ambassadeur</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3">Chauffeur</th>
                   <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3">Trajet</th>
                   <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3">Montant</th>
                   <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3">Date</th>
@@ -177,7 +178,7 @@ export default function Courses() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center text-gray-400 py-10">Aucune course trouvée</td>
+                    <td colSpan={9} className="text-center text-gray-400 py-10">Aucune course trouvée</td>
                   </tr>
                 ) : filtered.map(course => (
                   <tr key={course.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
@@ -190,6 +191,11 @@ export default function Courses() {
                     <td className="px-4 py-3 text-gray-600 capitalize">{course.type ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-700">
                       {[course.ambassadeur_prenom, course.ambassadeur_nom].filter(Boolean).join(' ') || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-gray-700">
+                      {[course.chauffeur_prenom, course.chauffeur_nom].filter(Boolean).join(' ') || (
+                        <span className="text-xs text-orange-400 italic">Non assigné</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-600 max-w-[200px]">
                       <div className="truncate text-xs">
@@ -216,13 +222,15 @@ export default function Courses() {
                             Annuler
                           </button>
                         )}
-                        <button
-                          onClick={() => { setAssignerModal(course); setSelectedChauffeur(''); }}
-                          className="px-2 py-1 text-xs rounded-lg text-white font-medium transition-opacity hover:opacity-80"
-                          style={{ backgroundColor: '#4A9EFF' }}
-                        >
-                          Assigner
-                        </button>
+                        {course.statut === 'recherche' && (
+                          <button
+                            onClick={() => { setAssignerModal(course); setSelectedChauffeur(''); }}
+                            className="px-2 py-1 text-xs rounded-lg text-white font-medium transition-opacity hover:opacity-80"
+                            style={{ backgroundColor: '#4A9EFF' }}
+                          >
+                            Assigner
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

@@ -1,21 +1,29 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, ActivityIndicator, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { register } from '../services/api';
+import { register, setAuthToken } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import type { RootStackParamList, UserRole } from '../types';
 
 type Step = 1 | 2;
-type AmbassadorType = 'physique' | 'moral';
+
+function luhnCheck(num: string): boolean {
+    let sum = 0;
+    for (let i = 0; i < num.length; i++) {
+        let d = parseInt(num[num.length - 1 - i]);
+        if (i % 2 === 1) { d *= 2; if (d > 9) d -= 9; }
+        sum += d;
+    }
+    return sum % 10 === 0;
+}
 
 export default function RegisterScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'Register'>) {
+    const { setAuth } = useAuth();
     const [step, setStep] = useState<Step>(1);
     
     // Step 1: Role Selection
     const [role, setRole] = useState<UserRole | null>(null);
-    
-    // Step 2: Details
-    const [ambassadorType, setAmbassadorType] = useState<AmbassadorType>('physique');
     
     // Identity
     const [prenom, setPrenom] = useState('');
@@ -31,7 +39,8 @@ export default function RegisterScreen({ navigation }: NativeStackScreenProps<Ro
     const [etablissement, setEtablissement] = useState('');
     const [metier, setMetier] = useState('');
     const [cp, setCp] = useState('');
-    const [raisonSociale, setRaisonSociale] = useState('');
+
+    // Driver + shared
     const [siret, setSiret] = useState('');
     const [iban, setIban] = useState('');
 
@@ -42,6 +51,7 @@ export default function RegisterScreen({ navigation }: NativeStackScreenProps<Ro
     const [vehiculeCouleur, setVehiculeCouleur] = useState('');
     const [vehiculeImmat, setVehiculeImmat] = useState('');
 
+    const [mandatSepa, setMandatSepa] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -55,10 +65,46 @@ export default function RegisterScreen({ navigation }: NativeStackScreenProps<Ro
     };
 
     const handleRegister = async () => {
-        // Validation basic
         if (!email || !telephone || !password) {
             setError('Les champs Email, Téléphone et Mot de passe sont obligatoires.');
             return;
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+            setError('Adresse email invalide.');
+            return;
+        }
+        const phoneClean = telephone.replace(/[\s\-\.]/g, '');
+        if (!/^(\+?\d{9,15})$/.test(phoneClean)) {
+            setError('Numéro de téléphone invalide (ex: 0612345678 ou +33612345678).');
+            return;
+        }
+        if (password.length < 4) {
+            setError('Mot de passe trop court (4 caractères minimum).');
+            return;
+        }
+
+        if (role === 'chauffeur') {
+            const siretClean = siret.replace(/\s/g, '');
+            if (siretClean && (!/^\d{14}$/.test(siretClean) || !luhnCheck(siretClean))) {
+                setError('SIRET invalide (14 chiffres).');
+                return;
+            }
+            const ibanClean = iban.replace(/\s/g, '').toUpperCase();
+            if (ibanClean && !/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(ibanClean)) {
+                setError('IBAN invalide (ex: FR76 3000 6000 0112 3456 7890 189).');
+                return;
+            }
+            if (vehiculeImmat) {
+                const immat = vehiculeImmat.replace(/[\s\-]/g, '').toUpperCase();
+                if (!/^[A-Z]{2}\d{3}[A-Z]{2}$/.test(immat)) {
+                    setError("Immatriculation invalide (format attendu : AB-123-CD).");
+                    return;
+                }
+            }
+            if (iban && !mandatSepa) {
+                setError("Vous devez accepter le mandat SEPA pour autoriser le prélèvement des frais.");
+                return;
+            }
         }
 
         setLoading(true);
@@ -80,11 +126,10 @@ export default function RegisterScreen({ navigation }: NativeStackScreenProps<Ro
             };
 
             if (role === 'ambassadeur') {
-                payload.ambassador_type = ambassadorType;
+                payload.ambassador_type = 'physique';
                 payload.etablissement = etablissement;
                 payload.metier = metier;
                 payload.cp = cp;
-                payload.raison_sociale = raisonSociale;
             } else {
                 payload.vehicule_type = vehiculeType;
                 payload.vehicule_marque = vehiculeMarque;
@@ -93,10 +138,26 @@ export default function RegisterScreen({ navigation }: NativeStackScreenProps<Ro
                 payload.vehicule_immat = vehiculeImmat;
             }
 
-            await register(payload);
-            navigation.navigate('Login');
+            const response = await register(payload);
+            const { token, userId, role: userRole, ambassadeur_id, chauffeur_id } = response.data;
+
+            setAuthToken(token);
+            setAuth({ token, userId, email, role: userRole, ambassadorId: ambassadeur_id || null, chauffeurId: chauffeur_id || null, typeAmbassadeur: null, isSousCompte: false });
+
+            Alert.alert(
+                "Inscription reussie !",
+                prenom ? `Bienvenue sur SESAME, ${prenom} !` : "Bienvenue sur SESAME !",
+                [{
+                    text: "Continuer",
+                    onPress: () => {
+                        if (userRole === "ambassadeur") navigation.replace("AmbassadorAccueil");
+                        else if (userRole === "chauffeur") navigation.replace("ChauffeurHome");
+                        else navigation.replace("Login");
+                    }
+                }]
+            );
         } catch (err: any) {
-            setError(err.response?.data?.error || 'Une erreur est survenue lors de l’inscription.');
+            setError(err.response?.data?.error || "Une erreur est survenue lors de l'inscription.");
         } finally {
             setLoading(false);
         }
@@ -114,7 +175,7 @@ export default function RegisterScreen({ navigation }: NativeStackScreenProps<Ro
                 <View style={styles.roleIconContainer}><Text style={styles.roleIcon}>🗝</Text></View>
                 <View style={styles.roleTextContainer}>
                     <Text style={[styles.roleLabel, role === 'ambassadeur' && styles.roleLabelSelected]}>Ambassadeur</Text>
-                    <Text style={styles.roleDescription}>Prescrivez des courses et gagnez des points ou commissions.</Text>
+                    <Text style={styles.roleDescription}>Prescrivez des courses et gagnez des points échangeables contre des récompenses.</Text>
                 </View>
             </TouchableOpacity>
 
@@ -139,51 +200,23 @@ export default function RegisterScreen({ navigation }: NativeStackScreenProps<Ro
 
     const renderStep2Ambassador = () => (
         <View style={styles.stepContainer}>
-            <Text style={styles.stepTitle}>Étape 2 : Type d'Ambassadeur</Text>
-            
-            <View style={styles.toggleContainer}>
-                <TouchableOpacity 
-                    style={[styles.toggleButton, ambassadorType === 'physique' && styles.toggleButtonSelected]}
-                    onPress={() => setAmbassadorType('physique')}
-                >
-                    <Text style={[styles.toggleButtonText, ambassadorType === 'physique' && styles.toggleButtonTextSelected]}>Particulier</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                    style={[styles.toggleButton, ambassadorType === 'moral' && styles.toggleButtonSelected]}
-                    onPress={() => setAmbassadorType('moral')}
-                >
-                    <Text style={[styles.toggleButtonText, ambassadorType === 'moral' && styles.toggleButtonTextSelected]}>Entreprise</Text>
-                </TouchableOpacity>
-            </View>
+            <Text style={styles.stepTitle}>Étape 2 : Informations Ambassadeur</Text>
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
                 <Text style={styles.sectionLabel}>Identité</Text>
-                {ambassadorType === 'moral' && (
-                    <TextInput style={styles.input} placeholder="Raison Sociale" placeholderTextColor="#6A6680" value={raisonSociale} onChangeText={setRaisonSociale} />
-                )}
                 <TextInput style={styles.input} placeholder="Prénom" placeholderTextColor="#6A6680" value={prenom} onChangeText={setPrenom} />
                 <TextInput style={styles.input} placeholder="Nom" placeholderTextColor="#6A6680" value={nom} onChangeText={setNom} />
                 <TextInput style={styles.input} placeholder="Email" placeholderTextColor="#6A6680" keyboardType="email-address" autoCapitalize="none" value={email} onChangeText={setEmail} />
                 <TextInput style={styles.input} placeholder="Téléphone" placeholderTextColor="#6A6680" keyboardType="phone-pad" value={telephone} onChangeText={setTelephone} />
                 <TextInput style={styles.input} placeholder="Mot de passe" placeholderTextColor="#6A6680" secureTextEntry value={password} onChangeText={setPassword} />
-                
+
                 <Text style={styles.sectionLabel}>Informations complémentaires</Text>
                 <TextInput style={styles.input} placeholder="Date de naissance (JJ/MM/AAAA)" placeholderTextColor="#6A6680" value={dateNaissance} onChangeText={setDateNaissance} />
                 <TextInput style={styles.input} placeholder="Lieu de naissance" placeholderTextColor="#6A6680" value={lieuNaissance} onChangeText={setLieuNaissance} />
                 <TextInput style={styles.input} placeholder="Pays de naissance" placeholderTextColor="#6A6680" value={paysNaissance} onChangeText={setPaysNaissance} />
-
-                {ambassadorType === 'physique' ? (
-                    <>
-                        <TextInput style={styles.input} placeholder="Établissement" placeholderTextColor="#6A6680" value={etablissement} onChangeText={setEtablissement} />
-                        <TextInput style={styles.input} placeholder="Métier" placeholderTextColor="#6A6680" value={metier} onChangeText={setMetier} />
-                        <TextInput style={styles.input} placeholder="Code Postal" placeholderTextColor="#6A6680" value={cp} onChangeText={setCp} />
-                    </>
-                ) : (
-                    <>
-                        <TextInput style={styles.input} placeholder="SIRET" placeholderTextColor="#6A6680" value={siret} onChangeText={setSiret} />
-                        <TextInput style={styles.input} placeholder="IBAN" placeholderTextColor="#6A6680" value={iban} onChangeText={setIban} />
-                    </>
-                )}
+                <TextInput style={styles.input} placeholder="Établissement" placeholderTextColor="#6A6680" value={etablissement} onChangeText={setEtablissement} />
+                <TextInput style={styles.input} placeholder="Métier" placeholderTextColor="#6A6680" value={metier} onChangeText={setMetier} />
+                <TextInput style={styles.input} placeholder="Code Postal" placeholderTextColor="#6A6680" value={cp} onChangeText={setCp} />
 
                 {error && <Text style={styles.errorText}>{error}</Text>}
 
@@ -237,6 +270,21 @@ export default function RegisterScreen({ navigation }: NativeStackScreenProps<Ro
                 <Text style={styles.sectionLabel}>Facturation</Text>
                 <TextInput style={styles.input} placeholder="SIRET" placeholderTextColor="#6A6680" value={siret} onChangeText={setSiret} />
                 <TextInput style={styles.input} placeholder="IBAN" placeholderTextColor="#6A6680" value={iban} onChangeText={setIban} />
+
+                {iban.length > 0 && (
+                    <TouchableOpacity
+                        style={styles.mandatRow}
+                        onPress={() => setMandatSepa(v => !v)}
+                        activeOpacity={0.7}
+                    >
+                        <View style={[styles.checkbox, mandatSepa && styles.checkboxChecked]}>
+                            {mandatSepa && <Text style={styles.checkmark}>✓</Text>}
+                        </View>
+                        <Text style={styles.mandatText}>
+                            J'autorise SÉSAME à prélever les frais de service (20% de mon CA) sur cet IBAN via SEPA Direct Debit.
+                        </Text>
+                    </TouchableOpacity>
+                )}
 
                 {error && <Text style={styles.errorText}>{error}</Text>}
 
@@ -400,5 +448,38 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         fontSize: 14,
         marginTop: 10,
+    },
+    mandatRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 10,
+        marginTop: 12,
+        marginBottom: 4,
+        paddingHorizontal: 4,
+    },
+    checkbox: {
+        width: 22,
+        height: 22,
+        borderRadius: 6,
+        borderWidth: 2,
+        borderColor: '#C9A84C',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 1,
+        flexShrink: 0,
+    },
+    checkboxChecked: {
+        backgroundColor: '#C9A84C',
+    },
+    checkmark: {
+        color: '#101018',
+        fontSize: 13,
+        fontWeight: '900',
+    },
+    mandatText: {
+        flex: 1,
+        color: '#6A6680',
+        fontSize: 12,
+        lineHeight: 18,
     },
 });

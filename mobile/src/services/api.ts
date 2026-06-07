@@ -104,6 +104,10 @@ export async function getCommissions(ambassadorId: string) {
 }
 
 // Boutique & échanges
+export async function getAdminParameters() {
+    return api.get<{ cle: string; valeur: string }[]>('/api/admin/parametres');
+}
+
 export async function getOffers() {
     return api.get<BoutiqueOffer[]>('/api/boutique/offres');
 }
@@ -151,6 +155,10 @@ export async function getChauffeurProfile(chauffeurId: string) {
     return api.get<ChauffeurProfile>(`/api/chauffeurs/${chauffeurId}/profile`);
 }
 
+export async function updateChauffeurProfile(chauffeurId: string, data: { prenom?: string; nom?: string; telephone?: string; iban?: string; siret?: string }) {
+    return api.put(`/api/chauffeurs/${chauffeurId}/profile`, data);
+}
+
 export async function setChauffeurAvailability(chauffeurId: string, disponible: boolean) {
     return api.put(`/api/chauffeurs/${chauffeurId}/availability`, { disponible });
 }
@@ -183,10 +191,37 @@ export async function getChauffeurDocuments(chauffeurId: string) {
     return api.get<ChauffeurDocument[]>(`/api/chauffeurs/${chauffeurId}/documents`);
 }
 
-export async function uploadChauffeurDocument(chauffeurId: string, data: {
-    type: string; fichier_recto_url: string; fichier_verso_url?: string; date_expiration?: string;
-}) {
-    return api.post<ChauffeurDocument>(`/api/chauffeurs/${chauffeurId}/documents`, data);
+export async function uploadChauffeurDocument(
+    chauffeurId: string,
+    docType: string,
+    side: 'recto' | 'verso',
+    fileUri: string,
+): Promise<ChauffeurDocument> {
+    const mimeType = fileUri.endsWith('.pdf') ? 'application/pdf'
+        : fileUri.endsWith('.png') ? 'image/png'
+        : 'image/jpeg';
+    const ext = mimeType === 'application/pdf' ? 'pdf' : mimeType === 'image/png' ? 'png' : 'jpg';
+
+    const formData = new FormData();
+    formData.append('file', { uri: fileUri, type: mimeType, name: `${docType}_${side}.${ext}` } as any);
+    formData.append('type', docType);
+    formData.append('side', side);
+
+    const token = api.defaults.headers.common['Authorization'];
+    const baseURL = api.defaults.baseURL;
+    const res = await fetch(`${baseURL}/api/chauffeurs/${chauffeurId}/documents/upload`, {
+        method: 'POST',
+        headers: {
+            'Authorization': String(token),
+            'Content-Type': 'multipart/form-data',
+        },
+        body: formData,
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Erreur upload');
+    }
+    return res.json();
 }
 
 // Chat

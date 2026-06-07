@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity, ScrollView,
-    ActivityIndicator, Switch, StatusBar, Alert,
+    ActivityIndicator, Switch, StatusBar, Alert, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import * as Location from 'expo-location';
 import { useAuth } from '../context/AuthContext';
 import {
     getChauffeurDashboard, setChauffeurAvailability,
@@ -18,6 +19,27 @@ import BottomNav from '../components/BottomNav';
 import IncomingCourseModal from '../components/IncomingCourseModal';
 import type { RootStackParamList, ChauffeurDashboard, ActiveCourse } from '../types';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+
+function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371000;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+async function geocodeAddress(address: string): Promise<{ lat: number; lon: number } | null> {
+    try {
+        const url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(address)}&limit=1`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (!data.features?.length) return null;
+        const [lon, lat] = data.features[0].geometry.coordinates;
+        return { lat, lon };
+    } catch {
+        return null;
+    }
+}
 
 export default function ChauffeurHomeScreen() {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'ChauffeurHome'>>();
@@ -35,6 +57,12 @@ export default function ChauffeurHomeScreen() {
 
     // Récap fin de course
     const [completedCourse, setCompletedCourse] = useState<{ montant: number; dureeMin: number } | null>(null);
+
+    // Géofencing
+    const [distanceToDestination, setDistanceToDestination] = useState<number | null>(null);
+    const [gpsGranted, setGpsGranted] = useState<boolean | null>(null);
+    const destCoordsRef = useRef<{ lat: number; lon: number } | null>(null);
+    const locationSubRef = useRef<Location.LocationSubscription | null>(null);
 
     const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -83,6 +111,46 @@ export default function ChauffeurHomeScreen() {
         return () => clearInterval(pollInterval);
     }, [dashboard?.disponible, dashboard?.current_course, pollIncoming]);
 
+    // Géofencing — actif uniquement quand le code est validé
+    useEffect(() => {
+        const course = dashboard?.current_course;
+        if (course?.statut !== 'code_valide') {
+            locationSubRef.current?.remove();
+            locationSubRef.current = null;
+            setDistanceToDestination(null);
+            return;
+        }
+
+        (async () => {
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            setGpsGranted(status === 'granted');
+            if (status !== 'granted') return;
+
+            // Géocoder la destination si pas encore fait
+            if (!destCoordsRef.current && course.adresse_destination) {
+                destCoordsRef.current = await geocodeAddress(course.adresse_destination);
+            }
+
+            locationSubRef.current?.remove();
+            locationSubRef.current = await Location.watchPositionAsync(
+                { accuracy: Location.Accuracy.High, distanceInterval: 20 },
+                (loc) => {
+                    if (!destCoordsRef.current) return;
+                    const d = haversineMeters(
+                        loc.coords.latitude, loc.coords.longitude,
+                        destCoordsRef.current.lat, destCoordsRef.current.lon
+                    );
+                    setDistanceToDestination(Math.round(d));
+                }
+            );
+        })();
+
+        return () => {
+            locationSubRef.current?.remove();
+            locationSubRef.current = null;
+        };
+    }, [dashboard?.current_course?.statut, dashboard?.current_course?.adresse_destination]);
+
     const toggleAvailability = async (val: boolean) => {
         if (!chauffeurId) return;
         await setChauffeurAvailability(chauffeurId, val).catch(() => {});
@@ -130,6 +198,8 @@ export default function ChauffeurHomeScreen() {
         const dureeMin = Math.round((Date.now() - acceptedAt.getTime()) / 60000);
 
         await finishChauffeurCourse(chauffeurId, course.id).catch(() => {});
+        destCoordsRef.current = null;
+        setDistanceToDestination(null);
         setCompletedCourse({ montant, dureeMin });
         loadDashboard();
     };
@@ -369,9 +439,33 @@ export default function ChauffeurHomeScreen() {
                                     <Text style={styles.infoLabel}>MONTANT À ENCAISSER</Text>
                                     <Text style={styles.infoValueGold}>{Number(currentCourse.montant || 0).toFixed(2)} €</Text>
                                 </View>
-                                <TouchableOpacity style={styles.finishButton} onPress={handleFinishCourse}>
+
+                                {/* Indicateur distance */}
+                                {gpsGranted === false ? (
+                                    <Text style={styles.gpsWarning}>⚠️ GPS non autorisé — activez la localisation</Text>
+                                ) : distanceToDestination !== null && (
+                                    <View style={[styles.distanceBadge, distanceToDestination <= 300 && styles.distanceBadgeOk]}>
+                                        <Text style={[styles.distanceText, distanceToDestination <= 300 && styles.distanceTextOk]}>
+                                            {distanceToDestination <= 300
+                                                ? `✓ À ${distanceToDestination} m de la destination`
+                                                : `📍 ${distanceToDestination} m de la destination`}
+                                        </Text>
+                                    </View>
+                                )}
+
+                                <TouchableOpacity
+                                    style={[
+                                        styles.finishButton,
+                                        distanceToDestination !== null && distanceToDestination > 300 && styles.finishButtonDisabled
+                                    ]}
+                                    onPress={handleFinishCourse}
+                                    disabled={distanceToDestination !== null && distanceToDestination > 300}
+                                >
                                     <Text style={styles.finishButtonText}>TERMINER ET FERMER LA COURSE</Text>
                                 </TouchableOpacity>
+                                {distanceToDestination !== null && distanceToDestination > 300 && (
+                                    <Text style={styles.finishHint}>Approchez-vous de la destination pour terminer</Text>
+                                )}
                             </View>
                         )}
 
@@ -388,7 +482,14 @@ export default function ChauffeurHomeScreen() {
                             >
                                 <Text style={styles.actionBtnText}>💬 CHAT</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity style={styles.actionBtn}>
+                            <TouchableOpacity
+                                style={styles.actionBtn}
+                                onPress={() => {
+                                    const tel = (currentCourse as any).ambassadeur_telephone;
+                                    if (tel) Linking.openURL(`tel:${tel}`);
+                                    else Alert.alert('Indisponible', 'Numéro de l\'ambassadeur non disponible.');
+                                }}
+                            >
                                 <Text style={styles.actionBtnText}>📞 APPELER</Text>
                             </TouchableOpacity>
                         </View>
@@ -427,7 +528,7 @@ function makeStyles(colors: typeof Colors.nocturne) {
             borderBottomWidth: 1, borderBottomColor: 'rgba(255,154,60,0.15)',
         },
         toggleLockedText: { color: Colors.brand.warning, fontSize: Typography.sizes.tiny, fontWeight: Typography.weights.bold as any },
-        scrollContent: { padding: 20, paddingBottom: 120 },
+        scrollContent: { padding: 14, paddingBottom: 100 },
         emptyState: { gap: 16 },
         emptyCard: {
             backgroundColor: 'rgba(106,102,128,0.08)',
@@ -457,39 +558,39 @@ function makeStyles(colors: typeof Colors.nocturne) {
             backgroundColor: 'rgba(74,158,255,0.1)', paddingHorizontal: 10, paddingVertical: 4,
             borderRadius: 8, alignSelf: 'flex-start',
         },
-        courseActiveContainer: { gap: 12 },
+        courseActiveContainer: { gap: 8 },
         stepCard: {
             backgroundColor: 'rgba(74,158,255,0.05)', borderWidth: 1,
-            borderColor: 'rgba(74,158,255,0.2)', borderRadius: 18, padding: 16,
+            borderColor: 'rgba(74,158,255,0.2)', borderRadius: 14, padding: 10,
         },
-        stepTitle: { color: Colors.brand.info, fontSize: Typography.sizes.sub, fontWeight: Typography.weights.black as any, marginBottom: 4 },
+        stepTitle: { color: Colors.brand.info, fontSize: Typography.sizes.small, fontWeight: Typography.weights.black as any, marginBottom: 2 },
         stepRef: { color: colors.textSecondary, fontSize: Typography.sizes.tiny, fontFamily: 'monospace' },
         pivotCard: {
-            backgroundColor: colors.card, borderRadius: 24, padding: 20, alignItems: 'center',
+            backgroundColor: colors.card, borderRadius: 20, padding: 18, alignItems: 'center',
         },
         pivotTitle: { color: colors.textPrimary, fontSize: Typography.sizes.body, fontWeight: Typography.weights.black as any, marginBottom: 6 },
-        pivotSub: { color: colors.textSecondary, fontSize: Typography.sizes.tiny, marginBottom: 20, textAlign: 'center' },
-        codeRow: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 24 },
+        pivotSub: { color: colors.textSecondary, fontSize: Typography.sizes.tiny, marginBottom: 16, textAlign: 'center' },
+        codeRow: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 16 },
         codeBox: {
-            width: 52, height: 62,
+            width: 52, height: 60,
             backgroundColor: 'rgba(201,168,76,0.08)', borderWidth: 1, borderColor: Colors.brand.gold,
             borderRadius: 14, justifyContent: 'center', alignItems: 'center',
         },
         codeBoxFilled: { backgroundColor: 'rgba(201,168,76,0.2)' },
-        codeDigit: { color: Colors.brand.gold, fontSize: Typography.sizes.title, fontWeight: Typography.weights.black as any },
-        numpad: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, width: '100%', marginBottom: 20 },
+        codeDigit: { color: Colors.brand.gold, fontSize: Typography.sizes.header, fontWeight: Typography.weights.black as any },
+        numpad: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, width: '100%', marginBottom: 12 },
         numKey: {
-            width: '30%', height: 52, backgroundColor: colors.card,
-            borderRadius: 14, justifyContent: 'center', alignItems: 'center',
+            width: '30%', height: 44, backgroundColor: colors.card,
+            borderRadius: 12, justifyContent: 'center', alignItems: 'center',
         },
-        numText: { color: colors.textPrimary, fontSize: Typography.sizes.header, fontWeight: Typography.weights.bold as any },
+        numText: { color: colors.textPrimary, fontSize: Typography.sizes.body, fontWeight: Typography.weights.bold as any },
         okKey: { backgroundColor: Colors.brand.gold },
         okText: { color: '#09090F', fontWeight: Typography.weights.black as any, fontSize: Typography.sizes.sub },
         pivotWarningBox: {
-            paddingHorizontal: 12, paddingVertical: 6,
+            paddingHorizontal: 10, paddingVertical: 5,
             backgroundColor: 'rgba(255,154,60,0.1)', borderRadius: 8,
         },
-        pivotWarning: { color: Colors.brand.warning, fontSize: Typography.sizes.tiny, fontWeight: Typography.weights.black as any },
+        pivotWarning: { color: Colors.brand.warning, fontSize: 10, fontWeight: Typography.weights.black as any },
         inProgressCard: { backgroundColor: colors.card, borderRadius: 18, padding: 20 },
         infoBlock: { marginBottom: 16 },
         infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
@@ -497,7 +598,17 @@ function makeStyles(colors: typeof Colors.nocturne) {
         infoValue: { color: colors.textPrimary, fontSize: Typography.sizes.body, fontWeight: Typography.weights.semiBold as any },
         infoValueGold: { color: Colors.brand.gold, fontSize: Typography.sizes.header, fontWeight: Typography.weights.black as any },
         finishButton: { backgroundColor: Colors.brand.gold, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
+        finishButtonDisabled: { backgroundColor: 'rgba(201,168,76,0.3)' },
         finishButtonText: { color: '#09090F', fontSize: Typography.sizes.body, fontWeight: Typography.weights.black as any },
+        finishHint: { color: colors.textSecondary, fontSize: Typography.sizes.tiny, textAlign: 'center', marginTop: 6 },
+        distanceBadge: {
+            backgroundColor: 'rgba(255,154,60,0.1)', borderRadius: 10,
+            paddingHorizontal: 12, paddingVertical: 6, marginTop: 8, alignSelf: 'center',
+        },
+        distanceBadgeOk: { backgroundColor: 'rgba(76,175,130,0.1)' },
+        distanceText: { color: Colors.brand.warning, fontSize: Typography.sizes.tiny, fontWeight: Typography.weights.bold as any },
+        distanceTextOk: { color: Colors.brand.success },
+        gpsWarning: { color: Colors.brand.warning, fontSize: Typography.sizes.tiny, textAlign: 'center', marginTop: 8 },
         actionRow: { flexDirection: 'row', gap: 10 },
         actionBtn: {
             flex: 1, backgroundColor: 'rgba(74,158,255,0.1)', borderWidth: 1,

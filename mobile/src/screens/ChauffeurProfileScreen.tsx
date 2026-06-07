@@ -8,7 +8,8 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useLang } from '../context/LanguageContext';
 import type { RootStackParamList } from '../types';
-import { getChauffeurProfile, setChauffeurAvailability, getChauffeurDocuments, uploadChauffeurDocument } from '../services/api';
+import { getChauffeurProfile, setChauffeurAvailability, getChauffeurDocuments, uploadChauffeurDocument, updateChauffeurProfile } from '../services/api';
+import { TextInput } from 'react-native';
 import { Colors, Typography } from '../theme';
 import BottomNav from '../components/BottomNav';
 import type { ChauffeurProfile, ChauffeurDocument } from '../types';
@@ -24,6 +25,13 @@ export default function ChauffeurProfileScreen() {
     const [error, setError] = useState<string | null>(null);
     const [available, setAvailable] = useState(false);
     const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
+    const [prenom, setPrenom] = useState('');
+    const [nom, setNom] = useState('');
+    const [telephone, setTelephone] = useState('');
+    const [iban, setIban] = useState('');
+    const [siret, setSiret] = useState('');
+    const [saving, setSaving] = useState(false);
+    const [saveMsg, setSaveMsg] = useState('');
     const styles = useMemo(() => makeStyles(colors), [colors]);
 
     useEffect(() => {
@@ -37,6 +45,11 @@ export default function ChauffeurProfileScreen() {
                 setProfile(profileRes.data);
                 setAvailable(profileRes.data.disponible);
                 setDocuments(docsRes.data);
+                setPrenom(profileRes.data.prenom || '');
+                setNom(profileRes.data.nom || '');
+                setTelephone(profileRes.data.telephone || '');
+                setIban((profileRes.data as any).iban || '');
+                setSiret((profileRes.data as any).siret || '');
             } catch {
                 setError('Erreur de chargement.');
             } finally {
@@ -46,7 +59,22 @@ export default function ChauffeurProfileScreen() {
         loadProfile();
     }, [chauffeurId]);
 
-    const handleUploadDocument = async (docType: string, label: string) => {
+    const handleSave = async () => {
+        if (!chauffeurId) return;
+        setSaving(true);
+        try {
+            await updateChauffeurProfile(chauffeurId, { prenom, nom, telephone, iban, siret });
+            setSaveMsg('Profil mis à jour !');
+            setTimeout(() => setSaveMsg(''), 3000);
+        } catch {
+            setSaveMsg('Erreur lors de la sauvegarde.');
+            setTimeout(() => setSaveMsg(''), 3000);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleUploadDocument = async (docType: string, label: string, side: 'recto' | 'verso' = 'recto') => {
         const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!permission.granted) {
             Alert.alert('Permission requise', 'Veuillez autoriser l\'accès à vos photos.');
@@ -60,16 +88,13 @@ export default function ChauffeurProfileScreen() {
         if (result.canceled || !result.assets[0]) return;
 
         if (!chauffeurId) return;
-        setUploadingDoc(docType);
+        setUploadingDoc(`${docType}_${side}`);
         try {
             const uri = result.assets[0].uri;
-            await uploadChauffeurDocument(chauffeurId, {
-                type: docType,
-                fichier_recto_url: uri,
-            });
+            await uploadChauffeurDocument(chauffeurId, docType, side, uri);
             const docsRes = await getChauffeurDocuments(chauffeurId);
             setDocuments(docsRes.data);
-            Alert.alert('Document envoyé', `${label} transmis pour validation.`);
+            Alert.alert('Document envoyé', `${label} (${side}) transmis pour validation.`);
         } catch {
             Alert.alert('Erreur', 'Impossible d\'envoyer le document.');
         } finally {
@@ -126,6 +151,35 @@ export default function ChauffeurProfileScreen() {
                             </View>
                         </View>
 
+                        {/* Section édition */}
+                        <View style={styles.editSection}>
+                            <Text style={styles.sectionLabel}>MODIFIER MON PROFIL</Text>
+                            {[
+                                { label: 'Prénom', value: prenom, set: setPrenom },
+                                { label: 'Nom', value: nom, set: setNom },
+                                { label: 'Téléphone', value: telephone, set: setTelephone, keyboard: 'phone-pad' },
+                                { label: 'IBAN', value: iban, set: setIban },
+                                { label: 'SIRET', value: siret, set: setSiret, keyboard: 'numeric' },
+                            ].map(({ label, value, set, keyboard }) => (
+                                <View key={label} style={styles.editField}>
+                                    <Text style={styles.editLabel}>{label}</Text>
+                                    <TextInput
+                                        style={styles.editInput}
+                                        value={value}
+                                        onChangeText={set}
+                                        placeholderTextColor={colors.textSecondary}
+                                        keyboardType={(keyboard as any) || 'default'}
+                                    />
+                                </View>
+                            ))}
+                            {saveMsg ? (
+                                <Text style={{ color: saveMsg.includes('Erreur') ? Colors.brand.error : Colors.brand.success, textAlign: 'center', marginBottom: 8 }}>{saveMsg}</Text>
+                            ) : null}
+                            <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={saving}>
+                                {saving ? <ActivityIndicator color="#101018" /> : <Text style={styles.saveBtnText}>Enregistrer</Text>}
+                            </TouchableOpacity>
+                        </View>
+
                         <View style={styles.dispoSection}>
                             <View>
                                 <Text style={styles.dispoLabel}>DISPONIBILITÉ</Text>
@@ -147,13 +201,14 @@ export default function ChauffeurProfileScreen() {
                             <Text style={styles.kycSubtitle}>Documents requis pour exercer en tant que chauffeur VTC</Text>
 
                             {[
-                                { type: 'carte_identite', label: "Carte d'identité" },
-                                { type: 'carte_vtc', label: 'Carte VTC' },
-                                { type: 'permis', label: 'Permis de conduire' },
-                                { type: 'carte_grise', label: 'Carte grise' },
-                            ].map(({ type, label }) => {
+                                { type: 'carte_identite', label: "Carte d'identité", hasVerso: true },
+                                { type: 'permis', label: 'Permis de conduire', hasVerso: true },
+                                { type: 'carte_vtc', label: 'Carte VTC', hasVerso: false },
+                                { type: 'carte_grise', label: 'Carte grise', hasVerso: false },
+                            ].map(({ type, label, hasVerso }) => {
                                 const doc = documents.find(d => d.type === type);
-                                const isUploading = uploadingDoc === type;
+                                const isUploadingRecto = uploadingDoc === `${type}_recto`;
+                                const isUploadingVerso = uploadingDoc === `${type}_verso`;
                                 return (
                                     <View key={type} style={styles.docRow}>
                                         <View style={styles.docInfo}>
@@ -173,22 +228,42 @@ export default function ChauffeurProfileScreen() {
                                                 <Text style={styles.docMissing}>Non fourni</Text>
                                             )}
                                         </View>
-                                        <TouchableOpacity
-                                            style={[styles.uploadBtn, isUploading && styles.uploadBtnDisabled]}
-                                            onPress={() => handleUploadDocument(type, label)}
-                                            disabled={isUploading}
-                                        >
-                                            {isUploading
-                                                ? <ActivityIndicator size="small" color={Colors.brand.info} />
-                                                : <Text style={styles.uploadBtnText}>{doc ? 'Remplacer' : 'Envoyer'}</Text>
-                                            }
-                                        </TouchableOpacity>
+                                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                                            <TouchableOpacity
+                                                style={[styles.uploadBtn, isUploadingRecto && styles.uploadBtnDisabled]}
+                                                onPress={() => handleUploadDocument(type, label, 'recto')}
+                                                disabled={isUploadingRecto || isUploadingVerso}
+                                            >
+                                                {isUploadingRecto
+                                                    ? <ActivityIndicator size="small" color={Colors.brand.info} />
+                                                    : <Text style={styles.uploadBtnText}>
+                                                        {hasVerso ? (doc?.fichier_recto_url ? '↺ Recto' : 'Recto') : (doc ? 'Remplacer' : 'Envoyer')}
+                                                      </Text>
+                                                }
+                                            </TouchableOpacity>
+                                            {hasVerso && (
+                                                <TouchableOpacity
+                                                    style={[styles.uploadBtn, isUploadingVerso && styles.uploadBtnDisabled]}
+                                                    onPress={() => handleUploadDocument(type, label, 'verso')}
+                                                    disabled={isUploadingRecto || isUploadingVerso}
+                                                >
+                                                    {isUploadingVerso
+                                                        ? <ActivityIndicator size="small" color={Colors.brand.info} />
+                                                        : <Text style={styles.uploadBtnText}>
+                                                            {doc?.fichier_verso_url ? '↺ Verso' : 'Verso'}
+                                                          </Text>
+                                                    }
+                                                </TouchableOpacity>
+                                            )}
+                                        </View>
                                     </View>
                                 );
                             })}
                         </View>
-                        {/* Thème */}
+                        {/* Préférences */}
+                        <View style={styles.divider} />
                         <View style={styles.prefSection}>
+                            <Text style={styles.prefSectionTitle}>PREFERENCES</Text>
                             <Text style={styles.prefLabel}>{t('theme').toUpperCase()}</Text>
                             <View style={styles.toggleRow}>
                                 {(['nocturne', 'clair', 'auto'] as const).map(m => (
@@ -396,8 +471,24 @@ function makeStyles(colors: typeof Colors.nocturne) {
             fontSize: Typography.sizes.tiny,
             fontWeight: Typography.weights.bold as any,
         },
-        prefSection: {
-            marginTop: 32,
+        divider: {
+            height: 1,
+            backgroundColor: 'rgba(255,255,255,0.07)',
+            marginVertical: 32,
+        },
+        editSection: { marginBottom: 20 },
+        editField: { marginBottom: 14 },
+        editLabel: { color: colors.textSecondary, fontSize: Typography.sizes.tiny, fontWeight: Typography.weights.bold as any, letterSpacing: 1, marginBottom: 6 },
+        editInput: { backgroundColor: colors.card, color: colors.textPrimary, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: Typography.sizes.body, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+        saveBtn: { backgroundColor: Colors.brand.info, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 4 },
+        saveBtnText: { color: '#FFFFFF', fontWeight: Typography.weights.black as any, fontSize: Typography.sizes.body },
+        prefSection: {},
+        prefSectionTitle: {
+            color: Colors.brand.info,
+            fontSize: Typography.sizes.tiny,
+            fontWeight: Typography.weights.black as any,
+            letterSpacing: 2,
+            marginBottom: 24,
         },
         prefLabel: {
             color: colors.textSecondary,
@@ -406,13 +497,14 @@ function makeStyles(colors: typeof Colors.nocturne) {
             letterSpacing: 1,
             marginBottom: 10,
         },
-        toggleRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+        toggleRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
         toggleBtn: {
-            flex: 1, paddingVertical: 10, borderRadius: 8,
+            flex: 1, paddingVertical: 10, borderRadius: 10,
             backgroundColor: colors.card, alignItems: 'center',
+            borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)',
         },
-        toggleBtnActive: { backgroundColor: Colors.brand.info },
-        toggleText: { color: colors.textSecondary, fontSize: 12, fontWeight: '600' },
-        toggleTextActive: { color: '#FFFFFF' },
+        toggleBtnActive: { backgroundColor: Colors.brand.info, borderColor: Colors.brand.info },
+        toggleText: { color: colors.textSecondary, fontSize: 13, fontWeight: '600' },
+        toggleTextActive: { color: '#FFFFFF', fontWeight: '700' },
     });
 }
