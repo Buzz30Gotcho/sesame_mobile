@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1c1c2e; font-size: 11.5px; line-height: 1.5; margin: 0; }
+  .header { border-bottom: 3px solid #C9A84C; padding-bottom: 14px; margin-bottom: 22px; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .logo { width: 42px; height: 42px; border-radius: 11px; background: #C9A84C; color: #101018; font-weight: 800; font-size: 22px; display: flex; align-items: center; justify-content: center; }
+  .brand h1 { margin: 0; font-size: 21px; color: #101018; letter-spacing: 0.5px; }
+  .brand .sub { margin: 2px 0 0; font-size: 12px; color: #6a6680; }
+  .meta { margin-top: 10px; font-size: 11px; color: #6a6680; }
+  h2 { color: #101018; font-size: 14.5px; margin: 22px 0 8px; padding: 6px 10px; background: #f6f2e6; border-left: 4px solid #C9A84C; border-radius: 3px; }
+  h3 { font-size: 12px; margin: 12px 0 4px; color: #8a6d1f; }
+  ul { margin: 5px 0 5px 0; padding-left: 18px; }
+  li { margin: 3px 0; }
+  .tag { display: inline-block; font-size: 9px; font-weight: 700; padding: 1px 7px; border-radius: 20px; vertical-align: middle; margin-left: 6px; }
+  .done { background: #d9f2e4; color: #1d7a4d; }
+  .secu { background: #e3edff; color: #2456b8; }
+  code { background: #f1f0f5; padding: 1px 5px; border-radius: 4px; font-family: 'SF Mono', Consolas, monospace; font-size: 10px; color: #b0357a; }
+  .intro { background: #faf8f1; border: 1px solid #ece3c9; border-radius: 8px; padding: 12px 14px; margin-bottom: 8px; font-size: 11px; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 10.5px; }
+  th { background: #101018; color: #fff; text-align: left; padding: 6px 9px; font-weight: 600; }
+  td { padding: 6px 9px; border-bottom: 1px solid #eee; }
+  tr:nth-child(even) td { background: #fafafa; }
+  .footer { margin-top: 26px; padding-top: 10px; border-top: 1px solid #e2e2e2; font-size: 9.5px; color: #9a96a8; text-align: center; }
+  .pill { display:inline-block; background:#101018; color:#C9A84C; font-size:9px; font-weight:700; padding:2px 9px; border-radius:20px; }
+  .note { font-size:10px; color:#6a6680; font-style: italic; }
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="brand">
+      <div class="logo">S</div>
+      <div>
+        <h1>SÉSAME — Récapitulatif des travaux</h1>
+        <p class="sub">Application de prescription rémunérée · Backend Node/Express · Mobile React Native · Dashboard Admin</p>
+      </div>
+    </div>
+    <div class="meta">Journée du <strong>11 juin 2026</strong> &nbsp;·&nbsp; <span class="pill">7 chantiers</span> &nbsp;·&nbsp; Document interne</div>
+  </div>
+
+  <div class="intro">
+    <strong>Résumé exécutif —</strong> La journée a couvert deux grands axes : (1) la <strong>refonte des commissions des entreprises</strong>
+    (Ambassadeurs Moraux) côté admin et mobile, et (2) une <strong>passe de sécurité complète</strong> rendant l'application
+    prête au déploiement (authentification, droits d'accès, WebSocket, durcissement). Tous les éléments ci-dessous sont
+    implémentés, compilés et vérifiés.
+  </div>
+
+  <h2>1. Commissions des entreprises (Ambassadeurs Moraux) <span class="tag done">FAIT</span></h2>
+  <h3>Correction de calcul</h3>
+  <ul>
+    <li>Le CA et la commission d'une entreprise comptaient <strong>uniquement ses courses directes</strong> et ignoraient celles de ses <strong>employés (sous-comptes)</strong> — corrigé côté <strong>admin</strong> et côté <strong>app mobile</strong>.</li>
+    <li>Désormais : commission = 10 % du CA de l'entreprise <strong>+ tous ses employés</strong>, sans double comptage.</li>
+  </ul>
+  <h3>Nouvelles fonctionnalités de l'onglet Commissions (admin)</h3>
+  <ul>
+    <li>Ajout de l'onglet <strong>« Commissions »</strong> dans le menu (il existait dans le code mais n'était pas affiché).</li>
+    <li>Affichage du <strong>nom de l'entreprise</strong> à côté du responsable légal.</li>
+    <li><strong>Sélecteur de mois</strong> + ouverture par défaut sur le <strong>mois précédent</strong> (paiement à terme échu, conforme aux specs).</li>
+    <li><strong>Colonne « Statut versement »</strong> (À verser / Versé le JJ/MM) avec nouvelle table <code>virements_commissions</code>.</li>
+    <li>Bouton <strong>« Déclencher »</strong> qui enregistre réellement le versement — <strong>strict &amp; idempotent</strong> (ne re-paie jamais une entreprise déjà payée).</li>
+    <li><strong>Bandeaux pédagogiques</strong> expliquant le cycle de paiement à l'administrateur.</li>
+  </ul>
+
+  <h2>2. Améliorations d'affichage (mobile) <span class="tag done">FAIT</span></h2>
+  <ul>
+    <li>L'entreprise (compte Moral) peut commander des courses — vérifié de bout en bout (déjà supporté, confirmé).</li>
+    <li>Écran d'accueil : la section <strong>« Mon équipe »</strong> affiche désormais un <strong>aperçu limité</strong> (3 employés max + « +N autres ») au lieu de toute la liste, qui débordait sur le reste de l'écran.</li>
+  </ul>
+
+  <h2>3. Authentification &amp; sessions <span class="tag secu">SÉCURITÉ</span></h2>
+  <ul>
+    <li>Le token expirait après <strong>2 h sans jamais se rafraîchir</strong> → spam de logs <code>[token invalide]</code>. Corrigé.</li>
+    <li>Token porté à <strong>24 h</strong> + <strong>rafraîchissement automatique</strong> (intercepteur axios côté mobile, avec dédoublonnage).</li>
+    <li><code>/auth/refresh</code> accepte un token expiré (signature valide) mais refuse au-delà de <strong>30 jours</strong> → reconnexion forcée.</li>
+  </ul>
+
+  <h2>4. Sécurité des routes — authentification &amp; droits d'accès <span class="tag secu">SÉCURITÉ</span></h2>
+  <div class="intro" style="background:#fff6f6;border-color:#f3d6d6;">
+    <strong>Faille majeure découverte et corrigée :</strong> le serveur ne faisait que <em>logger</em> les tokens sans jamais
+    bloquer. N'importe qui pouvait lire/modifier les données de n'importe quel utilisateur en changeant un identifiant dans l'URL.
+  </div>
+  <ul>
+    <li><strong>Authentification obligatoire</strong> (<code>requireAuth</code>) : toute requête sans token valide reçoit <strong>401</strong>.</li>
+    <li><strong>Vérification de propriété</strong> : un utilisateur n'accède qu'à <strong>ses propres données</strong> (ambassadeur, chauffeur, courses, bons, chat) — sinon <strong>403</strong>.</li>
+    <li>Routes publiques préservées (page web fournisseur, paramètres publics, authentification).</li>
+  </ul>
+
+  <h2>5. WebSocket du chat <span class="tag secu">SÉCURITÉ</span> <span class="tag done">+ RÉPARÉ</span></h2>
+  <ul>
+    <li>Le chat temps réel n'était <strong>pas authentifié</strong> → ajout de la vérification du token + appartenance à la course à la connexion.</li>
+    <li><strong>Bug historique corrigé :</strong> à cause d'un <em>match de chemin exact</em> dans la librairie, le WebSocket <strong>ne s'était jamais connecté</strong> (le chat tournait en secours sur du « polling »). Le <strong>temps réel fonctionne désormais</strong>.</li>
+  </ul>
+
+  <h2>6. Audit de sécurité &amp; durcissement déploiement <span class="tag secu">SÉCURITÉ</span></h2>
+  <p class="note">Audit complet réalisé (secrets, injection SQL, brute-force, upload, fuites, logique métier). Aucune injection SQL (100 % requêtes paramétrées). Corrections appliquées :</p>
+  <table>
+    <tr><th>Mesure</th><th>Détail</th></tr>
+    <tr><td>Secret JWT</td><td>Validé au démarrage (≥ 32 car.), refus de démarrer sinon — plus de valeur par défaut faible</td></tr>
+    <tr><td>Anti-brute-force</td><td>Rate-limiting sur login, login admin, mot de passe oublié et validation du code 4 chiffres</td></tr>
+    <tr><td>Codes sécurisés</td><td><code>crypto.randomInt / randomBytes</code> (reset, code de validation, token QR) au lieu de <code>Math.random</code></td></tr>
+    <tr><td>En-têtes HTTP</td><td>Ajout de <code>helmet</code></td></tr>
+    <tr><td>CORS</td><td>Restreignable par variable d'environnement (<code>CORS_ORIGINS</code>)</td></tr>
+    <tr><td>Upload de fichiers</td><td>Filtre de type (jpeg / png / pdf uniquement)</td></tr>
+    <tr><td>Fuites d'information</td><td>Messages d'erreur génériques en prod + plus de données personnelles dans les logs</td></tr>
+  </table>
+
+  <h2>7. Reste à faire / à configurer au déploiement</h2>
+  <ul>
+    <li><strong>Variables d'environnement (prod)</strong> : <code>NODE_ENV=production</code>, <code>JWT_SECRET</code>, <code>CORS_ORIGINS</code>, <code>ADMIN_EMAIL/ADMIN_PASSWORD</code> (fort), secrets Stripe &amp; Supabase.</li>
+    <li><strong>SQL à exécuter</strong> sur la base : création de la table <code>virements_commissions</code>.</li>
+    <li><strong>Ne jamais lancer</strong> <code>npm run seed</code> en production (mots de passe de test faibles).</li>
+    <li><strong>Confort (non bloquant)</strong> : persistance du token pour rester connecté entre deux ouvertures de l'app.</li>
+    <li><strong>Intégration bancaire</strong> : le bouton « Déclencher les virements » enregistre l'ordre mais le virement SEPA réel (Stripe) reste à brancher.</li>
+  </ul>
+
+  <div class="footer">
+    SÉSAME · Document de récapitulatif généré le 11 juin 2026 · Confidentiel — usage interne
+  </div>
+
+</body>
+</html>

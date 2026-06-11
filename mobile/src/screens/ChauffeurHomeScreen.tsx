@@ -11,7 +11,7 @@ import {
     getChauffeurDashboard, setChauffeurAvailability,
     validateCourseCode, finishChauffeurCourse,
     getCoursesDisponibles, acceptChauffeurCourse,
-    signalerClientAbsent,
+    signalerClientAbsent, getChauffeurDocuments,
 } from '../services/api';
 import { Colors, Typography } from '../theme';
 import { useTheme } from '../context/ThemeContext';
@@ -58,6 +58,9 @@ export default function ChauffeurHomeScreen() {
     // Récap fin de course
     const [completedCourse, setCompletedCourse] = useState<{ montant: number; dureeMin: number } | null>(null);
 
+    // KYC
+    const [kycStatus, setKycStatus] = useState<'ok' | 'manquant' | 'en_attente' | 'refuse'>('ok');
+
     // Géofencing
     const [distanceToDestination, setDistanceToDestination] = useState<number | null>(null);
     const [gpsGranted, setGpsGranted] = useState<boolean | null>(null);
@@ -69,8 +72,22 @@ export default function ChauffeurHomeScreen() {
     const loadDashboard = useCallback(async () => {
         if (!chauffeurId) return;
         try {
-            const res = await getChauffeurDashboard(chauffeurId);
-            setDashboard(res.data);
+            const [dashRes, docsRes] = await Promise.all([
+                getChauffeurDashboard(chauffeurId),
+                getChauffeurDocuments(chauffeurId),
+            ]);
+            setDashboard(dashRes.data);
+
+            const requis = ['carte_identite', 'permis', 'carte_vtc', 'carte_grise'];
+            const docs = docsRes.data;
+            const hasRefuse = docs.some(d => d.statut === 'refuse');
+            const allPresent = requis.every(t => docs.find(d => d.type === t));
+            const allValid = requis.every(t => docs.find(d => d.type === t && d.statut === 'valide'));
+
+            if (hasRefuse) setKycStatus('refuse');
+            else if (!allPresent) setKycStatus('manquant');
+            else if (!allValid) setKycStatus('en_attente');
+            else setKycStatus('ok');
         } catch {
             // silencieux
         } finally {
@@ -153,6 +170,10 @@ export default function ChauffeurHomeScreen() {
 
     const toggleAvailability = async (val: boolean) => {
         if (!chauffeurId) return;
+        if (val && !dashboard?.documents_valides) {
+            Alert.alert('Dossier incomplet', 'Vos documents doivent être validés par SÉSAME avant de vous mettre en ligne.');
+            return;
+        }
         await setChauffeurAvailability(chauffeurId, val).catch(() => {});
         loadDashboard();
     };
@@ -279,7 +300,7 @@ export default function ChauffeurHomeScreen() {
                 <Switch
                     value={!!dashboard?.disponible}
                     onValueChange={toggleAvailability}
-                    disabled={!!currentCourse}
+                    disabled={!!currentCourse || !dashboard?.documents_valides}
                     trackColor={{ false: '#303040', true: Colors.brand.success }}
                     thumbColor="#FFFFFF"
                 />
@@ -291,7 +312,38 @@ export default function ChauffeurHomeScreen() {
                 </View>
             )}
 
+
             <ScrollView contentContainerStyle={styles.scrollContent}>
+
+                {/* Carte KYC — visible et prioritaire */}
+                {kycStatus !== 'ok' && (
+                    <TouchableOpacity
+                        style={[styles.kycCard, kycStatus === 'refuse' && styles.kycCardRefuse]}
+                        onPress={() => navigation.navigate('ChauffeurProfile')}
+                        activeOpacity={0.85}
+                    >
+                        <Text style={styles.kycCardIcon}>
+                            {kycStatus === 'refuse' ? '❌' : kycStatus === 'manquant' ? '⚠️' : '⏳'}
+                        </Text>
+                        <Text style={[styles.kycCardTitle, kycStatus === 'refuse' && styles.kycCardTitleRefuse]}>
+                            {kycStatus === 'refuse' ? 'DOCUMENT REFUSÉ'
+                             : kycStatus === 'manquant' ? 'DOSSIER INCOMPLET'
+                             : 'EN ATTENTE DE VALIDATION'}
+                        </Text>
+                        <Text style={styles.kycCardBody}>
+                            {kycStatus === 'refuse'
+                                ? 'Un ou plusieurs documents ont été refusés par SÉSAME. Vous devez les renvoyer pour pouvoir recevoir des courses.'
+                                : kycStatus === 'manquant'
+                                ? 'Vous n\'avez pas encore uploadé vos documents obligatoires. Vous ne pouvez pas recevoir de courses tant que votre dossier n\'est pas complet et validé.'
+                                : 'Vos documents sont en cours de vérification par l\'équipe SÉSAME. Vous serez notifié dès la validation.'}
+                        </Text>
+                        <View style={[styles.kycCardBtn, kycStatus === 'refuse' && styles.kycCardBtnRefuse]}>
+                            <Text style={styles.kycCardBtnText}>
+                                {kycStatus === 'en_attente' ? 'VOIR MON DOSSIER' : 'COMPLÉTER MON DOSSIER'}
+                            </Text>
+                        </View>
+                    </TouchableOpacity>
+                )}
 
                 {/* Récap fin de course */}
                 {completedCourse && (
@@ -528,6 +580,56 @@ function makeStyles(colors: typeof Colors.nocturne) {
             borderBottomWidth: 1, borderBottomColor: 'rgba(255,154,60,0.15)',
         },
         toggleLockedText: { color: Colors.brand.warning, fontSize: Typography.sizes.tiny, fontWeight: Typography.weights.bold as any },
+        kycCard: {
+            backgroundColor: 'rgba(255,154,60,0.12)',
+            borderRadius: 20,
+            borderWidth: 1.5,
+            borderColor: 'rgba(255,154,60,0.4)',
+            padding: 24,
+            marginBottom: 16,
+            alignItems: 'center',
+        },
+        kycCardRefuse: {
+            backgroundColor: 'rgba(255,100,100,0.12)',
+            borderColor: 'rgba(255,100,100,0.4)',
+        },
+        kycCardIcon: {
+            fontSize: 48,
+            marginBottom: 12,
+        },
+        kycCardTitle: {
+            color: Colors.brand.warning,
+            fontSize: Typography.sizes.header,
+            fontWeight: Typography.weights.black as any,
+            letterSpacing: 1,
+            textAlign: 'center',
+            marginBottom: 12,
+        },
+        kycCardTitleRefuse: {
+            color: Colors.brand.error,
+        },
+        kycCardBody: {
+            color: colors.textSecondary,
+            fontSize: Typography.sizes.sub,
+            textAlign: 'center',
+            lineHeight: 22,
+            marginBottom: 20,
+        },
+        kycCardBtn: {
+            backgroundColor: Colors.brand.warning,
+            borderRadius: 14,
+            paddingVertical: 14,
+            paddingHorizontal: 28,
+        },
+        kycCardBtnRefuse: {
+            backgroundColor: Colors.brand.error,
+        },
+        kycCardBtnText: {
+            color: '#101018',
+            fontSize: Typography.sizes.small,
+            fontWeight: Typography.weights.black as any,
+            letterSpacing: 1,
+        },
         scrollContent: { padding: 14, paddingBottom: 100 },
         emptyState: { gap: 16 },
         emptyCard: {
@@ -577,7 +679,7 @@ function makeStyles(colors: typeof Colors.nocturne) {
             borderRadius: 14, justifyContent: 'center', alignItems: 'center',
         },
         codeBoxFilled: { backgroundColor: 'rgba(201,168,76,0.2)' },
-        codeDigit: { color: Colors.brand.gold, fontSize: Typography.sizes.header, fontWeight: Typography.weights.black as any },
+        codeDigit: { color: Colors.brand.gold, fontSize: Typography.sizes.title, fontWeight: Typography.weights.black as any },
         numpad: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, width: '100%', marginBottom: 12 },
         numKey: {
             width: '30%', height: 44, backgroundColor: colors.card,

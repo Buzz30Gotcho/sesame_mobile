@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
-import { getBonList } from '../services/api';
+import { getBonList, FOURNISSEUR_VALIDER_URL } from '../services/api';
 import QRCode from 'react-native-qrcode-svg';
 import { Colors, Typography } from '../theme';
 import type { ExchangeBon, RootStackParamList } from '../types';
@@ -81,7 +81,7 @@ export default function AmbassadorQRCodeScreen({ route }: Props) {
                         {/* QR Code */}
                         <View style={styles.qrContainer}>
                             <QRCode
-                                value={bon.token_qr || 'INVALID'}
+                                value={bon.token_qr ? `${FOURNISSEUR_VALIDER_URL}?token=${bon.token_qr}` : 'INVALID'}
                                 size={220}
                                 color="#1A1A2A"
                                 backgroundColor="#FFFFFF"
@@ -141,10 +141,9 @@ const styles = StyleSheet.create({
     backButton: { width: 40, height: 40, justifyContent: 'center' },
     backText: { color: Colors.brand.gold, fontSize: 24, fontWeight: '700' },
     title: {
-        color: '#FFFFFF',
-        fontSize: Typography.sizes.sub,
+        color: Colors.brand.gold,
+        fontSize: Typography.sizes.title,
         fontWeight: Typography.weights.black as any,
-        letterSpacing: 1,
     },
     errorState: { alignItems: 'center', marginTop: 60 },
     errorEmoji: { fontSize: 48, marginBottom: 16 },

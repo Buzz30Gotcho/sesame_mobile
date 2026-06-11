@@ -1,11 +1,18 @@
 import express from 'express';
 import multer from 'multer';
+import { randomInt } from 'crypto';
 import { query } from '../db';
 import { calculatePoints, nextAmbassadorLevel } from '../lib/rules';
+import { crediterPaliersParrainage, executerSanctionsEnAttente, checkAndSuspendExpiredDocsChauffeur } from '../lib/courseHelpers';
 import { sendPushNotification } from '../lib/pushNotifications';
 import { stripe } from '../lib/stripeClient';
+import { ownChauffeurParam } from '../middleware/auth';
+import { codeLimiter } from '../middleware/rateLimit';
 
 const router = express.Router();
+
+// Propriété : :id doit être le chauffeur du token (sinon 403).
+router.param('id', ownChauffeurParam);
 
 router.get('/:id/profile', async (req, res) => {
     const result = await query(
@@ -151,7 +158,7 @@ router.get('/:id/courses-disponibles', async (req, res) => {
          WHERE statut = 'recherche'
            AND vehicule_type = $1
            AND chauffeur_id IS NULL
-         ORDER BY date_annulation DESC NULLS LAST
+         ORDER BY date_acceptation DESC NULLS LAST
          LIMIT 1`,
         [chauffeur.vehicule_type]
     );
@@ -161,6 +168,16 @@ router.get('/:id/courses-disponibles', async (req, res) => {
 router.put('/:id/availability', async (req, res) => {
     const { disponible } = req.body;
     if (disponible == null) return res.status(400).json({ error: 'disponible requis' });
+
+    if (disponible) {
+        const check = await query('SELECT documents_valides, iban FROM chauffeurs WHERE id = $1', [req.params.id]);
+        if (!check.rows[0]?.documents_valides) {
+            return res.status(403).json({ error: 'Vos documents doivent être validés par SÉSAME avant de vous mettre en ligne.' });
+        }
+        if (!check.rows[0]?.iban) {
+            return res.status(403).json({ error: 'Veuillez renseigner votre IBAN dans votre profil avant de vous mettre en ligne.' });
+        }
+    }
 
     const result = await query('UPDATE chauffeurs SET disponible = $1 WHERE id = $2 RETURNING *', [disponible, req.params.id]);
     if (!result.rows.length) return res.status(404).json({ error: 'Chauffeur introuvable' });
@@ -176,9 +193,22 @@ router.post('/:id/accept-course', async (req, res) => {
     if (!course) return res.status(404).json({ error: 'Course introuvable' });
     if (course.statut !== 'recherche') return res.status(400).json({ error: 'Course non disponible pour acceptation' });
 
-    const code = Math.floor(1000 + Math.random() * 9000).toString();
+    const code = randomInt(1000, 10000).toString();
 
-    await query('UPDATE courses SET chauffeur_id = $1, statut = $2, date_acceptation = now(), code_validation = $3 WHERE id = $4', [req.params.id, 'acceptee', code, course_id]);
+    // Sauvegarder le taux override individuel du chauffeur au moment de l'acceptation (specs §1)
+    const tauxRes = await query(
+        `SELECT c.taux_commission_override, p.valeur AS taux_global
+         FROM chauffeurs c
+         CROSS JOIN parametres_systeme p
+         WHERE c.id = $1 AND p.cle = 'taux_commission_global'`,
+        [req.params.id]
+    );
+    const tauxApplique = tauxRes.rows[0]?.taux_commission_override ?? Number(tauxRes.rows[0]?.taux_global ?? 20);
+
+    await query(
+        'UPDATE courses SET chauffeur_id = $1, statut = $2, date_acceptation = now(), code_validation = $3, taux_commission_applique = $4 WHERE id = $5',
+        [req.params.id, 'acceptee', code, tauxApplique, course_id]
+    );
     const updated = await query('SELECT * FROM courses WHERE id = $1', [course_id]);
 
     // Notification push à l'ambassadeur
@@ -191,11 +221,13 @@ router.post('/:id/accept-course', async (req, res) => {
         );
         const ambToken = ambTokenResult.rows[0]?.push_token;
         if (ambToken) {
+            // Notification persistante — code visible tant que course active (specs §9.0)
             await sendPushNotification(
                 ambToken,
-                'Chauffeur trouve !',
+                'Chauffeur trouvé !',
                 `Code : ${code}. ${chauffeurPrenom} arrive dans quelques minutes.`,
-                { course_id }
+                { course_id, code, type: 'CHAUFFEUR_ACCEPTE' },
+                true
             );
         }
     } catch {
@@ -205,7 +237,7 @@ router.post('/:id/accept-course', async (req, res) => {
     res.json(updated.rows[0]);
 });
 
-router.post('/:id/validate-code', async (req, res) => {
+router.post('/:id/validate-code', codeLimiter, async (req, res) => {
     const { course_id, code } = req.body;
     if (!course_id || !code) return res.status(400).json({ error: 'course_id et code requis' });
 
@@ -242,78 +274,49 @@ router.post('/:id/finish-course', async (req, res) => {
     const courseResult = await query('SELECT * FROM courses WHERE id = $1 AND chauffeur_id = $2', [course_id, req.params.id]);
     const course = courseResult.rows[0];
     if (!course) return res.status(404).json({ error: 'Course introuvable' });
-    if (course.statut === 'terminee') return res.status(400).json({ error: 'Course déjà terminée' });
+    if (!['code_valide', 'en_cours'].includes(course.statut)) {
+        return res.status(400).json({ error: 'Seules les courses en cours peuvent être terminées' });
+    }
 
     await query('UPDATE courses SET statut = $1, date_fin = now() WHERE id = $2', ['terminee', course_id]);
 
-    // Créditer les points Ambassadeur UNIQUEMENT si le code pivot a été validé (code_valide_at IS NOT NULL)
+    // Créditer les points UNIQUEMENT si : code pivot validé + ambassadeur physique (specs §1.5 + §1 Moral)
     if (course.code_valide_at && course.ambassadeur_id && course.montant) {
-        const pts = calculatePoints(Number(course.montant));
-        if (pts > 0) {
-            const ambResult = await query('SELECT points_solde FROM ambassadeurs WHERE id = $1', [course.ambassadeur_id]);
-            const solde_avant = Number(ambResult.rows[0]?.points_solde || 0);
-            const solde_apres = solde_avant + pts;
-            const newLevel = nextAmbassadorLevel(solde_apres);
+        const ambResult = await query('SELECT points_solde, type_ambassadeur, parrain_id, niveau, push_token FROM ambassadeurs WHERE id = $1', [course.ambassadeur_id]);
+        const amb = ambResult.rows[0];
 
-            await query('UPDATE ambassadeurs SET points_solde = $1, niveau = $2 WHERE id = $3', [solde_apres, newLevel, course.ambassadeur_id]);
-            await query(
-                'INSERT INTO points_historique(ambassadeur_id, type, montant, solde_avant, solde_apres, course_id, description) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-                [course.ambassadeur_id, 'gain', pts, solde_avant, solde_apres, course_id, `Points gagnés pour la course ${course.reference}`]
-            );
-            await query('UPDATE courses SET points_attribues = $1 WHERE id = $2', [pts, course_id]);
+        if (amb && amb.type_ambassadeur !== 'moral') {
+            const pts = calculatePoints(Number(course.montant));
+            if (pts > 0) {
+                const solde_avant = Number(amb.points_solde || 0);
+                const solde_apres = solde_avant + pts;
+                const newLevel = nextAmbassadorLevel(solde_apres);
 
-            // Vérifier les sanctions en attente
-            const sanctions = await query(
-                "SELECT * FROM sanctions_en_attente WHERE ambassadeur_id = $1 AND statut = 'en_attente' ORDER BY decide_at ASC",
-                [course.ambassadeur_id]
-            );
-            for (const sanction of sanctions.rows) {
-                const current = await query('SELECT points_solde FROM ambassadeurs WHERE id = $1', [course.ambassadeur_id]);
-                const solde = Number(current.rows[0]?.points_solde || 0);
-                if (solde >= sanction.points) {
-                    await query('UPDATE ambassadeurs SET points_solde = points_solde - $1 WHERE id = $2', [sanction.points, course.ambassadeur_id]);
-                    await query("UPDATE sanctions_en_attente SET statut = 'execute', execute_at = now() WHERE id = $1", [sanction.id]);
+                await query('UPDATE ambassadeurs SET points_solde = $1, niveau = $2 WHERE id = $3', [solde_apres, newLevel, course.ambassadeur_id]);
+                await query(
+                    'INSERT INTO points_historique(ambassadeur_id, type, montant, solde_avant, solde_apres, course_id, description) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+                    [course.ambassadeur_id, 'gain', pts, solde_avant, solde_apres, course_id, `Points gagnés pour la course ${course.reference}`]
+                );
+                await query('UPDATE courses SET points_attribues = $1 WHERE id = $2', [pts, course_id]);
 
-                    // Notification SANCTION_POINTS à l'ambassadeur
-                    const sanctionTokenRes = await query('SELECT push_token FROM ambassadeurs WHERE id = $1', [course.ambassadeur_id]);
-                    const sanctionToken = sanctionTokenRes.rows[0]?.push_token;
-                    if (sanctionToken) {
-                        const date = new Date(sanction.decide_at).toLocaleDateString('fr-FR');
-                        await sendPushNotification(sanctionToken, `-${sanction.points} points prélevés`, `Suite à l'absence de votre client le ${date}.`).catch(() => {});
-                    }
+                // Parrainage — 4 paliers cumulatifs (specs §1.4)
+                if (amb.parrain_id) {
+                    await crediterPaliersParrainage(course.ambassadeur_id, amb.parrain_id, solde_apres, newLevel, course_id).catch(() => {});
                 }
-            }
 
-            // Notification push à l'ambassadeur — points crédités
-            try {
-                const ambTokenResult = await query('SELECT push_token FROM ambassadeurs WHERE id = $1', [course.ambassadeur_id]);
-                const ambToken = ambTokenResult.rows[0]?.push_token;
-                if (ambToken) {
-                    await sendPushNotification(
-                        ambToken,
-                        'Course terminee',
-                        `+${pts} points credites.`,
-                        { course_id }
-                    );
-                }
-            } catch {
-                // Non bloquant
-            }
-        } else {
-            // Pas de points — notifier quand même
-            if (course.ambassadeur_id) {
-                try {
-                    const ambTokenResult = await query('SELECT push_token FROM ambassadeurs WHERE id = $1', [course.ambassadeur_id]);
-                    const ambToken = ambTokenResult.rows[0]?.push_token;
-                    if (ambToken) {
-                        await sendPushNotification(ambToken, 'Course terminee', 'Course terminee.', { course_id });
-                    }
-                } catch {
-                    // Non bloquant
+                // Sanctions différées (specs §3.6) — met à jour le niveau si déduction
+                await executerSanctionsEnAttente(course.ambassadeur_id).catch(() => {});
+
+                // Notification COURSE_TERMINEE
+                if (amb.push_token) {
+                    await sendPushNotification(amb.push_token, 'Course terminée', `+${pts} points crédités.`, { type: 'COURSE_TERMINEE', course_id }).catch(() => {});
                 }
             }
         }
     }
+
+    // Document expiré pendant la course → suspendre maintenant (specs §9.1)
+    await checkAndSuspendExpiredDocsChauffeur(req.params.id).catch(() => {});
 
     const updated = await query('SELECT * FROM courses WHERE id = $1', [course_id]);
     res.json(updated.rows[0]);
@@ -323,13 +326,32 @@ const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const BUCKET = 'documents-kyc_sesame_chauffeur';
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+// Whitelist des types de documents (empêche tout chemin de stockage arbitraire / traversal).
+const VALID_DOC_TYPES = new Set([
+    'carte_identite', 'carte_vtc', 'revtc', 'kbis', 'permis', 'rir',
+    'rc_pro', 'rc_circulation', 'carte_grise', 'certificat_medical', 'photo_profil',
+]);
+const VALID_SIDES = new Set(['recto', 'verso']);
+
+const ALLOWED_DOC_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+        // Restreint aux types attendus (le mimetype reste déclaré par le client, mais on bloque l'évident).
+        cb(null, ALLOWED_DOC_TYPES.includes(file.mimetype));
+    },
+});
 
 // Upload document — reçoit le fichier du mobile, le transfère vers Supabase Storage
 router.post('/:id/documents/upload', upload.single('file'), async (req: any, res) => {
     const { type, side } = req.body;
     if (!type || !side || !req.file) {
         return res.status(400).json({ error: 'type, side et fichier requis' });
+    }
+    // Bornage strict : type/side entrent dans le chemin de stockage Supabase → jamais de valeur libre.
+    if (!VALID_DOC_TYPES.has(type) || !VALID_SIDES.has(side)) {
+        return res.status(400).json({ error: 'type ou side invalide' });
     }
     const mimeType = req.file.mimetype;
     const ext = mimeType === 'application/pdf' ? 'pdf' : mimeType === 'image/png' ? 'png' : 'jpg';
@@ -452,8 +474,23 @@ router.put('/:id/push-token', async (req, res) => {
 router.post('/:id/refuse-course', async (req, res) => {
     const { course_id } = req.body;
     if (!course_id) return res.status(400).json({ error: 'course_id requis' });
-    // Simplement ne pas assigner ce chauffeur, remettre en recherche
+    // 0 sanction pour refus (specs §9 — règle juridique absolue)
     await query('UPDATE courses SET chauffeur_id = NULL, statut = $1, date_acceptation = NULL, code_validation = NULL WHERE id = $2 AND chauffeur_id = $3', ['recherche', course_id, req.params.id]);
+
+    // Relance automatique vers les autres chauffeurs disponibles (specs §1.5)
+    const course = await query('SELECT vehicule_type, adresse_depart, adresse_destination, montant FROM courses WHERE id = $1', [course_id]);
+    if (course.rows[0]) {
+        const { vehicule_type, adresse_depart, adresse_destination, montant } = course.rows[0];
+        const chauffeurs = await query(
+            `SELECT push_token FROM chauffeurs WHERE disponible = true AND vehicule_type = $1 AND push_token IS NOT NULL AND id != $2`,
+            [vehicule_type, req.params.id]
+        );
+        const body = `${adresse_depart} → ${adresse_destination} · ${Number(montant).toFixed(2)} €`;
+        for (const ch of chauffeurs.rows) {
+            await sendPushNotification(ch.push_token, 'Nouvelle course', body, { course_id }).catch(() => {});
+        }
+    }
+
     res.json({ success: true, message: 'Course refusée sans sanction.' });
 });
 

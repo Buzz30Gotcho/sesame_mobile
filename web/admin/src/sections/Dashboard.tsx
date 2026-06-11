@@ -93,6 +93,13 @@ export default function Dashboard() {
           icon="🎁"
           badge={stats?.pendingExchanges ?? 0}
         />
+        <KpiCard
+          label="Kbis à renouveler"
+          value={stats?.kbis_expiring_soon ?? '—'}
+          color="#FF6464"
+          icon="⚠️"
+          badge={stats?.kbis_expiring_soon ?? 0}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

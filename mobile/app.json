@@ -18,7 +18,7 @@
     "extra": {
       "SUPABASE_URL": "https://lqjgscbqznugjeykklzx.supabase.co",
       "SUPABASE_KEY": "sb_publishable_YGXxPwOg3ANKscQo2JPZsg_NZcH3QVS",
-      "BACKEND_URL": "https://pulsatile-vagariously-ida.ngrok-free.dev"
+      "BACKEND_URL": "http://10.223.117.83:4001"
     },
     "assetBundlePatterns": [
       "**/*"

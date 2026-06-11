@@ -17,11 +17,13 @@ import type {
 } from '../types';
 
 const manifest: any = (Constants.expoConfig ?? Constants.manifest) || {};
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL ?? manifest.extra?.BACKEND_URL ?? 'http://localhost:4000';
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL ?? manifest.extra?.BACKEND_URL ?? 'http://localhost:4001';
+
+export const FOURNISSEUR_VALIDER_URL = `${BACKEND_URL}/valider`;
 
 export const api = axios.create({
     baseURL: BACKEND_URL,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
     timeout: 10000,
 });
 
@@ -35,7 +37,10 @@ export function setAuthToken(token: string | null) {
 
 export function getWsUrl(courseId: string): string {
     const wsBase = BACKEND_URL.replace(/^http/, 'ws');
-    return `${wsBase}/ws/chat/${courseId}`;
+    // Le WebSocket ne peut pas envoyer de header : on passe le token en query string.
+    const authHeader = api.defaults.headers.common.Authorization as string | undefined;
+    const token = authHeader?.replace('Bearer ', '') ?? '';
+    return `${wsBase}/ws/chat/${courseId}?token=${encodeURIComponent(token)}`;
 }
 
 // Auth
@@ -47,12 +52,12 @@ export async function getChauffeurBillingPortal(chauffeurId: string) {
     return api.get<{ url: string }>(`/api/chauffeurs/${chauffeurId}/billing-portal`);
 }
 
-export async function demanderResetMotDePasse(telephone: string) {
-    return api.post('/api/auth/mot-de-passe-oublie', { telephone });
+export async function demanderResetMotDePasse(email: string) {
+    return api.post('/api/auth/mot-de-passe-oublie', { email });
 }
 
-export async function reinitialiserMotDePasse(telephone: string, code: string, nouveau_mot_de_passe: string) {
-    return api.post('/api/auth/reinitialiser-mot-de-passe', { telephone, code, nouveau_mot_de_passe });
+export async function reinitialiserMotDePasse(email: string, code: string, nouveau_mot_de_passe: string) {
+    return api.post('/api/auth/reinitialiser-mot-de-passe', { email, code, nouveau_mot_de_passe });
 }
 
 export async function register(data: {
@@ -71,6 +76,64 @@ export async function refreshToken(token: string) {
         headers: { Authorization: `Bearer ${token}` }
     });
 }
+
+// --- Rafraîchissement automatique du token ---------------------------------
+// Décode le champ `exp` (expiration, secondes Unix) d'un JWT, sans dépendance externe.
+function base64UrlDecode(input: string): string {
+    const base64 = input.replace(/-/g, '+').replace(/_/g, '/');
+    const g: any = globalThis as any;
+    if (typeof g.atob === 'function') return g.atob(base64);
+    // Polyfill atob minimal (ASCII) pour les moteurs JS sans atob
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    const str = base64.replace(/=+$/, '');
+    let output = '';
+    for (let bc = 0, bs = 0, i = 0; i < str.length; i++) {
+        const idx = chars.indexOf(str.charAt(i));
+        if (idx === -1) continue;
+        bs = bc % 4 ? bs * 64 + idx : idx;
+        if (bc++ % 4) output += String.fromCharCode(255 & (bs >> ((-2 * bc) & 6)));
+    }
+    return output;
+}
+
+function getTokenExp(token: string): number | null {
+    try {
+        const payload = JSON.parse(base64UrlDecode(token.split('.')[1]));
+        return typeof payload.exp === 'number' ? payload.exp : null;
+    } catch {
+        return null;
+    }
+}
+
+// Un seul refresh en vol à la fois (le polling déclenche plusieurs requêtes simultanées).
+let refreshPromise: Promise<void> | null = null;
+
+api.interceptors.request.use(async (config) => {
+    // Ne pas intercepter l'appel de rafraîchissement lui-même (évite la boucle infinie).
+    if (config.url?.includes('/auth/refresh')) return config;
+
+    const header = api.defaults.headers.common.Authorization as string | undefined;
+    if (!header) return config;
+
+    const token = header.replace('Bearer ', '');
+    const exp = getTokenExp(token);
+    // Rafraîchir si le token est expiré ou expire dans moins de 60s.
+    if (exp && Date.now() / 1000 >= exp - 60) {
+        if (!refreshPromise) {
+            refreshPromise = refreshToken(token)
+                .then(r => { setAuthToken(r.data.token); })
+                .catch(() => { /* token trop vieux / refresh impossible : la requête partira avec l'ancien */ })
+                .finally(() => { refreshPromise = null; });
+        }
+        await refreshPromise;
+        const newHeader = api.defaults.headers.common.Authorization as string | undefined;
+        if (newHeader) {
+            (config.headers as any).Authorization = newHeader;
+        }
+    }
+    return config;
+});
+// ---------------------------------------------------------------------------
 
 // Ambassadeur
 export async function getAmbassadorDashboard(ambassadorId: string) {
@@ -99,13 +162,17 @@ export async function addEquipeEmployee(ambassadorId: string, data: {
     return api.post(`/api/ambassadeurs/${ambassadorId}/equipe`, data);
 }
 
+export async function updateEmployeStatut(ambassadorId: string, employeId: string, statut: 'actif' | 'suspendu') {
+    return api.put(`/api/ambassadeurs/${ambassadorId}/equipe/${employeId}/statut`, { statut });
+}
+
 export async function getCommissions(ambassadorId: string) {
     return api.get<{ taux_pct: number; mois: CommissionMois[] }>(`/api/ambassadeurs/${ambassadorId}/commissions`);
 }
 
 // Boutique & échanges
 export async function getAdminParameters() {
-    return api.get<{ cle: string; valeur: string }[]>('/api/admin/parametres');
+    return api.get<Record<string, string>>('/api/app/parametres');
 }
 
 export async function getOffers() {
@@ -213,7 +280,6 @@ export async function uploadChauffeurDocument(
         method: 'POST',
         headers: {
             'Authorization': String(token),
-            'Content-Type': 'multipart/form-data',
         },
         body: formData,
     });

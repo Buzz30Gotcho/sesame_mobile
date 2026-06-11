@@ -37,13 +37,14 @@ export const Typography = {
         black: '900',
     },
     sizes: {
-        tiny: 8,
-        small: 10,
-        sub: 12,
-        body: 14,
+        tiny: 11,
+        small: 12,
+        sub: 14,
+        body: 15,
         header: 18,
         title: 24,
         giant: 32,
+        mega: 44,
     }
 };
 

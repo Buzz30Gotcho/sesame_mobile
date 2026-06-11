@@ -25,6 +25,7 @@ export default function AmbassadorProfilScreen() {
 
     const [prenom, setPrenom] = useState('');
     const [nom, setNom] = useState('');
+    const [email, setEmail] = useState('');
     const [telephone, setTelephone] = useState('');
     const [metier, setMetier] = useState('');
     const [etablissement, setEtablissement] = useState('');
@@ -37,6 +38,7 @@ export default function AmbassadorProfilScreen() {
                 setProfile(response.data);
                 setPrenom(response.data.prenom);
                 setNom(response.data.nom);
+                setEmail(response.data.email || '');
                 setTelephone(response.data.telephone);
                 setMetier(response.data.metier || '');
                 setEtablissement(response.data.etablissement || '');
@@ -101,6 +103,10 @@ export default function AmbassadorProfilScreen() {
                         <View style={styles.fieldGroup}>
                             <Text style={styles.label}>{t('nom_label')}</Text>
                             <TextInput style={styles.input} value={nom} onChangeText={setNom} placeholder="Nom" placeholderTextColor={colors.textSecondary} />
+                        </View>
+                        <View style={styles.fieldGroup}>
+                            <Text style={styles.label}>EMAIL</Text>
+                            <TextInput style={[styles.input, styles.inputReadonly]} value={email} editable={false} placeholderTextColor={colors.textSecondary} />
                         </View>
                         <View style={styles.fieldGroup}>
                             <Text style={styles.label}>{t('telephone_label')}</Text>
@@ -230,6 +236,9 @@ function makeStyles(colors: typeof Colors.nocturne) {
             fontSize: Typography.sizes.body,
             borderWidth: 1,
             borderColor: 'rgba(255,255,255,0.05)',
+        },
+        inputReadonly: {
+            opacity: 0.5,
         },
         saveButton: {
             backgroundColor: Colors.brand.gold,

@@ -5,7 +5,8 @@ import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useLang } from '../context/LanguageContext';
-import { getAmbassadorDashboard, getAdminParameters, getCommissions } from '../services/api';
+import { getAmbassadorDashboard, getAdminParameters, getCommissions, getEquipe } from '../services/api';
+import type { EquipeEmployee } from '../types';
 import PointsRing from '../components/PointsRing';
 import BottomNav from '../components/BottomNav';
 import { Colors, Typography } from '../theme';
@@ -14,8 +15,13 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 let _dashboardCache: AmbassadorDashboard | null = null;
 let _cachedAmbassadorId: string | null = null;
+let _commissionCache: number | null = null;
+let _employesCache: EquipeEmployee[] = [];
 
-export function clearDashboardCache() { _dashboardCache = null; _cachedAmbassadorId = null; }
+export function clearDashboardCache() {
+    _dashboardCache = null; _cachedAmbassadorId = null;
+    _commissionCache = null; _employesCache = [];
+}
 
 export default function AmbassadorAccueilScreen() {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'AmbassadorAccueil'>>();
@@ -27,37 +33,38 @@ export default function AmbassadorAccueilScreen() {
     const [dashboard, setDashboard] = useState<AmbassadorDashboard | null>(isSameAmbassador ? _dashboardCache : null);
     const [loading, setLoading] = useState(!isSameAmbassador || _dashboardCache === null);
     const [error, setError] = useState<string | null>(null);
-    const [isImmediateEnabled, setIsImmediateEnabled] = useState(true);
-    const [commissionDuMois, setCommissionDuMois] = useState<number | null>(null);
+    const [isImmediateEnabled, setIsImmediateEnabled] = useState(false);
+    const [commissionDuMois, setCommissionDuMois] = useState<number | null>(isSameAmbassador ? _commissionCache : null);
+    const [employes, setEmployes] = useState<EquipeEmployee[]>(isSameAmbassador ? _employesCache : []);
 
     useEffect(() => {
         async function load() {
             if (!ambassadorId) { setLoading(false); return; }
+            const isMoralAcc = typeAmbassadeur === 'moral';
             try {
-                const [dashRes, paramsRes] = await Promise.all([
+                // Tout en parallèle (un seul aller-retour) — les appels Moral ne partent que si Moral.
+                const [dashRes, paramsRes, commRes, equipeRes] = await Promise.all([
                     getAmbassadorDashboard(ambassadorId),
-                    getAdminParameters().catch(() => ({ data: [] })),
+                    getAdminParameters().catch(() => ({ data: {} })),
+                    isMoralAcc ? getCommissions(ambassadorId).catch(() => ({ data: { mois: [] } })) : Promise.resolve(null),
+                    isMoralAcc ? getEquipe(ambassadorId).catch(() => ({ data: [] })) : Promise.resolve(null),
                 ]);
                 _dashboardCache = dashRes.data;
                 _cachedAmbassadorId = ambassadorId;
                 setDashboard(dashRes.data);
 
-                const p: Record<string, string> = {};
-                paramsRes.data.forEach((item: any) => { p[item.cle] = item.valeur; });
+                const p: Record<string, string> = paramsRes.data || {};
                 setIsImmediateEnabled(p.mode_course_immediate === 'true');
 
-                if (typeAmbassadeur === 'moral') {
-                    try {
-                        const commRes = await getCommissions(ambassadorId);
-                        const mois = commRes.data.mois;
-                        if (mois && mois.length > 0) {
-                            setCommissionDuMois(Number(mois[0].commission));
-                        } else {
-                            setCommissionDuMois(0);
-                        }
-                    } catch {
-                        setCommissionDuMois(0);
-                    }
+                if (isMoralAcc) {
+                    const mois = commRes?.data?.mois;
+                    const comm = (mois && mois.length > 0) ? Number(mois[0].commission) : 0;
+                    setCommissionDuMois(comm);
+                    _commissionCache = comm;
+
+                    const team = equipeRes?.data || [];
+                    setEmployes(team);
+                    _employesCache = team;
                 }
             } catch {
                 setError(t('impossible_donnees'));
@@ -101,101 +108,166 @@ export default function AmbassadorAccueilScreen() {
 
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
+                {/* Header */}
                 <View style={styles.header}>
                     <Text style={styles.welcomeText}>{t('bonjour')}{dashboard?.prenom ? `, ${dashboard.prenom}` : ''} !</Text>
-                    <View style={styles.pointsBadge}>
-                        <Text style={styles.pointsBadgeText}>{dashboard?.points_solde} pts</Text>
-                    </View>
+                    {!isMoral && (
+                        <View style={styles.pointsBadge}>
+                            <Text style={styles.pointsBadgeText}>{dashboard?.points_solde} pts</Text>
+                        </View>
+                    )}
                 </View>
 
-                {isMoral ? (
-                    <View style={styles.ringCard}>
-                        <Text style={styles.commissionLabel}>{t('commission_du_mois')}</Text>
-                        <Text style={styles.commissionValue}>
-                            {commissionDuMois !== null ? `${commissionDuMois.toFixed(2)} €` : '—'}
-                        </Text>
-                        <Text style={styles.commissionSub}>{t('basee_equipe')}</Text>
-                    </View>
-                ) : (
-                    <View style={styles.ringCard}>
-                        <PointsRing
-                            points={dashboard?.points_solde || 0}
-                            level={dashboard?.niveau || 'starter'}
-                            nextLevelPoints={dashboard?.next_level_target || 500}
-                            size={170}
-                        />
-                        <Text style={styles.levelLabel}>{t('niveau_label')} {dashboard?.niveau.toUpperCase()}</Text>
-                    </View>
-                )}
+                {/* Carte principale */}
+                <View style={[styles.ringCard, isMoral ? styles.ringCardMoral : styles.ringCardPhysique]}>
+                    {isMoral ? (
+                        <>
+                            <Text style={styles.commissionLabel}>{t('commission_du_mois')}</Text>
+                            <Text style={styles.commissionValue}>
+                                {commissionDuMois !== null ? `${commissionDuMois.toFixed(2)} €` : '—'}
+                            </Text>
+                            <Text style={styles.commissionSub}>{t('basee_equipe')}</Text>
+                        </>
+                    ) : (
+                        <>
+                            <PointsRing
+                                points={dashboard?.points_solde || 0}
+                                level={dashboard?.niveau || 'starter'}
+                                nextLevelPoints={dashboard?.next_level_target || 500}
+                                size={130}
+                            />
+                            <Text style={styles.levelLabel}>{t('niveau_label')} {dashboard?.niveau?.toUpperCase()}</Text>
+                            {dashboard?.next_level && dashboard?.points_to_next_level > 0 && (
+                                <Text style={styles.nextLevelHint}>
+                                    {dashboard.points_to_next_level} pts → {dashboard.next_level.toUpperCase()}
+                                </Text>
+                            )}
+                        </>
+                    )}
+                </View>
 
-                {isImmediateEnabled ? (
-                    <View style={styles.modeBadgeGreen}>
-                        <Text style={styles.modeBadgeText}>{t('deux_modes_actifs')}</Text>
-                    </View>
-                ) : (
-                    <View style={styles.modeBadgeBlue}>
-                        <Text style={styles.modeBadgeText}>{t('reservation_seul')}</Text>
-                    </View>
-                )}
+                {/* Badge mode */}
+                <View style={isImmediateEnabled ? styles.modeBadgeGreen : styles.modeBadgeBlue}>
+                    <Text style={styles.modeBadgeText}>
+                        {isImmediateEnabled ? t('deux_modes_actifs') : t('reservation_seul')}
+                    </Text>
+                </View>
 
-                {isImmediateEnabled ? (
-                    <>
+                {/* Boutons */}
+                <View style={styles.buttonsGroup}>
+                    {isImmediateEnabled && (
                         <TouchableOpacity style={styles.mainButton} onPress={() => navigation.navigate('AmbassadorCommander', { defaultType: 'immediate' })}>
                             <Text style={styles.mainButtonText}>{t('commander_maintenant')}</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={styles.reservationButton} onPress={() => navigation.navigate('AmbassadorCommander', { defaultType: 'reservation' })}>
-                            <Text style={styles.reservationButtonText}>{t('reserver_avance')}</Text>
-                        </TouchableOpacity>
-                    </>
-                ) : (
-                    <>
-                        <TouchableOpacity style={styles.reservationButton} onPress={() => navigation.navigate('AmbassadorCommander', { defaultType: 'reservation' })}>
-                            <Text style={styles.reservationButtonText}>{t('reserver_avance')}</Text>
-                        </TouchableOpacity>
+                    )}
+                    <TouchableOpacity style={styles.reservationButton} onPress={() => navigation.navigate('AmbassadorCommander', { defaultType: 'reservation' })}>
+                        <Text style={styles.reservationButtonText}>{t('reserver_avance')}</Text>
+                    </TouchableOpacity>
+                    {!isImmediateEnabled && (
                         <View style={styles.disabledButton}>
                             <Text style={styles.disabledButtonText}>{t('course_immediate_bientot')}</Text>
                         </View>
-                    </>
-                )}
+                    )}
+                </View>
 
+                {/* Stats */}
                 <View style={styles.statsCard}>
-                    <Text style={styles.statsTitle}>{t('mon_compte')}</Text>
+                    <Text style={styles.statsTitle}>{isMoral ? 'ACTIVITÉ' : t('mon_compte')}</Text>
                     <View style={styles.statsGrid}>
                         <View style={styles.statItem}>
                             <Text style={styles.statValue}>{dashboard?.active_course_count || 0}</Text>
                             <Text style={styles.statLabel}>{t('en_cours_label')}</Text>
                         </View>
-                        <View style={styles.statItem}>
-                            <Text style={[styles.statValue, { color: Colors.brand.gold }]}>{dashboard?.points_solde || 0}</Text>
-                            <Text style={styles.statLabel}>{t('points')}</Text>
-                        </View>
-                        <View style={styles.statItem}>
-                            <Text style={[styles.statValue, { color: Colors.brand.warning }]}>{dashboard?.pending_bons_count || 0}</Text>
-                            <Text style={styles.statLabel}>{t('bons_attente_label')}</Text>
-                        </View>
+                        {isMoral ? (
+                            <View style={styles.statItem}>
+                                <Text style={[styles.statValue, { color: Colors.brand.info }]}>
+                                    {commissionDuMois !== null ? `${commissionDuMois.toFixed(0)} €` : '—'}
+                                </Text>
+                                <Text style={styles.statLabel}>CE MOIS</Text>
+                            </View>
+                        ) : (
+                            <>
+                                <View style={styles.statItem}>
+                                    <Text style={[styles.statValue, { color: Colors.brand.gold }]}>{dashboard?.courses_semaine || 0}</Text>
+                                    <Text style={styles.statLabel}>CETTE SEMAINE</Text>
+                                </View>
+                                <View style={styles.statItem}>
+                                    <Text style={[styles.statValue, { color: Colors.brand.gold }]}>+{dashboard?.points_semaine || 0}</Text>
+                                    <Text style={styles.statLabel}>PTS / 7 JOURS</Text>
+                                </View>
+                                <View style={styles.statItem}>
+                                    <Text style={[styles.statValue, { color: Colors.brand.warning }]}>{dashboard?.pending_bons_count || 0}</Text>
+                                    <Text style={styles.statLabel}>{t('bons_attente_label')}</Text>
+                                </View>
+                            </>
+                        )}
                     </View>
                 </View>
 
+                {/* Liste employés — Moral uniquement (specs §8.2) — aperçu limité, liste complète dans l'écran Équipe */}
+                {isMoral && employes.length > 0 && (
+                    <View style={styles.employesCard}>
+                        <View style={styles.employesHeader}>
+                            <Text style={styles.employesTitle}>MON ÉQUIPE</Text>
+                            <Text style={styles.employesCount}>{employes.length}</Text>
+                        </View>
+                        {employes.slice(0, 3).map(emp => (
+                            <View key={emp.id} style={styles.employeRow}>
+                                <Text style={styles.employeNom} numberOfLines={1}>{emp.prenom} {emp.nom}</Text>
+                                <Text style={styles.employeMetier} numberOfLines={1}>{emp.metier || '—'}</Text>
+                                <View style={[styles.employeStatut, emp.statut === 'actif' ? styles.statutActif : styles.statutSuspendu]}>
+                                    <Text style={styles.employeStatutText}>{emp.statut === 'actif' ? 'Actif' : 'Suspendu'}</Text>
+                                </View>
+                            </View>
+                        ))}
+                        {employes.length > 3 && (
+                            <Text style={styles.employesPlus}>+ {employes.length - 3} autre{employes.length - 3 > 1 ? 's' : ''}</Text>
+                        )}
+                        <TouchableOpacity onPress={() => navigation.navigate('AmbassadorEquipe' as any)} style={styles.voirEquipeBtn}>
+                            <Text style={styles.voirEquipeBtnText}>Gérer l'équipe →</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+
+                {/* Liens rapides */}
                 <View style={styles.quickLinks}>
-                    <TouchableOpacity style={styles.linkCard} onPress={() => navigation.navigate('AmbassadorParrainage')}>
-                        <Text style={styles.linkEmoji}>🤝</Text>
-                        <Text style={styles.linkLabel}>{t('parrainage')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.linkCard} onPress={() => navigation.navigate('AmbassadorBonsCadeaux')}>
-                        <Text style={styles.linkEmoji}>🎫</Text>
-                        <Text style={styles.linkLabel}>{t('mes_bons')}</Text>
-                    </TouchableOpacity>
-                    {isMoral && (
-                        <TouchableOpacity style={styles.linkCard} onPress={() => navigation.navigate('AmbassadorCommissions')}>
-                            <Text style={styles.linkEmoji}>💶</Text>
-                            <Text style={styles.linkLabel}>{t('commissions')}</Text>
-                        </TouchableOpacity>
-                    )}
-                    {isMoral && (
-                        <TouchableOpacity style={styles.linkCard} onPress={() => navigation.navigate('AmbassadorEquipe')}>
-                            <Text style={styles.linkEmoji}>👥</Text>
-                            <Text style={styles.linkLabel}>{t('equipe')}</Text>
-                        </TouchableOpacity>
+                    {isMoral ? (
+                        <>
+                            <TouchableOpacity style={styles.linkCard} onPress={() => navigation.navigate('AmbassadorCommissions')}>
+                                <Text style={styles.linkEmoji}>💶</Text>
+                                <Text style={styles.linkLabel}>Commissions</Text>
+                            </TouchableOpacity>
+                            {/* Raccourci équipe : seulement si la carte "MON ÉQUIPE" n'est pas déjà affichée (évite le doublon) */}
+                            {employes.length === 0 && (
+                                <TouchableOpacity style={styles.linkCard} onPress={() => navigation.navigate('AmbassadorEquipe')}>
+                                    <Text style={styles.linkEmoji}>👥</Text>
+                                    <Text style={styles.linkLabel}>Mon équipe</Text>
+                                </TouchableOpacity>
+                            )}
+                            <TouchableOpacity style={styles.linkCard} onPress={() => navigation.navigate('AmbassadorProfil')}>
+                                <Text style={styles.linkEmoji}>🏢</Text>
+                                <Text style={styles.linkLabel}>Profil</Text>
+                            </TouchableOpacity>
+                        </>
+                    ) : (
+                        <>
+                            <TouchableOpacity style={styles.linkCard} onPress={() => navigation.navigate('AmbassadorParrainage')}>
+                                <Text style={styles.linkEmoji}>🤝</Text>
+                                <Text style={styles.linkLabel}>{t('parrainage')}</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.linkCard} onPress={() => navigation.navigate('AmbassadorBonsCadeaux')}>
+                                <Text style={styles.linkEmoji}>🎫</Text>
+                                <Text style={styles.linkLabel}>{t('mes_bons')}</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.linkCard} onPress={() => navigation.navigate('AmbassadorNiveaux')}>
+                                <Text style={styles.linkEmoji}>🏆</Text>
+                                <Text style={styles.linkLabel}>{t('niveaux')}</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.linkCard} onPress={() => navigation.navigate('AmbassadorBoutique')}>
+                                <Text style={styles.linkEmoji}>🎁</Text>
+                                <Text style={styles.linkLabel}>{t('boutique')}</Text>
+                            </TouchableOpacity>
+                        </>
                     )}
                 </View>
 
@@ -226,35 +298,54 @@ function makeStyles(colors: typeof Colors.nocturne) {
         bannerCode: { backgroundColor: colors.card, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: Colors.brand.gold },
         bannerCodeText: { color: colors.textSecondary, fontSize: Typography.sizes.tiny, fontWeight: Typography.weights.bold as any },
         bannerCodeValue: { color: Colors.brand.gold, fontSize: Typography.sizes.body, fontWeight: Typography.weights.black as any, fontFamily: 'monospace' },
-        scrollContent: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 120 },
-        header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+        scrollContent: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 100 },
+        header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+        buttonsGroup: { gap: 8, marginBottom: 14 },
         welcomeText: { color: colors.textPrimary, fontSize: Typography.sizes.header, fontWeight: Typography.weights.bold as any },
-        pointsBadge: { backgroundColor: 'rgba(201, 168, 76, 0.15)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+        pointsBadge: { backgroundColor: 'rgba(201, 168, 76, 0.15)', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20 },
         pointsBadgeText: { color: Colors.brand.gold, fontWeight: Typography.weights.bold as any, fontSize: Typography.sizes.sub },
-        ringCard: { backgroundColor: colors.card, borderRadius: 24, paddingVertical: 16, alignItems: 'center', marginBottom: 16 },
+        ringCard: { backgroundColor: colors.card, borderRadius: 20, alignItems: 'center', paddingVertical: 20, paddingHorizontal: 16, marginBottom: 10 },
+        ringCardPhysique: {},
+        ringCardMoral: { paddingVertical: 36 },
         levelLabel: { color: Colors.brand.gold, fontSize: Typography.sizes.small, fontWeight: Typography.weights.black as any, marginTop: 8, letterSpacing: 1 },
-        commissionLabel: { color: colors.textSecondary, fontSize: Typography.sizes.tiny, fontWeight: Typography.weights.black as any, letterSpacing: 2, marginBottom: 8 },
-        commissionValue: { color: Colors.brand.gold, fontSize: Typography.sizes.giant, fontWeight: Typography.weights.black as any, marginBottom: 6 },
-        commissionSub: { color: colors.textSecondary, fontSize: Typography.sizes.small },
-        modeBadgeGreen: { alignSelf: 'center', backgroundColor: 'rgba(76, 175, 130, 0.15)', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 5, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(76, 175, 130, 0.3)' },
-        modeBadgeBlue: { alignSelf: 'center', backgroundColor: 'rgba(74, 158, 255, 0.15)', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 5, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(74, 158, 255, 0.3)' },
+        nextLevelHint: { color: colors.textSecondary, fontSize: Typography.sizes.sub, marginTop: 3, textAlign: 'center', paddingHorizontal: 8 },
+        commissionLabel: { color: colors.textSecondary, fontSize: Typography.sizes.small, fontWeight: Typography.weights.black as any, letterSpacing: 2, marginBottom: 8 },
+        commissionValue: { color: Colors.brand.gold, fontSize: Typography.sizes.mega, fontWeight: Typography.weights.black as any, marginBottom: 4 },
+        commissionSub: { color: colors.textSecondary, fontSize: Typography.sizes.tiny },
+        modeBadgeGreen: { alignSelf: 'center', backgroundColor: 'rgba(76, 175, 130, 0.15)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4, borderWidth: 1, borderColor: 'rgba(76, 175, 130, 0.3)', marginBottom: 12 },
+        modeBadgeBlue: { alignSelf: 'center', backgroundColor: 'rgba(74, 158, 255, 0.15)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4, borderWidth: 1, borderColor: 'rgba(74, 158, 255, 0.3)', marginBottom: 12 },
         modeBadgeText: { color: colors.textPrimary, fontSize: Typography.sizes.tiny, fontWeight: Typography.weights.black as any, letterSpacing: 1 },
-        mainButton: { backgroundColor: Colors.brand.gold, borderRadius: 16, paddingVertical: 16, alignItems: 'center', marginBottom: 10 },
-        mainButtonText: { color: '#09090F', fontSize: Typography.sizes.body, fontWeight: Typography.weights.black as any },
-        reservationButton: { backgroundColor: Colors.brand.info, borderRadius: 16, paddingVertical: 16, alignItems: 'center', marginBottom: 10 },
-        reservationButtonText: { color: '#FFFFFF', fontSize: Typography.sizes.body, fontWeight: Typography.weights.black as any },
-        disabledButton: { backgroundColor: colors.card, borderRadius: 16, paddingVertical: 16, alignItems: 'center', marginBottom: 20, opacity: 0.4 },
-        disabledButtonText: { color: colors.textSecondary, fontSize: Typography.sizes.body, fontWeight: Typography.weights.bold as any },
-        statsCard: { backgroundColor: colors.card, borderRadius: 18, padding: 16, marginBottom: 16 },
-        statsTitle: { color: colors.textSecondary, fontSize: Typography.sizes.tiny, fontWeight: Typography.weights.bold as any, letterSpacing: 1, marginBottom: 12 },
-        statsGrid: { flexDirection: 'row', justifyContent: 'space-between' },
-        statItem: { alignItems: 'center', flex: 1 },
-        statValue: { color: colors.textPrimary, fontSize: Typography.sizes.title, fontWeight: Typography.weights.black as any, marginBottom: 4 },
+        mainButton: { backgroundColor: Colors.brand.gold, borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
+        mainButtonText: { color: '#09090F', fontSize: Typography.sizes.sub, fontWeight: Typography.weights.black as any },
+        reservationButton: { backgroundColor: Colors.brand.info, borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
+        reservationButtonText: { color: '#FFFFFF', fontSize: Typography.sizes.sub, fontWeight: Typography.weights.black as any },
+        disabledButton: { backgroundColor: colors.card, borderRadius: 12, paddingVertical: 13, alignItems: 'center', opacity: 0.4 },
+        disabledButtonText: { color: colors.textSecondary, fontSize: Typography.sizes.sub, fontWeight: Typography.weights.bold as any },
+        statsCard: { backgroundColor: colors.card, borderRadius: 16, padding: 14, marginBottom: 14 },
+        statsTitle: { color: colors.textSecondary, fontSize: Typography.sizes.tiny, fontWeight: Typography.weights.bold as any, letterSpacing: 1, marginBottom: 10 },
+        statsGrid: { flexDirection: 'row', justifyContent: 'space-around' },
+        statItem: { alignItems: 'center' },
+        statValue: { color: colors.textPrimary, fontSize: Typography.sizes.header, fontWeight: Typography.weights.black as any, marginBottom: 2 },
         statLabel: { color: colors.textSecondary, fontSize: Typography.sizes.tiny },
-        quickLinks: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-        linkCard: { backgroundColor: colors.card, width: '48%', borderRadius: 18, padding: 16, marginBottom: 12, alignItems: 'center' },
-        linkEmoji: { fontSize: Typography.sizes.title, marginBottom: 8 },
-        linkLabel: { color: colors.textPrimary, fontSize: Typography.sizes.sub, fontWeight: Typography.weights.bold as any, textAlign: 'center' },
+        quickLinks: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 },
+        linkCard: { backgroundColor: colors.card, width: '47.5%', borderRadius: 14, paddingVertical: 12, paddingHorizontal: 10, alignItems: 'center' },
+        linkEmoji: { fontSize: 22, marginBottom: 5 },
+        linkLabel: { color: colors.textPrimary, fontSize: Typography.sizes.small, fontWeight: Typography.weights.bold as any, textAlign: 'center' },
+        linkSub: { color: colors.textSecondary, fontSize: Typography.sizes.tiny, marginTop: 1 },
         errorText: { color: Colors.brand.error, marginTop: 16 },
+        employesCard: { backgroundColor: colors.card, borderRadius: 18, padding: 16, marginTop: 16, borderWidth: 1, borderColor: 'rgba(74,158,255,0.15)' },
+        employesHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+        employesTitle: { color: Colors.brand.info, fontSize: Typography.sizes.tiny, fontWeight: Typography.weights.black as any, letterSpacing: 1 },
+        employesCount: { color: Colors.brand.info, fontSize: Typography.sizes.sub, fontWeight: Typography.weights.black as any, backgroundColor: 'rgba(74,158,255,0.15)', minWidth: 24, textAlign: 'center', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, overflow: 'hidden' },
+        employesPlus: { color: Colors.brand.info, fontSize: Typography.sizes.tiny, fontWeight: Typography.weights.semiBold as any, paddingTop: 10 },
+        employeRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
+        employeNom: { flex: 1, color: colors.textPrimary, fontSize: Typography.sizes.sub, fontWeight: Typography.weights.semiBold as any },
+        employeMetier: { flex: 1, color: colors.textSecondary, fontSize: Typography.sizes.tiny },
+        employeStatut: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+        statutActif: { backgroundColor: 'rgba(76,175,130,0.15)' },
+        statutSuspendu: { backgroundColor: 'rgba(255,100,100,0.15)' },
+        employeStatutText: { fontSize: 10, fontWeight: Typography.weights.bold as any, color: colors.textPrimary },
+        voirEquipeBtn: { marginTop: 10, alignItems: 'flex-end' },
+        voirEquipeBtnText: { color: Colors.brand.info, fontSize: Typography.sizes.small, fontWeight: Typography.weights.bold as any },
     });
 }

@@ -4,7 +4,15 @@ import { query } from '../db';
 const router = express.Router();
 
 router.get('/offres', async (req, res) => {
-    const result = await query('SELECT * FROM offres_boutique WHERE statut = $1 AND (stock IS NULL OR stock > 0) ORDER BY nom ASC', ['en_ligne']);
+    // Boutique bloquée si contrat fournisseur non signé (specs §6.3)
+    const result = await query(
+        `SELECT o.* FROM offres_boutique o
+         JOIN fournisseurs f ON f.id = o.fournisseur_id
+         WHERE o.statut = 'en_ligne'
+           AND (o.stock IS NULL OR o.stock > 0)
+           AND f.contrat_signe = true
+         ORDER BY o.nom ASC`
+    );
     res.json(result.rows);
 });
 

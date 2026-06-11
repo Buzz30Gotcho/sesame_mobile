@@ -52,13 +52,13 @@ export default function OnboardingScreen() {
             setStep(step + 1);
         } else {
             await AsyncStorage.setItem('sesame_onboarding_done', 'true');
-            navigation.replace('Login');
+            navigation.replace('AmbassadorAccueil');
         }
     };
 
     const skip = async () => {
         await AsyncStorage.setItem('sesame_onboarding_done', 'true');
-        navigation.replace('Login');
+        navigation.replace('AmbassadorAccueil');
     };
 
     return (

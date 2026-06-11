@@ -29,9 +29,9 @@ function calculerBonusFilleul(filleul: Filleul): { total: number; paliers: { lab
     const p4 = niveau === 'black';
 
     const paliers = [
-        { label: 'P1 : 5 courses effectuees', pts: 5, atteint: p1 },
-        { label: 'P2 : Niveau Pro ou superieur', pts: 10, atteint: p2 },
-        { label: 'P3 : Niveau Elite ou superieur', pts: 15, atteint: p3 },
+        { label: 'P1 : 5 courses effectuées', pts: 5, atteint: p1 },
+        { label: 'P2 : Niveau Pro ou supérieur', pts: 10, atteint: p2 },
+        { label: 'P3 : Niveau Élite ou supérieur', pts: 15, atteint: p3 },
         { label: 'P4 : Niveau Black', pts: 20, atteint: p4 },
     ];
 
@@ -99,7 +99,7 @@ export default function AmbassadorParrainageScreen() {
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
                     <Text style={styles.backText}>←</Text>
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>{t('parrainage_titre')}</Text>
+                <Text style={styles.title}>{t('parrainage_titre')}</Text>
                 <View style={{ width: 36 }} />
             </View>
 
@@ -139,15 +139,15 @@ export default function AmbassadorParrainageScreen() {
                         <View style={styles.infoBox}>
                             <Text style={styles.infoTitle}>{t('systeme_paliers')}</Text>
                             <View style={styles.palierRow}>
-                                <Text style={styles.palierLabel}>P1 — 5 courses effectuees</Text>
+                                <Text style={styles.palierLabel}>P1 — 5 courses effectuées</Text>
                                 <Text style={styles.palierPts}>+5 pts</Text>
                             </View>
                             <View style={styles.palierRow}>
-                                <Text style={styles.palierLabel}>P2 — Niveau Pro ou superieur</Text>
+                                <Text style={styles.palierLabel}>P2 — Niveau Pro ou supérieur</Text>
                                 <Text style={styles.palierPts}>+10 pts</Text>
                             </View>
                             <View style={styles.palierRow}>
-                                <Text style={styles.palierLabel}>P3 — Niveau Elite ou superieur</Text>
+                                <Text style={styles.palierLabel}>P3 — Niveau Élite ou supérieur</Text>
                                 <Text style={styles.palierPts}>+15 pts</Text>
                             </View>
                             <View style={styles.palierRow}>
@@ -229,13 +229,12 @@ function makeStyles(colors: typeof Colors.nocturne) {
         },
         backBtn: { width: 36, height: 36, justifyContent: 'center' },
         backText: { color: Colors.brand.gold, fontSize: 22, fontWeight: Typography.weights.bold as any },
-        headerTitle: {
-            color: colors.textPrimary,
-            fontSize: Typography.sizes.sub,
+        title: {
+            color: Colors.brand.gold,
+            fontSize: Typography.sizes.title,
             fontWeight: Typography.weights.black as any,
-            letterSpacing: 2,
         },
-        scrollContent: { padding: 20, paddingBottom: 60 },
+        scrollContent: { padding: 20, paddingBottom: 60, flexGrow: 1 },
         errorText: { color: Colors.brand.error, textAlign: 'center', marginTop: 40 },
         codeCard: {
             backgroundColor: colors.card,
@@ -304,7 +303,7 @@ function makeStyles(colors: typeof Colors.nocturne) {
         },
         infoTitle: {
             color: Colors.brand.gold,
-            fontSize: Typography.sizes.tiny,
+            fontSize: Typography.sizes.sub,
             fontWeight: Typography.weights.black as any,
             letterSpacing: 1,
             marginBottom: 10,
@@ -312,27 +311,27 @@ function makeStyles(colors: typeof Colors.nocturne) {
         palierRow: {
             flexDirection: 'row',
             justifyContent: 'space-between',
-            marginBottom: 6,
+            marginBottom: 8,
         },
         palierLabel: {
-            color: colors.textSecondary,
-            fontSize: Typography.sizes.small,
+            color: colors.textPrimary,
+            fontSize: Typography.sizes.body,
             flex: 1,
         },
         palierPts: {
             color: Colors.brand.gold,
-            fontSize: Typography.sizes.small,
+            fontSize: Typography.sizes.body,
             fontWeight: Typography.weights.bold as any,
         },
         infoSub: {
             color: colors.textSecondary,
-            fontSize: Typography.sizes.tiny,
+            fontSize: Typography.sizes.sub,
             marginTop: 8,
             fontStyle: 'italic',
         },
         sectionTitle: {
             color: colors.textSecondary,
-            fontSize: Typography.sizes.tiny,
+            fontSize: Typography.sizes.sub,
             fontWeight: Typography.weights.black as any,
             letterSpacing: 1,
             marginBottom: 12,

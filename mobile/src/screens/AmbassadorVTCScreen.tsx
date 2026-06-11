@@ -104,9 +104,17 @@ export default function AmbassadorVTCScreen() {
 
     const handleCancel = () => {
         if (!activeCourse) return;
+        const nbAnnul = dashboard?.nb_annulations_30j ?? 0;
+        let warningMsg = '';
+        if (nbAnnul === 2) warningMsg = 'Attention : la prochaine annulation entraîne une restriction 24h.';
+        else if (nbAnnul === 3) warningMsg = 'Votre compte est actuellement restreint 24h — plus de nouvelles commandes.';
+        else if (nbAnnul === 4) warningMsg = 'Attention : la prochaine annulation entraîne une suspension de votre compte.';
+        const countMsg = nbAnnul > 0
+            ? `\n\nAnnulations ce mois : ${nbAnnul}/5.${warningMsg ? ' ' + warningMsg : ''}`
+            : '';
         Alert.alert(
             t('annuler_course_titre'),
-            t('annuler_course_msg'),
+            t('annuler_course_msg') + countMsg,
             [
                 { text: t('non'), style: 'cancel' },
                 {
@@ -115,8 +123,25 @@ export default function AmbassadorVTCScreen() {
                     onPress: async () => {
                         setCancelling(true);
                         try {
-                            await cancelCourse(activeCourse.id);
+                            const res = await cancelCourse(activeCourse.id);
+                            const sanction = res?.data?.sanction;
                             await load();
+                            if (sanction === 'avertissement') {
+                                Alert.alert(
+                                    'Avertissement',
+                                    'Première annulation ce mois-ci. À partir de 3 annulations en 30 jours, votre compte sera restreint 24h.'
+                                );
+                            } else if (sanction === 'restriction_24h') {
+                                Alert.alert(
+                                    'Compte restreint 24h',
+                                    'Trop d\'annulations ce mois-ci. Vous ne pourrez pas passer de commande pendant 24 heures.'
+                                );
+                            } else if (sanction === 'suspension') {
+                                Alert.alert(
+                                    'Compte suspendu',
+                                    'Votre compte a été suspendu suite à de trop nombreuses annulations. Contactez SÉSAME : support@sesame-pro.com'
+                                );
+                            }
                         } catch {
                             Alert.alert(t('erreur'), t('impossible_annuler'));
                         } finally {

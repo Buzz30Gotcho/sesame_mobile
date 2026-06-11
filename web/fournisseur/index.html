@@ -223,9 +223,7 @@
 <div class="footer">SESAME — sesame-pro.com · support@sesame-pro.com</div>
 
 <script>
-    const BACKEND_URL = window.location.hostname === 'localhost'
-        ? 'http://localhost:4000'
-        : 'https://api.sesame-pro.com'; // À configurer en production
+    const BACKEND_URL = window.location.origin;
 
     let tentatives = 0;
     let tokenQr = '';

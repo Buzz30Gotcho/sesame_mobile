@@ -1,6 +1,6 @@
 export type RootStackParamList = {
     Login: undefined;
-    Register: undefined;
+    Register: { initialRole?: 'ambassadeur' | 'chauffeur' } | undefined;
     Onboarding: undefined;
     AmbassadorHome: undefined;
     AmbassadorAccueil: undefined;
@@ -125,6 +125,9 @@ export type AmbassadorDashboard = {
     code_parrainage?: string;
     active_course_count: number;
     pending_bons_count: number;
+    nb_annulations_30j: number;
+    courses_semaine: number;
+    points_semaine: number;
     next_level?: string | null;
     points_to_next_level: number;
     next_level_target?: number | null;

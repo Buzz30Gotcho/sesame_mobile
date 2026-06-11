@@ -196,60 +196,139 @@ export default function ChauffeurProfileScreen() {
                         </View>
 
                         {/* Section KYC - Documents obligatoires */}
-                        <View style={styles.kycSection}>
-                            <Text style={styles.sectionLabel}>DOCUMENTS KYC</Text>
-                            <Text style={styles.kycSubtitle}>Documents requis pour exercer en tant que chauffeur VTC</Text>
+                        <View style={[
+                            styles.kycSection,
+                            !(profile as any)?.documents_valides && styles.kycSectionPending,
+                        ]}>
+                            {/* En-tête */}
+                            <View style={styles.kycHeader}>
+                                <Text style={styles.kycTitle}>
+                                    {(profile as any)?.documents_valides ? '✓  DOCUMENTS VALIDÉS' : '⚠️  DOCUMENTS REQUIS'}
+                                </Text>
+                                {!(profile as any)?.documents_valides && (
+                                    <View style={styles.kycBadge}>
+                                        <Text style={styles.kycBadgeText}>ACTION REQUISE</Text>
+                                    </View>
+                                )}
+                            </View>
+                            <Text style={styles.kycSubtitle}>
+                                {(profile as any)?.documents_valides
+                                    ? 'Votre dossier est complet et validé par SÉSAME.'
+                                    : '11 documents obligatoires. 0 manquant = 0 course.'}
+                            </Text>
 
                             {[
-                                { type: 'carte_identite', label: "Carte d'identité", hasVerso: true },
-                                { type: 'permis', label: 'Permis de conduire', hasVerso: true },
-                                { type: 'carte_vtc', label: 'Carte VTC', hasVerso: false },
-                                { type: 'carte_grise', label: 'Carte grise', hasVerso: false },
+                                { type: 'carte_identite',    label: "Carte d'identité",                             hasVerso: true  },
+                                { type: 'carte_vtc',         label: 'Carte VTC Professionnelle',                   hasVerso: true  },
+                                { type: 'revtc',             label: 'REVTC (Registre des VTC)',                    hasVerso: false },
+                                { type: 'kbis',              label: 'Kbis — moins de 6 mois',                     hasVerso: false },
+                                { type: 'permis',            label: 'Permis de conduire',                          hasVerso: true  },
+                                { type: 'rir',               label: "RIR (Relevé d'Information Routier)",          hasVerso: false },
+                                { type: 'rc_pro',            label: 'RC Pro (Responsabilité Civile Pro)',           hasVerso: false },
+                                { type: 'rc_circulation',    label: 'RC Circulation (assurance du véhicule)',      hasVerso: false },
+                                { type: 'carte_grise',       label: 'Carte grise du véhicule',                    hasVerso: true  },
+                                { type: 'certificat_medical',label: "Certificat médical d'aptitude",               hasVerso: false },
+                                { type: 'photo_profil',      label: 'Photo de profil (format identité)',           hasVerso: false },
                             ].map(({ type, label, hasVerso }) => {
                                 const doc = documents.find(d => d.type === type);
                                 const isUploadingRecto = uploadingDoc === `${type}_recto`;
                                 const isUploadingVerso = uploadingDoc === `${type}_verso`;
+                                const isMissing = !doc;
+                                const isRefused = doc?.statut === 'refuse';
+                                const isExpire = doc?.statut === 'expire';
+
+                                // Kbis : calcul âge depuis date_expiration (= émission + 6 mois)
+                                let kbisAlerte: 'ok' | 'orange' | 'bloque' | null = null;
+                                if (type === 'kbis' && doc?.statut === 'valide' && doc.date_expiration) {
+                                    const expiration = new Date(doc.date_expiration);
+                                    const today = new Date();
+                                    const joursRestants = Math.floor((expiration.getTime() - today.getTime()) / 86400000);
+                                    if (joursRestants <= 0) kbisAlerte = 'bloque';
+                                    else if (joursRestants <= 30) kbisAlerte = 'orange';
+                                    else kbisAlerte = 'ok';
+                                }
+
                                 return (
-                                    <View key={type} style={styles.docRow}>
+                                    <View key={type} style={[
+                                        styles.docRow,
+                                        isMissing && styles.docRowMissing,
+                                        (isRefused || isExpire) && styles.docRowRefused,
+                                        doc?.statut === 'valide' && !kbisAlerte && styles.docRowValid,
+                                        kbisAlerte === 'orange' && styles.docRowWarning,
+                                        kbisAlerte === 'bloque' && styles.docRowRefused,
+                                    ]}>
                                         <View style={styles.docInfo}>
-                                            <Text style={styles.docLabel}>{label}</Text>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                <Text style={[styles.docLabel, isMissing && styles.docLabelMissing]}>
+                                                    {isMissing ? '📎 ' : ''}{label}
+                                                </Text>
+                                                {kbisAlerte === 'ok' && (
+                                                    <View style={styles.kbisBadgeOk}>
+                                                        <Text style={styles.kbisBadgeText}>Annuel &lt; 6 mois</Text>
+                                                    </View>
+                                                )}
+                                                {kbisAlerte === 'orange' && (
+                                                    <View style={styles.kbisBadgeWarn}>
+                                                        <Text style={styles.kbisBadgeText}>À renouveler</Text>
+                                                    </View>
+                                                )}
+                                            </View>
                                             {doc ? (
                                                 <Text style={[
                                                     styles.docStatus,
-                                                    doc.statut === 'valide' && styles.docValid,
-                                                    doc.statut === 'refuse' && styles.docRefused,
+                                                    doc.statut === 'valide' && kbisAlerte !== 'orange' && kbisAlerte !== 'bloque' && styles.docValid,
+                                                    doc.statut === 'valide' && kbisAlerte === 'orange' && styles.docWarning,
+                                                    (doc.statut === 'refuse' || isExpire || kbisAlerte === 'bloque') && styles.docRefused,
                                                     doc.statut === 'en_attente' && styles.docPending,
                                                 ]}>
-                                                    {doc.statut === 'valide' ? '✓ VALIDÉ' :
-                                                     doc.statut === 'refuse' ? '✗ REFUSÉ' :
-                                                     '⏳ EN ATTENTE'}
+                                                    {isExpire || kbisAlerte === 'bloque' ? '✗ EXPIRÉ — renouvellement requis' :
+                                                     kbisAlerte === 'orange' ? '⚠ EXPIRE BIENTÔT — renouvelez votre Kbis' :
+                                                     doc.statut === 'valide' ? '✓ VALIDÉ' :
+                                                     doc.statut === 'refuse' ? '✗ REFUSÉ — renvoyer' :
+                                                     '⏳ EN ATTENTE DE VALIDATION'}
                                                 </Text>
                                             ) : (
-                                                <Text style={styles.docMissing}>Non fourni</Text>
+                                                <Text style={styles.docMissing}>Non fourni — obligatoire</Text>
                                             )}
                                         </View>
                                         <View style={{ flexDirection: 'row', gap: 8 }}>
                                             <TouchableOpacity
-                                                style={[styles.uploadBtn, isUploadingRecto && styles.uploadBtnDisabled]}
+                                                style={[
+                                                    styles.uploadBtn,
+                                                    isMissing && styles.uploadBtnMissing,
+                                                    isRefused && styles.uploadBtnRefused,
+                                                    isUploadingRecto && styles.uploadBtnDisabled,
+                                                ]}
                                                 onPress={() => handleUploadDocument(type, label, 'recto')}
                                                 disabled={isUploadingRecto || isUploadingVerso}
                                             >
                                                 {isUploadingRecto
-                                                    ? <ActivityIndicator size="small" color={Colors.brand.info} />
-                                                    : <Text style={styles.uploadBtnText}>
+                                                    ? <ActivityIndicator size="small" color="#FFFFFF" />
+                                                    : <Text style={[
+                                                        styles.uploadBtnText,
+                                                        (isMissing || isRefused) && styles.uploadBtnTextUrgent,
+                                                      ]}>
                                                         {hasVerso ? (doc?.fichier_recto_url ? '↺ Recto' : 'Recto') : (doc ? 'Remplacer' : 'Envoyer')}
                                                       </Text>
                                                 }
                                             </TouchableOpacity>
                                             {hasVerso && (
                                                 <TouchableOpacity
-                                                    style={[styles.uploadBtn, isUploadingVerso && styles.uploadBtnDisabled]}
+                                                    style={[
+                                                        styles.uploadBtn,
+                                                        isMissing && styles.uploadBtnMissing,
+                                                        isRefused && styles.uploadBtnRefused,
+                                                        isUploadingVerso && styles.uploadBtnDisabled,
+                                                    ]}
                                                     onPress={() => handleUploadDocument(type, label, 'verso')}
                                                     disabled={isUploadingRecto || isUploadingVerso}
                                                 >
                                                     {isUploadingVerso
-                                                        ? <ActivityIndicator size="small" color={Colors.brand.info} />
-                                                        : <Text style={styles.uploadBtnText}>
+                                                        ? <ActivityIndicator size="small" color="#FFFFFF" />
+                                                        : <Text style={[
+                                                            styles.uploadBtnText,
+                                                            (isMissing || isRefused) && styles.uploadBtnTextUrgent,
+                                                          ]}>
                                                             {doc?.fichier_verso_url ? '↺ Verso' : 'Verso'}
                                                           </Text>
                                                     }
@@ -420,27 +499,77 @@ function makeStyles(colors: typeof Colors.nocturne) {
         },
         kycSection: {
             marginTop: 32,
+            borderRadius: 18,
+            borderWidth: 1,
+            borderColor: 'rgba(201,168,76,0.2)',
+            backgroundColor: colors.card,
+            padding: 16,
+        },
+        kycSectionPending: {
+            borderWidth: 2,
+            borderColor: Colors.brand.gold,
+            backgroundColor: 'rgba(201,168,76,0.06)',
+        },
+        kycHeader: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 6,
+        },
+        kycTitle: {
+            color: Colors.brand.gold,
+            fontSize: Typography.sizes.small,
+            fontWeight: Typography.weights.black as any,
+            letterSpacing: 1,
+        },
+        kycBadge: {
+            backgroundColor: Colors.brand.gold,
+            borderRadius: 8,
+            paddingHorizontal: 8,
+            paddingVertical: 3,
+        },
+        kycBadgeText: {
+            color: '#101018',
+            fontSize: 9,
+            fontWeight: Typography.weights.black as any,
+            letterSpacing: 1,
         },
         kycSubtitle: {
             color: colors.textSecondary,
             fontSize: Typography.sizes.tiny,
             marginBottom: 16,
-            marginTop: 4,
+            lineHeight: 18,
         },
         docRow: {
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
-            backgroundColor: colors.card,
+            backgroundColor: colors.background,
             borderRadius: 14,
             padding: 14,
             marginBottom: 10,
+            borderWidth: 1,
+            borderColor: 'rgba(255,255,255,0.04)',
+        },
+        docRowMissing: {
+            borderColor: 'rgba(201,168,76,0.5)',
+            backgroundColor: 'rgba(201,168,76,0.05)',
+        },
+        docRowRefused: {
+            borderColor: 'rgba(255,100,100,0.5)',
+            backgroundColor: 'rgba(255,100,100,0.05)',
+        },
+        docRowValid: {
+            borderColor: 'rgba(76,175,130,0.3)',
         },
         docInfo: { flex: 1 },
         docLabel: {
             color: colors.textPrimary,
             fontSize: Typography.sizes.sub,
             fontWeight: Typography.weights.semiBold as any,
+        },
+        docLabelMissing: {
+            color: Colors.brand.gold,
         },
         docStatus: {
             fontSize: Typography.sizes.tiny,
@@ -450,9 +579,36 @@ function makeStyles(colors: typeof Colors.nocturne) {
         docValid: { color: Colors.brand.success },
         docRefused: { color: Colors.brand.error },
         docPending: { color: Colors.brand.warning },
+        docWarning: { color: Colors.brand.warning },
+        docRowWarning: {
+            borderColor: 'rgba(255,154,60,0.5)',
+            backgroundColor: 'rgba(255,154,60,0.05)',
+        },
+        kbisBadgeOk: {
+            backgroundColor: 'rgba(138,43,226,0.15)',
+            borderRadius: 6,
+            paddingHorizontal: 6,
+            paddingVertical: 2,
+            borderWidth: 1,
+            borderColor: 'rgba(138,43,226,0.4)',
+        },
+        kbisBadgeWarn: {
+            backgroundColor: 'rgba(255,154,60,0.15)',
+            borderRadius: 6,
+            paddingHorizontal: 6,
+            paddingVertical: 2,
+            borderWidth: 1,
+            borderColor: 'rgba(255,154,60,0.5)',
+        },
+        kbisBadgeText: {
+            color: '#B57BFF',
+            fontSize: 9,
+            fontWeight: Typography.weights.bold as any,
+        },
         docMissing: {
-            color: colors.textSecondary,
+            color: Colors.brand.gold,
             fontSize: Typography.sizes.tiny,
+            fontWeight: Typography.weights.bold as any,
             marginTop: 2,
         },
         uploadBtn: {
@@ -465,11 +621,22 @@ function makeStyles(colors: typeof Colors.nocturne) {
             minWidth: 80,
             alignItems: 'center',
         },
+        uploadBtnMissing: {
+            backgroundColor: Colors.brand.gold,
+            borderColor: Colors.brand.gold,
+        },
+        uploadBtnRefused: {
+            backgroundColor: Colors.brand.error,
+            borderColor: Colors.brand.error,
+        },
         uploadBtnDisabled: { opacity: 0.4 },
         uploadBtnText: {
             color: Colors.brand.info,
             fontSize: Typography.sizes.tiny,
             fontWeight: Typography.weights.bold as any,
+        },
+        uploadBtnTextUrgent: {
+            color: '#101018',
         },
         divider: {
             height: 1,

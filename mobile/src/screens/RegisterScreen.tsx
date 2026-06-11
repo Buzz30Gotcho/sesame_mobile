@@ -2,11 +2,27 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, ActivityIndicator, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { register, setAuthToken } from '../services/api';
+import * as ImagePicker from 'expo-image-picker';
+import { register, setAuthToken, uploadChauffeurDocument } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import type { RootStackParamList, UserRole } from '../types';
 
-type Step = 1 | 2;
+type Step = 1 | 2 | 3 | 4;
+type AmbassadeurType = 'physique' | 'moral' | null;
+
+const DOCS_REQUIS = [
+    { type: 'carte_identite',     label: "Carte d'identité",                                  hasVerso: true  },
+    { type: 'carte_vtc',          label: 'Carte VTC Professionnelle',                          hasVerso: true  },
+    { type: 'revtc',              label: 'REVTC (Registre des VTC)',                            hasVerso: false },
+    { type: 'kbis',               label: 'Kbis — moins de 6 mois',                             hasVerso: false },
+    { type: 'permis',             label: 'Permis de conduire',                                  hasVerso: true  },
+    { type: 'rir',                label: 'RIR (Relevé d\'Information Routier)',                 hasVerso: false },
+    { type: 'rc_pro',             label: 'RC Pro (Responsabilité Civile Professionnelle)',      hasVerso: false },
+    { type: 'rc_circulation',     label: 'RC Circulation (assurance du véhicule)',              hasVerso: false },
+    { type: 'carte_grise',        label: 'Carte grise du véhicule',                            hasVerso: true  },
+    { type: 'certificat_medical', label: 'Certificat médical d\'aptitude',                     hasVerso: false },
+    { type: 'photo_profil',       label: 'Photo de profil (format identité)',                  hasVerso: false },
+];
 
 function luhnCheck(num: string): boolean {
     let sum = 0;
@@ -18,12 +34,13 @@ function luhnCheck(num: string): boolean {
     return sum % 10 === 0;
 }
 
-export default function RegisterScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'Register'>) {
+export default function RegisterScreen({ navigation, route }: NativeStackScreenProps<RootStackParamList, 'Register'>) {
     const { setAuth } = useAuth();
-    const [step, setStep] = useState<Step>(1);
-    
+    const initialRole = route.params?.initialRole ?? null;
+    const [step, setStep] = useState<Step>(initialRole ? 2 : 1);
+
     // Step 1: Role Selection
-    const [role, setRole] = useState<UserRole | null>(null);
+    const [role, setRole] = useState<UserRole | null>(initialRole);
     
     // Identity
     const [prenom, setPrenom] = useState('');
@@ -36,9 +53,12 @@ export default function RegisterScreen({ navigation }: NativeStackScreenProps<Ro
     const [paysNaissance, setPaysNaissance] = useState('');
 
     // Ambassador specific
+    const [ambassadeurType, setAmbassadeurType] = useState<AmbassadeurType>(null);
     const [etablissement, setEtablissement] = useState('');
     const [metier, setMetier] = useState('');
     const [cp, setCp] = useState('');
+    const [codeParrainSaisi, setCodeParrainSaisi] = useState('');
+    const [raisonSociale, setRaisonSociale] = useState('');
 
     // Driver + shared
     const [siret, setSiret] = useState('');
@@ -54,6 +74,11 @@ export default function RegisterScreen({ navigation }: NativeStackScreenProps<Ro
     const [mandatSepa, setMandatSepa] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // Étape 3 — upload documents
+    const [registeredChauffeurId, setRegisteredChauffeurId] = useState<string | null>(null);
+    const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
+    const [uploadedDocs, setUploadedDocs] = useState<Record<string, boolean>>({});
 
     const handleNextStep = () => {
         if (!role) {
@@ -78,9 +103,26 @@ export default function RegisterScreen({ navigation }: NativeStackScreenProps<Ro
             setError('Numéro de téléphone invalide (ex: 0612345678 ou +33612345678).');
             return;
         }
-        if (password.length < 4) {
-            setError('Mot de passe trop court (4 caractères minimum).');
+        if (password.length < 8) {
+            setError('Mot de passe trop court (8 caractères minimum).');
             return;
+        }
+
+        if (role === 'ambassadeur' && ambassadeurType === 'moral') {
+            if (!raisonSociale.trim()) {
+                setError('La raison sociale est obligatoire.');
+                return;
+            }
+            const siretClean = siret.replace(/\s/g, '');
+            if (!siretClean || !/^\d{14}$/.test(siretClean) || !luhnCheck(siretClean)) {
+                setError('SIRET obligatoire et invalide (14 chiffres).');
+                return;
+            }
+            const ibanClean = iban.replace(/\s/g, '').toUpperCase();
+            if (!ibanClean || !/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(ibanClean)) {
+                setError('IBAN obligatoire et invalide (ex: FR76 3000 6000 0112 3456 7890 189).');
+                return;
+            }
         }
 
         if (role === 'chauffeur') {
@@ -90,7 +132,11 @@ export default function RegisterScreen({ navigation }: NativeStackScreenProps<Ro
                 return;
             }
             const ibanClean = iban.replace(/\s/g, '').toUpperCase();
-            if (ibanClean && !/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(ibanClean)) {
+            if (!ibanClean) {
+                setError('IBAN obligatoire pour recevoir vos revenus.');
+                return;
+            }
+            if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(ibanClean)) {
                 setError('IBAN invalide (ex: FR76 3000 6000 0112 3456 7890 189).');
                 return;
             }
@@ -101,7 +147,7 @@ export default function RegisterScreen({ navigation }: NativeStackScreenProps<Ro
                     return;
                 }
             }
-            if (iban && !mandatSepa) {
+            if (!mandatSepa) {
                 setError("Vous devez accepter le mandat SEPA pour autoriser le prélèvement des frais.");
                 return;
             }
@@ -126,10 +172,17 @@ export default function RegisterScreen({ navigation }: NativeStackScreenProps<Ro
             };
 
             if (role === 'ambassadeur') {
-                payload.ambassador_type = 'physique';
-                payload.etablissement = etablissement;
-                payload.metier = metier;
-                payload.cp = cp;
+                payload.ambassador_type = ambassadeurType;
+                if (ambassadeurType === 'moral') {
+                    payload.etablissement = raisonSociale;
+                } else {
+                    payload.etablissement = etablissement;
+                    payload.metier = metier;
+                    payload.cp = cp;
+                    if (codeParrainSaisi.trim()) {
+                        payload.code_parrainage_parrain = codeParrainSaisi.trim().toUpperCase();
+                    }
+                }
             } else {
                 payload.vehicule_type = vehiculeType;
                 payload.vehicule_marque = vehiculeMarque;
@@ -142,26 +195,137 @@ export default function RegisterScreen({ navigation }: NativeStackScreenProps<Ro
             const { token, userId, role: userRole, ambassadeur_id, chauffeur_id } = response.data;
 
             setAuthToken(token);
-            setAuth({ token, userId, email, role: userRole, ambassadorId: ambassadeur_id || null, chauffeurId: chauffeur_id || null, typeAmbassadeur: null, isSousCompte: false });
+            setAuth({ token, userId, email, role: userRole, ambassadorId: ambassadeur_id || null, chauffeurId: chauffeur_id || null, typeAmbassadeur: ambassadeurType, isSousCompte: false });
 
-            Alert.alert(
-                "Inscription reussie !",
-                prenom ? `Bienvenue sur SESAME, ${prenom} !` : "Bienvenue sur SESAME !",
-                [{
-                    text: "Continuer",
-                    onPress: () => {
-                        if (userRole === "ambassadeur") navigation.replace("AmbassadorAccueil");
-                        else if (userRole === "chauffeur") navigation.replace("ChauffeurHome");
-                        else navigation.replace("Login");
-                    }
-                }]
-            );
+            if (userRole === 'chauffeur' && chauffeur_id) {
+                setRegisteredChauffeurId(chauffeur_id);
+                setStep(3);
+            } else if (userRole === 'ambassadeur' && ambassadeurType === 'moral') {
+                // Compte moral suspendu jusqu'à validation admin — pas d'accès dashboard
+                setStep(4 as any);
+            } else if (userRole === 'ambassadeur') {
+                navigation.replace('Onboarding');
+            } else {
+                navigation.replace('Login');
+            }
         } catch (err: any) {
-            setError(err.response?.data?.error || "Une erreur est survenue lors de l'inscription.");
+            const msg = err.response?.data?.error
+                || (err.message === 'Network Error' ? `Impossible de joindre le serveur (${err.config?.baseURL ?? 'URL inconnue'})` : err.message)
+                || "Une erreur est survenue lors de l'inscription.";
+            setError(msg);
         } finally {
             setLoading(false);
         }
     };
+
+    const handleUploadDoc = async (docType: string, label: string, side: 'recto' | 'verso') => {
+        if (!registeredChauffeurId) return;
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+            Alert.alert('Permission requise', 'Veuillez autoriser l\'accès à vos photos.');
+            return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8, allowsEditing: true });
+        if (result.canceled || !result.assets[0]) return;
+
+        setUploadingDoc(`${docType}_${side}`);
+        try {
+            await uploadChauffeurDocument(registeredChauffeurId, docType, side, result.assets[0].uri);
+            setUploadedDocs(prev => ({ ...prev, [`${docType}_${side}`]: true }));
+            Alert.alert('Document envoyé ✓', `${label} bien reçu. L'équipe SÉSAME va le vérifier prochainement.`);
+        } catch {
+            Alert.alert('Erreur', 'Impossible d\'envoyer le document. Vous pourrez le faire depuis votre profil.');
+        } finally {
+            setUploadingDoc(null);
+        }
+    };
+
+    const handleTerminer = () => {
+        const nbUploaded = Object.values(uploadedDocs).filter(Boolean).length;
+        if (nbUploaded > 0) {
+            Alert.alert(
+                'Dossier soumis',
+                'Vos documents ont bien été transmis à l\'équipe SÉSAME. Vous recevrez une notification dès que votre dossier sera validé.',
+                [{ text: 'OK', onPress: () => navigation.replace('ChauffeurHome') }]
+            );
+        } else {
+            Alert.alert(
+                'Aucun document envoyé',
+                'Pensez à uploader vos documents depuis votre profil. Vous ne pourrez pas recevoir de courses tant que votre dossier n\'est pas validé.',
+                [{ text: 'OK', onPress: () => navigation.replace('ChauffeurHome') }]
+            );
+        }
+    };
+
+    const renderStepMoralPending = () => (
+        <View style={[styles.stepContainer, { justifyContent: 'center', alignItems: 'center', paddingTop: 40 }]}>
+            <Text style={{ fontSize: 64, marginBottom: 24 }}>⏳</Text>
+            <Text style={[styles.stepTitle, { textAlign: 'center' }]}>Compte en attente</Text>
+            <Text style={[styles.stepSubtitle, { textAlign: 'center', marginBottom: 32 }]}>
+                Votre dossier entreprise a bien été enregistré.{'\n\n'}
+                L'équipe SÉSAME va examiner votre demande et vous enverra une notification dès que votre compte sera validé.{'\n\n'}
+                Vous recevrez un email à <Text style={{ color: '#C9A84C' }}>{email}</Text>
+            </Text>
+            <View style={{ backgroundColor: '#161624', borderRadius: 16, padding: 16, width: '100%', marginBottom: 32 }}>
+                <Text style={{ color: '#6A6680', fontSize: 12, fontWeight: '700', letterSpacing: 1, marginBottom: 8 }}>CONTACT SÉSAME</Text>
+                <Text style={{ color: '#E0DBD2', fontSize: 14 }}>support@sesame-pro.com</Text>
+            </View>
+            <TouchableOpacity style={styles.button} onPress={() => navigation.replace('Login')}>
+                <Text style={styles.buttonText}>Retour à la connexion</Text>
+            </TouchableOpacity>
+        </View>
+    );
+
+    const renderStep3Driver = () => (
+        <View style={styles.stepContainer}>
+            <Text style={styles.stepTitle}>Étape 3 : Vos 11 documents</Text>
+            <Text style={styles.stepSubtitle}>
+                0 document manquant = 0 course. Vous pouvez aussi les envoyer plus tard depuis votre profil.
+            </Text>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+                {DOCS_REQUIS.map(({ type, label, hasVerso }) => (
+                    <View key={type} style={styles.docCard}>
+                        <Text style={styles.docCardLabel}>{label}</Text>
+                        <View style={styles.docCardButtons}>
+                            <TouchableOpacity
+                                style={[styles.docUploadBtn, uploadedDocs[`${type}_recto`] && styles.docUploadBtnDone]}
+                                onPress={() => handleUploadDoc(type, label, 'recto')}
+                                disabled={!!uploadingDoc}
+                            >
+                                {uploadingDoc === `${type}_recto`
+                                    ? <ActivityIndicator size="small" color="#FFFFFF" />
+                                    : <Text style={styles.docUploadBtnText}>
+                                        {uploadedDocs[`${type}_recto`] ? '✓ Recto' : hasVerso ? 'Recto' : 'Envoyer'}
+                                      </Text>
+                                }
+                            </TouchableOpacity>
+                            {hasVerso && (
+                                <TouchableOpacity
+                                    style={[styles.docUploadBtn, uploadedDocs[`${type}_verso`] && styles.docUploadBtnDone]}
+                                    onPress={() => handleUploadDoc(type, label, 'verso')}
+                                    disabled={!!uploadingDoc}
+                                >
+                                    {uploadingDoc === `${type}_verso`
+                                        ? <ActivityIndicator size="small" color="#FFFFFF" />
+                                        : <Text style={styles.docUploadBtnText}>
+                                            {uploadedDocs[`${type}_verso`] ? '✓ Verso' : 'Verso'}
+                                          </Text>
+                                    }
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    </View>
+                ))}
+
+                <TouchableOpacity style={styles.button} onPress={handleTerminer}>
+                    <Text style={styles.buttonText}>Terminer</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.backButton} onPress={handleTerminer}>
+                    <Text style={styles.backButtonText}>Passer — je le ferai plus tard</Text>
+                </TouchableOpacity>
+            </ScrollView>
+        </View>
+    );
 
     const renderStep1 = () => (
         <View style={styles.stepContainer}>
@@ -198,37 +362,123 @@ export default function RegisterScreen({ navigation }: NativeStackScreenProps<Ro
         </View>
     );
 
-    const renderStep2Ambassador = () => (
-        <View style={styles.stepContainer}>
-            <Text style={styles.stepTitle}>Étape 2 : Informations Ambassadeur</Text>
+    const renderStep2Ambassador = () => {
+        if (!ambassadeurType) {
+            return (
+                <View style={styles.stepContainer}>
+                    <Text style={styles.stepTitle}>Étape 2 : Quel type ?</Text>
+                    <Text style={styles.stepSubtitle}>Choisissez votre situation pour que SÉSAME adapte votre rémunération.</Text>
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-                <Text style={styles.sectionLabel}>Identité</Text>
-                <TextInput style={styles.input} placeholder="Prénom" placeholderTextColor="#6A6680" value={prenom} onChangeText={setPrenom} />
-                <TextInput style={styles.input} placeholder="Nom" placeholderTextColor="#6A6680" value={nom} onChangeText={setNom} />
-                <TextInput style={styles.input} placeholder="Email" placeholderTextColor="#6A6680" keyboardType="email-address" autoCapitalize="none" value={email} onChangeText={setEmail} />
-                <TextInput style={styles.input} placeholder="Téléphone" placeholderTextColor="#6A6680" keyboardType="phone-pad" value={telephone} onChangeText={setTelephone} />
-                <TextInput style={styles.input} placeholder="Mot de passe" placeholderTextColor="#6A6680" secureTextEntry value={password} onChangeText={setPassword} />
+                    <TouchableOpacity style={styles.roleCard} onPress={() => setAmbassadeurType('physique')}>
+                        <View style={styles.roleIconContainer}>
+                            <Text style={styles.roleIcon}>👤</Text>
+                        </View>
+                        <View style={styles.roleTextContainer}>
+                            <Text style={styles.roleLabel}>Particulier</Text>
+                            <Text style={styles.roleDescription}>Réceptionniste, barman, concierge… Gagnez des points SESAME échangeables en boutique.</Text>
+                        </View>
+                    </TouchableOpacity>
 
-                <Text style={styles.sectionLabel}>Informations complémentaires</Text>
-                <TextInput style={styles.input} placeholder="Date de naissance (JJ/MM/AAAA)" placeholderTextColor="#6A6680" value={dateNaissance} onChangeText={setDateNaissance} />
-                <TextInput style={styles.input} placeholder="Lieu de naissance" placeholderTextColor="#6A6680" value={lieuNaissance} onChangeText={setLieuNaissance} />
-                <TextInput style={styles.input} placeholder="Pays de naissance" placeholderTextColor="#6A6680" value={paysNaissance} onChangeText={setPaysNaissance} />
-                <TextInput style={styles.input} placeholder="Établissement" placeholderTextColor="#6A6680" value={etablissement} onChangeText={setEtablissement} />
-                <TextInput style={styles.input} placeholder="Métier" placeholderTextColor="#6A6680" value={metier} onChangeText={setMetier} />
-                <TextInput style={styles.input} placeholder="Code Postal" placeholderTextColor="#6A6680" value={cp} onChangeText={setCp} />
+                    <TouchableOpacity style={styles.roleCard} onPress={() => setAmbassadeurType('moral')}>
+                        <View style={styles.roleIconContainer}>
+                            <Text style={styles.roleIcon}>🏢</Text>
+                        </View>
+                        <View style={styles.roleTextContainer}>
+                            <Text style={styles.roleLabel}>Entreprise</Text>
+                            <Text style={styles.roleDescription}>Hôtel, restaurant, agence… Touchez 10% de commission sur chaque course, versés chaque mois.</Text>
+                        </View>
+                    </TouchableOpacity>
 
-                {error && <Text style={styles.errorText}>{error}</Text>}
+                    <TouchableOpacity style={styles.backButton} onPress={() => initialRole ? navigation.goBack() : setStep(1)}>
+                        <Text style={styles.backButtonText}>Retour</Text>
+                    </TouchableOpacity>
+                </View>
+            );
+        }
 
-                <TouchableOpacity style={styles.button} onPress={handleRegister} disabled={loading}>
-                    {loading ? <ActivityIndicator color="#101018" /> : <Text style={styles.buttonText}>S'inscrire</Text>}
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.backButton} onPress={() => setStep(1)}>
-                    <Text style={styles.backButtonText}>Retour</Text>
-                </TouchableOpacity>
-            </ScrollView>
-        </View>
-    );
+        if (ambassadeurType === 'physique') {
+            return (
+                <View style={styles.stepContainer}>
+                    <Text style={styles.stepTitle}>Étape 2 : Informations Ambassadeur</Text>
+                    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+                        <Text style={styles.sectionLabel}>Identité</Text>
+                        <TextInput style={styles.input} placeholder="Prénom" placeholderTextColor="#6A6680" value={prenom} onChangeText={setPrenom} />
+                        <TextInput style={styles.input} placeholder="Nom" placeholderTextColor="#6A6680" value={nom} onChangeText={setNom} />
+                        <TextInput style={styles.input} placeholder="Email" placeholderTextColor="#6A6680" keyboardType="email-address" autoCapitalize="none" value={email} onChangeText={setEmail} />
+                        <TextInput style={styles.input} placeholder="Téléphone" placeholderTextColor="#6A6680" keyboardType="phone-pad" value={telephone} onChangeText={setTelephone} />
+                        <TextInput style={styles.input} placeholder="Mot de passe" placeholderTextColor="#6A6680" secureTextEntry value={password} onChangeText={setPassword} />
+
+                        <Text style={styles.sectionLabel}>Informations complémentaires</Text>
+                        <TextInput style={styles.input} placeholder="Date de naissance (JJ/MM/AAAA)" placeholderTextColor="#6A6680" value={dateNaissance} onChangeText={setDateNaissance} />
+                        <TextInput style={styles.input} placeholder="Lieu de naissance" placeholderTextColor="#6A6680" value={lieuNaissance} onChangeText={setLieuNaissance} />
+                        <TextInput style={styles.input} placeholder="Pays de naissance" placeholderTextColor="#6A6680" value={paysNaissance} onChangeText={setPaysNaissance} />
+                        <TextInput style={styles.input} placeholder="Établissement" placeholderTextColor="#6A6680" value={etablissement} onChangeText={setEtablissement} />
+                        <TextInput style={styles.input} placeholder="Métier" placeholderTextColor="#6A6680" value={metier} onChangeText={setMetier} />
+                        <TextInput style={styles.input} placeholder="Code Postal" placeholderTextColor="#6A6680" value={cp} onChangeText={setCp} />
+
+                        <Text style={styles.sectionLabel}>Parrainage (optionnel)</Text>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="Code de parrainage (ex: AB3XY2)"
+                            placeholderTextColor="#6A6680"
+                            autoCapitalize="characters"
+                            value={codeParrainSaisi}
+                            onChangeText={setCodeParrainSaisi}
+                        />
+
+                        {error && <Text style={styles.errorText}>{error}</Text>}
+                        <TouchableOpacity style={styles.button} onPress={handleRegister} disabled={loading}>
+                            {loading ? <ActivityIndicator color="#101018" /> : <Text style={styles.buttonText}>S'inscrire</Text>}
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.backButton} onPress={() => setAmbassadeurType(null)}>
+                            <Text style={styles.backButtonText}>Retour</Text>
+                        </TouchableOpacity>
+                    </ScrollView>
+                </View>
+            );
+        }
+
+        return (
+            <View style={styles.stepContainer}>
+                <Text style={styles.stepTitle}>Étape 2 : Compte Entreprise</Text>
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+                    <Text style={styles.sectionLabel}>Société</Text>
+                    <Text style={styles.fieldLabel}>Raison sociale *</Text>
+                    <TextInput style={styles.input} placeholder="Ex : Hôtel Bellevue SAS" placeholderTextColor="#6A6680" value={raisonSociale} onChangeText={setRaisonSociale} />
+                    <Text style={styles.fieldLabel}>SIRET *</Text>
+                    <TextInput style={styles.input} placeholder="14 chiffres" placeholderTextColor="#6A6680" keyboardType="numeric" value={siret} onChangeText={setSiret} />
+                    <Text style={styles.fieldLabel}>IBAN *</Text>
+                    <TextInput style={styles.input} placeholder="FR76 3000 6000 0112 3456 7890 189" placeholderTextColor="#6A6680" autoCapitalize="characters" value={iban} onChangeText={setIban} />
+
+                    <Text style={styles.sectionLabel}>Votre compte (gérant / directeur)</Text>
+                    <Text style={styles.fieldLabel}>Prénom *</Text>
+                    <TextInput style={styles.input} placeholder="Prénom du responsable" placeholderTextColor="#6A6680" value={prenom} onChangeText={setPrenom} />
+                    <Text style={styles.fieldLabel}>Nom *</Text>
+                    <TextInput style={styles.input} placeholder="Nom du responsable" placeholderTextColor="#6A6680" value={nom} onChangeText={setNom} />
+                    <Text style={styles.fieldLabel}>Email *</Text>
+                    <TextInput style={styles.input} placeholder="email@societe.fr" placeholderTextColor="#6A6680" keyboardType="email-address" autoCapitalize="none" value={email} onChangeText={setEmail} />
+                    <Text style={styles.fieldLabel}>Téléphone *</Text>
+                    <TextInput style={styles.input} placeholder="0612345678" placeholderTextColor="#6A6680" keyboardType="phone-pad" value={telephone} onChangeText={setTelephone} />
+                    <Text style={styles.fieldLabel}>Mot de passe *</Text>
+                    <TextInput style={styles.input} placeholder="8 caractères minimum" placeholderTextColor="#6A6680" secureTextEntry value={password} onChangeText={setPassword} />
+
+                    <View style={styles.moralInfoBox}>
+                        <Text style={styles.moralInfoText}>
+                            Vous percevrez 10% de commission sur chaque course prescrite, versés le 1er de chaque mois par virement SEPA sur votre IBAN.
+                        </Text>
+                    </View>
+
+                    {error && <Text style={styles.errorText}>{error}</Text>}
+                    <TouchableOpacity style={[styles.button, { backgroundColor: '#4A9EFF' }]} onPress={handleRegister} disabled={loading}>
+                        {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={[styles.buttonText, { color: '#FFFFFF' }]}>Créer le compte entreprise</Text>}
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.backButton} onPress={() => setAmbassadeurType(null)}>
+                        <Text style={styles.backButtonText}>Retour</Text>
+                    </TouchableOpacity>
+                </ScrollView>
+            </View>
+        );
+    };
 
     const renderStep2Driver = () => (
         <View style={styles.stepContainer}>
@@ -268,7 +518,7 @@ export default function RegisterScreen({ navigation }: NativeStackScreenProps<Ro
                 <TextInput style={styles.input} placeholder="Immatriculation (ex: AB-123-CD)" placeholderTextColor="#6A6680" value={vehiculeImmat} onChangeText={setVehiculeImmat} />
 
                 <Text style={styles.sectionLabel}>Facturation</Text>
-                <TextInput style={styles.input} placeholder="SIRET" placeholderTextColor="#6A6680" value={siret} onChangeText={setSiret} />
+                <TextInput style={styles.input} placeholder="SIRET (optionnel)" placeholderTextColor="#6A6680" value={siret} onChangeText={setSiret} />
                 <TextInput style={styles.input} placeholder="IBAN" placeholderTextColor="#6A6680" value={iban} onChangeText={setIban} />
 
                 {iban.length > 0 && (
@@ -291,7 +541,7 @@ export default function RegisterScreen({ navigation }: NativeStackScreenProps<Ro
                 <TouchableOpacity style={styles.button} onPress={handleRegister} disabled={loading}>
                     {loading ? <ActivityIndicator color="#101018" /> : <Text style={styles.buttonText}>S'inscrire</Text>}
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.backButton} onPress={() => setStep(1)}>
+                <TouchableOpacity style={styles.backButton} onPress={() => initialRole ? navigation.goBack() : setStep(1)}>
                     <Text style={styles.backButtonText}>Retour</Text>
                 </TouchableOpacity>
             </ScrollView>
@@ -302,7 +552,7 @@ export default function RegisterScreen({ navigation }: NativeStackScreenProps<Ro
         <SafeAreaView style={styles.safeArea}>
             <View style={styles.container}>
                 <Text style={styles.headerTitle}>SÉSAME</Text>
-                {step === 1 ? renderStep1() : (role === 'ambassadeur' ? renderStep2Ambassador() : renderStep2Driver())}
+                {step === 1 ? renderStep1() : step === 4 ? renderStepMoralPending() : step === 3 ? renderStep3Driver() : (role === 'ambassadeur' ? renderStep2Ambassador() : renderStep2Driver())}
             </View>
         </SafeAreaView>
     );
@@ -481,5 +731,60 @@ const styles = StyleSheet.create({
         color: '#6A6680',
         fontSize: 12,
         lineHeight: 18,
+    },
+    docCard: {
+        backgroundColor: '#161624',
+        borderRadius: 14,
+        padding: 16,
+        marginBottom: 12,
+    },
+    docCardLabel: {
+        color: '#FFFFFF',
+        fontSize: 15,
+        fontWeight: '600',
+        marginBottom: 12,
+    },
+    docCardButtons: {
+        flexDirection: 'row',
+        gap: 10,
+    },
+    docUploadBtn: {
+        flex: 1,
+        backgroundColor: '#2A2A40',
+        borderRadius: 10,
+        paddingVertical: 10,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    docUploadBtnDone: {
+        backgroundColor: 'rgba(76, 175, 130, 0.2)',
+        borderColor: '#4CAF82',
+    },
+    docUploadBtnText: {
+        color: '#FFFFFF',
+        fontSize: 13,
+        fontWeight: '600',
+    },
+    fieldLabel: {
+        color: '#E0DBD2',
+        fontSize: 12,
+        fontWeight: '600',
+        marginBottom: 4,
+        marginTop: 2,
+    },
+    moralInfoBox: {
+        backgroundColor: 'rgba(74, 158, 255, 0.1)',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(74, 158, 255, 0.3)',
+        padding: 14,
+        marginTop: 8,
+        marginBottom: 4,
+    },
+    moralInfoText: {
+        color: '#4A9EFF',
+        fontSize: 13,
+        lineHeight: 19,
     },
 });

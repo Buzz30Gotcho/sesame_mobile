@@ -1,17 +1,37 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import { randomInt, timingSafeEqual } from 'crypto';
 import { query } from '../db';
 import { sendPushNotification } from '../lib/pushNotifications';
 
+import { JWT_SECRET } from '../config';
+
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'sesame-secret';
+
+// UUID sentinelle pour l'attribution des actions admin (compte admin unique partagé — pas d'id par opérateur).
+const ADMIN_ACTOR_ID = '00000000-0000-0000-0000-000000000000';
+
+// Comparaison à temps constant (évite la fuite d'information par timing). Le différentiel de longueur
+// reste observable mais n'aide pas à retrouver le secret.
+function safeEqual(a: string, b: string): boolean {
+    const ba = Buffer.from(a);
+    const bb = Buffer.from(b);
+    if (ba.length !== bb.length) return false;
+    return timingSafeEqual(ba, bb);
+}
 
 // Login admin
 router.post('/login', async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email et mot de passe requis' });
-    if (email !== process.env.ADMIN_EMAIL || password !== process.env.ADMIN_PASSWORD) {
+    const adminEmail = process.env.ADMIN_EMAIL;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    if (!adminEmail || !adminPassword) {
+        console.error('[admin/login] ADMIN_EMAIL ou ADMIN_PASSWORD non défini — login admin désactivé.');
+        return res.status(500).json({ error: 'Configuration serveur incomplète' });
+    }
+    if (!safeEqual(email, adminEmail) || !safeEqual(password, adminPassword)) {
         return res.status(401).json({ error: 'Identifiants incorrects' });
     }
     const token = jwt.sign({ sub: 'admin', role: 'admin' }, JWT_SECRET, { expiresIn: '8h' });
@@ -39,6 +59,16 @@ router.get('/dashboard', async (req, res) => {
         totalAmbassadeurs: (await query("SELECT count(*) FROM utilisateurs WHERE type = 'ambassadeur'")).rows[0].count,
         totalChauffeurs: (await query("SELECT count(*) FROM utilisateurs WHERE type = 'chauffeur'")).rows[0].count,
         pendingExchanges: (await query("SELECT count(*) FROM echanges WHERE statut = 'en_attente_admin'")).rows[0].count,
+        ambassadeursSuspendus: (await query("SELECT count(*) FROM utilisateurs WHERE type = 'ambassadeur' AND statut = 'suspendu'")).rows[0].count,
+        kbis_expiring_soon: (await query(`
+            SELECT count(*) FROM documents_chauffeur d
+            JOIN chauffeurs c ON c.id = d.chauffeur_id
+            JOIN utilisateurs u ON u.id = c.utilisateur_id
+            WHERE d.type = 'kbis' AND d.statut = 'valide'
+              AND d.date_expiration IS NOT NULL
+              AND d.date_expiration::date <= (now() + interval '30 days')::date
+              AND u.statut = 'actif'
+        `)).rows[0].count,
     };
     res.json(kpis);
 });
@@ -97,6 +127,8 @@ router.put('/echanges/:id/refuser', async (req, res) => {
 router.put('/courses/:id/annuler', async (req, res) => {
     const { id } = req.params;
     const { raison } = req.body;
+    const check = await query('SELECT id FROM courses WHERE id = $1', [id]);
+    if (!check.rows.length) return res.status(404).json({ error: 'Course introuvable' });
     await query('UPDATE courses SET statut = $1, date_annulation = now(), annule_par = $2 WHERE id = $3', ['annulee', raison || 'admin', id]);
     res.json({ success: true });
 });
@@ -105,8 +137,44 @@ router.put('/courses/:id/assigner', async (req, res) => {
     const { id } = req.params;
     const { chauffeur_id } = req.body;
     if (!chauffeur_id) return res.status(400).json({ error: 'chauffeur_id requis' });
+    const checkCourse = await query('SELECT id FROM courses WHERE id = $1', [id]);
+    if (!checkCourse.rows.length) return res.status(404).json({ error: 'Course introuvable' });
+    const checkChauffeur = await query('SELECT id FROM chauffeurs WHERE id = $1', [chauffeur_id]);
+    if (!checkChauffeur.rows.length) return res.status(404).json({ error: 'Chauffeur introuvable' });
     await query('UPDATE courses SET chauffeur_id = $1, statut = $2 WHERE id = $3', [chauffeur_id, 'acceptee', id]);
     res.json({ success: true });
+});
+
+// Alertes client absent en attente d'arbitrage (specs §9.00)
+router.get('/alertes', async (req, res) => {
+    const result = await query(`
+        SELECT
+            s.id AS sanction_id,
+            s.course_id,
+            s.decide_at AS signale_at,
+            c.reference,
+            c.adresse_depart,
+            c.adresse_destination,
+            c.montant,
+            EXTRACT(EPOCH FROM (now() - s.decide_at)) AS secondes_attente,
+            u_amb.prenom AS amb_prenom,
+            u_amb.nom AS amb_nom,
+            u_amb.telephone AS amb_telephone,
+            u_ch.prenom AS chauffeur_prenom,
+            u_ch.nom AS chauffeur_nom,
+            u_ch.telephone AS chauffeur_telephone
+        FROM sanctions_en_attente s
+        JOIN courses c ON c.id = s.course_id
+        JOIN ambassadeurs a ON a.id = s.ambassadeur_id
+        JOIN utilisateurs u_amb ON u_amb.id = a.utilisateur_id
+        LEFT JOIN chauffeurs ch ON ch.id = c.chauffeur_id
+        LEFT JOIN utilisateurs u_ch ON u_ch.id = ch.utilisateur_id
+        WHERE s.statut = 'en_attente'
+          AND s.points = 0
+          AND s.motif = 'Client absent signalé par chauffeur'
+        ORDER BY s.decide_at ASC
+    `);
+    res.json(result.rows);
 });
 
 router.post('/alertes/:id/arbitrer', async (req, res) => {
@@ -138,22 +206,52 @@ router.post('/alertes/:id/arbitrer', async (req, res) => {
 router.post('/chat/:courseId/intervenir', async (req, res) => {
     const { courseId } = req.params;
     const { contenu } = req.body;
-    if (!contenu) return res.status(400).json({ error: 'Contenu requis' });
-    const result = await query('INSERT INTO messages_chat(course_id, expediteur_type, expediteur_id, contenu) VALUES ($1,$2,$3,$4) RETURNING *', [courseId, 'admin', req.body.admin_id || null, contenu]);
+    if (!contenu || typeof contenu !== 'string' || !contenu.trim()) return res.status(400).json({ error: 'Contenu requis' });
+    const texte = contenu.slice(0, 2000);
+    const result = await query('INSERT INTO messages_chat(course_id, expediteur_type, expediteur_id, contenu) VALUES ($1,$2,$3,$4) RETURNING *', [courseId, 'admin', null, texte]);
     res.status(201).json(result.rows[0]);
 });
 
 router.get('/ambassadeurs', async (req, res) => {
-    const result = await query(
-        `SELECT a.id AS id, u.id AS utilisateur_id, u.prenom, u.nom, u.email, u.telephone,
-                a.points_solde AS points, a.niveau, a.type_ambassadeur AS type,
-                a.contrat_moral_signe, u.statut AS compte_statut, a.note_interne,
-                u.created_at
+    const mainResult = await query(
+        `SELECT a.id::text AS id, u.id AS utilisateur_id, u.prenom, u.nom, u.email, u.telephone,
+                a.points_solde AS points, a.niveau, a.type_ambassadeur::text AS type,
+                a.contrat_moral_signe, u.statut AS compte_statut,
+                COALESCE(a.note_interne, NULL) AS note_interne,
+                a.etablissement AS societe, a.siret, a.iban,
+                a.responsable_legal_nom, u.created_at,
+                NULL::text AS entreprise_nom, NULL::text AS entreprise_id
          FROM ambassadeurs a
          JOIN utilisateurs u ON u.id = a.utilisateur_id
          ORDER BY u.created_at DESC`
     );
-    res.json(result.rows);
+
+    let sousComptes: any[] = [];
+    try {
+        const scResult = await query(
+            `SELECT s.id::text AS id, u.id AS utilisateur_id, u.prenom, u.nom, u.email, u.telephone,
+                    0 AS points, NULL::text AS niveau, 'sous_compte'::text AS type,
+                    FALSE AS contrat_moral_signe, u.statut AS compte_statut, NULL::text AS note_interne,
+                    s.metier AS societe, s.created_at,
+                    COALESCE(a2.etablissement, u2.prenom || ' ' || u2.nom) AS entreprise_nom, a2.id::text AS entreprise_id
+             FROM sous_comptes_employes s
+             JOIN utilisateurs u ON u.id = s.utilisateur_id
+             JOIN ambassadeurs a2 ON a2.id = s.ambassadeur_moral_id
+             JOIN utilisateurs u2 ON u2.id = a2.utilisateur_id
+             ORDER BY s.created_at DESC`
+        );
+        sousComptes = scResult.rows;
+    } catch {
+        // table sous_comptes_employes absente — ignoré
+    }
+
+    // Un sous-compte possède aussi une ligne `ambassadeurs` (pour pouvoir commander),
+    // il apparaîtrait donc 2 fois. On retire ces doublons du listing principal
+    // pour ne garder que l'entrée « sous_compte » (qui porte l'info entreprise).
+    const sousCompteUserIds = new Set(sousComptes.map(s => s.utilisateur_id));
+    const mainSansSousComptes = mainResult.rows.filter(r => !sousCompteUserIds.has(r.utilisateur_id));
+
+    res.json([...mainSansSousComptes, ...sousComptes]);
 });
 
 router.get('/chauffeurs', async (req, res) => {
@@ -209,9 +307,15 @@ router.get('/chauffeurs/:id/documents', async (req, res) => {
 });
 
 router.put('/documents/:id/valider', async (req, res) => {
+    const { date_expiration, rc_circulation_mention_valide } = req.body;
+    // RC Circulation : vérification mention "transport passagers à titre onéreux" obligatoire (specs §2)
+    const docCheck = await query('SELECT type FROM documents_chauffeur WHERE id = $1', [req.params.id]);
+    if (docCheck.rows[0]?.type === 'rc_circulation' && !rc_circulation_mention_valide) {
+        return res.status(400).json({ error: 'La mention "transport passagers à titre onéreux" doit être confirmée avant de valider la RC Circulation.' });
+    }
     await query(
-        `UPDATE documents_chauffeur SET statut = 'valide' WHERE id = $1`,
-        [req.params.id]
+        `UPDATE documents_chauffeur SET statut = 'valide', date_expiration = COALESCE($2, date_expiration) WHERE id = $1`,
+        [req.params.id, date_expiration || null]
     );
     const doc = await query('SELECT chauffeur_id FROM documents_chauffeur WHERE id = $1', [req.params.id]);
     const chauffeurId = doc.rows[0]?.chauffeur_id;
@@ -321,20 +425,60 @@ router.get('/fournisseurs', async (req, res) => {
     res.json(result.rows);
 });
 
+// Propositions blacklist en attente de confirmation admin (specs §9.0)
+router.get('/blacklist/propositions', async (req, res) => {
+    const result = await query(`
+        SELECT bp.id, bp.motif, bp.nb_annulations, bp.created_at,
+               u.prenom, u.nom, u.email, u.telephone
+        FROM blacklist_propositions bp
+        JOIN ambassadeurs a ON a.id = bp.ambassadeur_id
+        JOIN utilisateurs u ON u.id = a.utilisateur_id
+        WHERE bp.statut = 'en_attente_admin'
+        ORDER BY bp.created_at DESC
+    `);
+    res.json(result.rows);
+});
+
+router.put('/blacklist/propositions/:id/confirmer', async (req, res) => {
+    const { motif } = req.body;
+    const prop = await query(
+        `SELECT bp.ambassadeur_id, u.nom, u.prenom, u.date_naissance, u.lieu_naissance, u.telephone
+         FROM blacklist_propositions bp
+         JOIN ambassadeurs a ON a.id = bp.ambassadeur_id
+         JOIN utilisateurs u ON u.id = a.utilisateur_id
+         WHERE bp.id = $1`,
+        [req.params.id]
+    );
+    const p = prop.rows[0];
+    if (!p) return res.status(404).json({ error: 'Proposition introuvable' });
+
+    await query(
+        'INSERT INTO blacklist(nom, prenom, date_naissance, lieu_naissance, telephone, motif, type_utilisateur, ajoute_par_admin_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+        [p.nom, p.prenom, p.date_naissance, p.lieu_naissance, p.telephone, motif || '5 annulations en 30 jours', 'ambassadeur', ADMIN_ACTOR_ID]
+    );
+    await query(`UPDATE blacklist_propositions SET statut = 'confirme' WHERE id = $1`, [req.params.id]);
+    await query(`UPDATE utilisateurs SET statut = 'blackliste' WHERE id = (SELECT utilisateur_id FROM ambassadeurs WHERE id = (SELECT ambassadeur_id FROM blacklist_propositions WHERE id = $1))`, [req.params.id]);
+    res.json({ success: true });
+});
+
+router.put('/blacklist/propositions/:id/rejeter', async (req, res) => {
+    await query(`UPDATE blacklist_propositions SET statut = 'rejete' WHERE id = $1`, [req.params.id]);
+    res.json({ success: true });
+});
+
 router.get('/blacklist', async (req, res) => {
     const result = await query('SELECT * FROM blacklist ORDER BY id DESC');
     res.json(result.rows);
 });
 
 router.post('/blacklist', async (req, res) => {
-    const { nom, prenom, date_naissance, lieu_naissance, telephone, motif, type_utilisateur, admin_id } = req.body;
+    const { nom, prenom, date_naissance, lieu_naissance, telephone, motif, type_utilisateur } = req.body;
     if (!nom || !prenom || !date_naissance || !telephone || !type_utilisateur) {
         return res.status(400).json({ error: 'Données blacklist manquantes' });
     }
-    const adminUuid = admin_id || '00000000-0000-0000-0000-000000000000';
     const result = await query(
         'INSERT INTO blacklist(nom, prenom, date_naissance, lieu_naissance, telephone, motif, type_utilisateur, ajoute_par_admin_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
-        [nom, prenom, date_naissance, lieu_naissance, telephone, motif || '', type_utilisateur, adminUuid]
+        [nom, prenom, date_naissance, lieu_naissance, telephone, motif || '', type_utilisateur, ADMIN_ACTOR_ID]
     );
     res.status(201).json(result.rows[0]);
 });
@@ -377,6 +521,47 @@ router.get('/export/courses', async (req, res) => {
     res.send(header + rows);
 });
 
+router.get('/export/chauffeurs', async (req, res) => {
+    const result = await query(
+        `SELECT u.prenom, u.nom, u.email, u.telephone, u.statut,
+                c.vehicule_type, c.vehicule_marque, c.vehicule_modele, c.vehicule_immat,
+                c.documents_valides, c.taux_commission_override, u.created_at
+         FROM chauffeurs c
+         JOIN utilisateurs u ON u.id = c.utilisateur_id
+         ORDER BY u.created_at DESC`
+    );
+    const header = 'Prénom,Nom,Email,Téléphone,Statut,Véhicule,Marque,Modèle,Immat,Docs validés,Taux,Date inscription\n';
+    const rows = result.rows.map((r: any) =>
+        `${r.prenom},${r.nom},${r.email},${r.telephone},${r.statut},${r.vehicule_type},${r.vehicule_marque || ''},${r.vehicule_modele || ''},${r.vehicule_immat || ''},${r.documents_valides ? 'Oui' : 'Non'},${r.taux_commission_override || 'défaut'},${new Date(r.created_at).toLocaleDateString('fr-FR')}`
+    ).join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename=chauffeurs.csv');
+    res.send(header + rows);
+});
+
+router.get('/export/paiements', async (req, res) => {
+    const result = await query(
+        `SELECT c.reference, u.prenom, u.nom,
+                co.montant, co.code_valide_at, co.date_fin,
+                co.taux_commission_override
+         FROM courses co
+         JOIN chauffeurs c ON c.id = co.chauffeur_id
+         JOIN utilisateurs u ON u.id = c.utilisateur_id
+         WHERE co.statut = 'terminee' AND co.code_valide_at IS NOT NULL
+         ORDER BY co.code_valide_at DESC`
+    );
+    const header = 'Référence course,Chauffeur prénom,Chauffeur nom,Montant,Taux,Frais SESAME,Net chauffeur,Date validation code,Date fin\n';
+    const rows = result.rows.map((r: any) => {
+        const taux = Number(r.taux_commission_override ?? 20) / 100;
+        const frais = (Number(r.montant) * taux).toFixed(2);
+        const net = (Number(r.montant) * (1 - taux)).toFixed(2);
+        return `${r.reference || ''},${r.prenom},${r.nom},${r.montant},${(taux * 100).toFixed(1)}%,${frais},${net},${r.code_valide_at ? new Date(r.code_valide_at).toLocaleDateString('fr-FR') : ''},${r.date_fin ? new Date(r.date_fin).toLocaleDateString('fr-FR') : ''}`;
+    }).join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename=paiements.csv');
+    res.send(header + rows);
+});
+
 router.get('/parametres', async (req, res) => {
     const result = await query('SELECT * FROM parametres_systeme ORDER BY cle ASC');
     res.json(result.rows);
@@ -412,6 +597,27 @@ router.put('/utilisateurs/:id/statut', async (req, res) => {
     res.json({ success: true, ...result.rows[0] });
 });
 
+router.put('/ambassadeurs/:id/valider-moral', async (req, res) => {
+    const { id } = req.params;
+    const ambResult = await query('SELECT utilisateur_id, push_token FROM ambassadeurs WHERE id = $1', [id]);
+    const amb = ambResult.rows[0];
+    if (!amb) return res.status(404).json({ error: 'Ambassadeur introuvable' });
+
+    await query('UPDATE utilisateurs SET statut = $1 WHERE id = $2', ['actif', amb.utilisateur_id]);
+    await query('UPDATE ambassadeurs SET contrat_moral_signe = true, contrat_moral_signe_at = now() WHERE id = $1', [id]);
+
+    if (amb.push_token) {
+        await sendPushNotification(
+            amb.push_token,
+            'Compte validé !',
+            'Votre compte entreprise SÉSAME a été validé. Vous pouvez maintenant vous connecter.',
+            { type: 'compte_valide' }
+        ).catch(() => {});
+    }
+
+    res.json({ success: true });
+});
+
 router.put('/ambassadeurs/:id/note', async (req, res) => {
     const { note } = req.body;
     const result = await query(
@@ -429,6 +635,18 @@ router.put('/chauffeurs/:id/note', async (req, res) => {
         [note ?? null, req.params.id]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Chauffeur introuvable' });
+    res.json({ success: true });
+});
+
+router.delete('/ambassadeurs/:ambassadeur_id', async (req, res) => {
+    const { ambassadeur_id } = req.params;
+    const amb = await query('SELECT utilisateur_id FROM ambassadeurs WHERE id = $1', [ambassadeur_id]);
+    if (!amb.rows.length) return res.status(404).json({ error: 'Ambassadeur introuvable' });
+    const utilisateur_id = amb.rows[0].utilisateur_id;
+    await query('UPDATE courses SET ambassadeur_id = NULL WHERE ambassadeur_id = $1', [ambassadeur_id]);
+    await query('DELETE FROM sous_comptes_employes WHERE ambassadeur_moral_id = $1', [ambassadeur_id]);
+    await query('DELETE FROM ambassadeurs WHERE id = $1', [ambassadeur_id]);
+    await query('DELETE FROM utilisateurs WHERE id = $1', [utilisateur_id]);
     res.json({ success: true });
 });
 
@@ -456,7 +674,7 @@ router.post('/fournisseurs', async (req, res) => {
     if (!nom_societe) return res.status(400).json({ error: 'nom_societe requis' });
 
     // Générer un code secret à 4 chiffres
-    const code = Math.floor(1000 + Math.random() * 9000).toString();
+    const code = randomInt(1000, 10000).toString();
     const code_secret_hash = await bcrypt.hash(code, 10);
 
     const result = await query(
@@ -528,46 +746,115 @@ router.put('/fournisseurs/:id', async (req, res) => {
 
 // Régénérer le code secret d'un fournisseur
 router.post('/fournisseurs/:id/regenerer-code', async (req, res) => {
-    const code = Math.floor(1000 + Math.random() * 9000).toString();
+    const code = randomInt(1000, 10000).toString();
     const code_secret_hash = await bcrypt.hash(code, 10);
     await query('UPDATE fournisseurs SET code_secret_hash = $1, bloque = false, nb_tentatives_echouees = 0 WHERE id = $2', [code_secret_hash, req.params.id]);
     res.json({ success: true, code_secret_temporaire: code });
 });
 
-// Commissions Ambassadeurs Moraux
+// Résout un paramètre mois 'YYYY-MM' vers le 1er jour du mois (date). Défaut : mois courant.
+function resolveMois(raw: unknown): string {
+    if (typeof raw === 'string' && /^\d{4}-\d{2}$/.test(raw)) return `${raw}-01`;
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+// CTE réutilisable : mappe chaque ambassadeur_id (moral lui-même OU employé sous-compte) vers son entreprise.
+const AMB_TO_MORAL_CTE = `
+    amb_to_moral AS (
+        SELECT id AS ambassadeur_id, id AS moral_id
+        FROM ambassadeurs
+        WHERE type_ambassadeur = 'moral'
+        UNION
+        SELECT ae.id AS ambassadeur_id, s.ambassadeur_moral_id AS moral_id
+        FROM sous_comptes_employes s
+        JOIN ambassadeurs ae ON ae.utilisateur_id = s.utilisateur_id
+    )`;
+
+// Commissions Ambassadeurs Moraux — pour un mois donné (?mois=YYYY-MM, défaut mois courant).
+// Le CA = courses de l'entreprise + celles de ses sous-comptes employés.
 router.get('/commissions/moraux', async (req, res) => {
     const rateResult = await query("SELECT valeur FROM parametres_systeme WHERE cle = 'commission_ambassadeur_moral_pct'");
     const tauxPct = Number(rateResult.rows[0]?.valeur ?? 10);
-    const moisCourant = new Date();
-    moisCourant.setDate(1);
-    moisCourant.setHours(0, 0, 0, 0);
+    const mois = resolveMois(req.query.mois);
 
     const result = await query(
-        `SELECT
+        `WITH ${AMB_TO_MORAL_CTE}
+         SELECT
             a.id AS ambassadeur_id,
             u.prenom, u.nom, u.email,
+            a.etablissement,
             count(c.id) AS nb_courses,
             COALESCE(sum(c.montant), 0) AS ca_brut_ttc,
             round(COALESCE(sum(c.montant), 0) * $1 / 100, 2) AS commission,
-            a.iban
+            a.iban,
+            v.statut AS statut_versement,
+            v.date_versement
          FROM ambassadeurs a
          JOIN utilisateurs u ON u.id = a.utilisateur_id
-         LEFT JOIN courses c ON c.ambassadeur_id = a.id
+         LEFT JOIN amb_to_moral m ON m.moral_id = a.id
+         LEFT JOIN courses c ON c.ambassadeur_id = m.ambassadeur_id
              AND c.statut = 'terminee'
              AND c.code_valide_at IS NOT NULL
-             AND date_trunc('month', c.date_fin) = date_trunc('month', now())
+             AND date_trunc('month', c.date_fin) = $2::date
+         LEFT JOIN virements_commissions v ON v.ambassadeur_id = a.id AND v.mois = $2::date
          WHERE a.type_ambassadeur = 'moral'
-         GROUP BY a.id, u.prenom, u.nom, u.email, a.iban
+         GROUP BY a.id, u.prenom, u.nom, u.email, a.etablissement, a.iban, v.statut, v.date_versement
          ORDER BY ca_brut_ttc DESC`,
-        [tauxPct]
+        [tauxPct, mois]
     );
-    res.json({ taux_pct: tauxPct, ambassadeurs: result.rows });
+    res.json({ taux_pct: tauxPct, mois: mois.slice(0, 7), ambassadeurs: result.rows });
 });
 
+// Déclenche (enregistre) les virements de commissions d'un mois donné.
+// STRICT : ne traite que les entreprises pas encore versées ce mois (les déjà-versées restent intactes,
+// leur date de versement n'est jamais écrasée). Garde-fou contre le double paiement.
+// NB : pas encore de vrai virement SEPA (intégration bancaire à brancher), mais la trace est persistée.
 router.post('/commissions/declencher', async (req, res) => {
-    // TODO: déclencher virements SEPA via Stripe/banque
-    // Enregistre l'événement — l'intégration Stripe sera ajoutée ultérieurement
-    res.json({ success: true, message: 'Ordre de virement déclenché. Intégration bancaire à configurer.' });
+    const rateResult = await query("SELECT valeur FROM parametres_systeme WHERE cle = 'commission_ambassadeur_moral_pct'");
+    const tauxPct = Number(rateResult.rows[0]?.valeur ?? 10);
+    const mois = resolveMois(req.body?.mois);
+
+    const result = await query(
+        `WITH ${AMB_TO_MORAL_CTE},
+         agg AS (
+            SELECT
+                a.id AS ambassadeur_id,
+                count(c.id) AS nb_courses,
+                COALESCE(sum(c.montant), 0) AS ca_brut_ttc,
+                round(COALESCE(sum(c.montant), 0) * $1 / 100, 2) AS commission
+            FROM ambassadeurs a
+            LEFT JOIN amb_to_moral m ON m.moral_id = a.id
+            LEFT JOIN courses c ON c.ambassadeur_id = m.ambassadeur_id
+                AND c.statut = 'terminee'
+                AND c.code_valide_at IS NOT NULL
+                AND date_trunc('month', c.date_fin) = $2::date
+            WHERE a.type_ambassadeur = 'moral'
+              -- on ignore les entreprises déjà versées ce mois
+              AND NOT EXISTS (
+                  SELECT 1 FROM virements_commissions v
+                  WHERE v.ambassadeur_id = a.id AND v.mois = $2::date
+              )
+            GROUP BY a.id
+            HAVING COALESCE(sum(c.montant), 0) > 0
+         )
+         INSERT INTO virements_commissions
+            (ambassadeur_id, mois, nb_courses, ca_brut_ttc, taux_pct, montant_commission, statut, date_versement)
+         SELECT ambassadeur_id, $2::date, nb_courses, ca_brut_ttc, $1, commission, 'verse', now()
+         FROM agg
+         ON CONFLICT (ambassadeur_id, mois) DO NOTHING
+         RETURNING montant_commission`,
+        [tauxPct, mois]
+    );
+
+    const total = result.rows.reduce((s: number, r: any) => s + Number(r.montant_commission), 0);
+    res.json({
+        success: true,
+        mois: mois.slice(0, 7),
+        nb_virements: result.rowCount,
+        total: Math.round(total * 100) / 100,
+        message: `${result.rowCount} virement(s) enregistré(s) pour ${mois.slice(0, 7)}. Intégration bancaire SEPA à brancher.`,
+    });
 });
 
 // Tickets support (stub — table à créer si fonctionnalité développée)

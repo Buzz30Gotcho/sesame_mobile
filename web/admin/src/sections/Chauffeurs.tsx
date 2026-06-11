@@ -30,6 +30,11 @@ export default function Chauffeurs() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [refusModal, setRefusModal] = useState<any | null>(null);
   const [motifRefus, setMotifRefus] = useState('');
+  const [validerModal, setValiderModal] = useState<any | null>(null);
+  const [dateExpiration, setDateExpiration] = useState('');
+  const [viewDocsModal, setViewDocsModal] = useState<Chauffeur | null>(null);
+  const [viewDocuments, setViewDocuments] = useState<any[]>([]);
+  const [viewDocsLoading, setViewDocsLoading] = useState(false);
   const [noteModal, setNoteModal] = useState<Chauffeur | null>(null);
   const [noteText, setNoteText] = useState('');
   const [noteSaving, setNoteSaving] = useState(false);
@@ -91,11 +96,37 @@ export default function Chauffeurs() {
     }
   };
 
-  const handleValidate = async (docId: string) => {
-    setActionLoading(docId);
+  // Docs sans expiration selon les specs (Interfaces Catalogue v4 §2)
+  const DOCS_SANS_EXPIRATION = ['carte_grise', 'photo_profil', 'rir'];
+
+  const openViewDocs = async (ch: Chauffeur) => {
+    setViewDocsModal(ch);
+    setViewDocsLoading(true);
     try {
-      await validerDocument(docId);
+      const data = await getChauffeurDocuments(String(ch.id));
+      setViewDocuments(data);
+    } catch {
+      showToast('Erreur chargement documents');
+    } finally {
+      setViewDocsLoading(false);
+    }
+  };
+
+  const openValiderModal = (doc: any) => {
+    setValiderModal(doc);
+    setDateExpiration('');
+    setRcMentionValide(false);
+  };
+
+  const [rcMentionValide, setRcMentionValide] = useState(false);
+
+  const confirmValider = async () => {
+    if (!validerModal) return;
+    setActionLoading(validerModal.id);
+    try {
+      await validerDocument(validerModal.id, dateExpiration || undefined, validerModal.type === 'rc_circulation' ? rcMentionValide : undefined);
       showToast('Document validé');
+      setValiderModal(null);
       if (selectedChauffeur) {
         const data = await getChauffeurDocuments(String(selectedChauffeur.id));
         setDocuments(data);
@@ -159,6 +190,121 @@ export default function Chauffeurs() {
     <div className="space-y-6">
       <h2 className="text-2xl font-bold text-gray-900">Chauffeurs</h2>
 
+      {/* Modal lecture documents — vue seule */}
+      {viewDocsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+              <div>
+                <h3 className="text-base font-bold text-gray-900">Documents — {viewDocsModal.prenom} {viewDocsModal.nom}</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Statut et dates d'expiration</p>
+              </div>
+              <button onClick={() => setViewDocsModal(null)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400">✕</button>
+            </div>
+            <div className="overflow-y-auto flex-1 p-5">
+              {viewDocsLoading ? <Spinner /> : viewDocuments.length === 0 ? (
+                <p className="text-center text-gray-400 py-8">Aucun document envoyé</p>
+              ) : (
+                <div className="space-y-2">
+                  {viewDocuments.map((doc: any) => (
+                    <div key={doc.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                      <div>
+                        <p className="text-sm font-medium text-gray-800">{DOC_LABELS[doc.type] || doc.type}</p>
+                        {doc.date_expiration && (
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            Expire le {new Date(doc.date_expiration).toLocaleDateString('fr-FR')}
+                          </p>
+                        )}
+                      </div>
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                        doc.statut === 'valide' ? 'bg-green-100 text-green-700' :
+                        doc.statut === 'refuse' ? 'bg-red-100 text-red-700' :
+                        doc.statut === 'expire' ? 'bg-gray-200 text-gray-500' :
+                        'bg-orange-100 text-orange-700'
+                      }`}>
+                        {doc.statut === 'valide' ? '✓ Validé' :
+                         doc.statut === 'refuse' ? '✗ Refusé' :
+                         doc.statut === 'expire' ? '⌛ Expiré' :
+                         '⏳ En attente'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal validation document */}
+      {validerModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Valider le document</h3>
+                <p className="text-sm text-gray-500">{DOC_LABELS[validerModal.type] || validerModal.type}</p>
+              </div>
+              <button onClick={() => setValiderModal(null)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400">✕</button>
+            </div>
+            {(validerModal.fichier_recto_url || validerModal.fichier_verso_url) && (
+              <div className="flex gap-3">
+                {validerModal.fichier_recto_url && (
+                  <a href={validerModal.fichier_recto_url} target="_blank" rel="noreferrer" className="flex-1 text-center py-2 text-sm text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50">Voir recto</a>
+                )}
+                {validerModal.fichier_verso_url && (
+                  <a href={validerModal.fichier_verso_url} target="_blank" rel="noreferrer" className="flex-1 text-center py-2 text-sm text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50">Voir verso</a>
+                )}
+              </div>
+            )}
+            {validerModal.type === 'rc_circulation' && (
+              <label className="flex items-start gap-3 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 accent-orange-500"
+                  checked={rcMentionValide}
+                  onChange={e => setRcMentionValide(e.target.checked)}
+                />
+                <span className="text-sm text-orange-700">
+                  Je confirme que la RC Circulation mentionne bien <strong>"transport passagers à titre onéreux"</strong>
+                </span>
+              </label>
+            )}
+            {!DOCS_SANS_EXPIRATION.includes(validerModal.type) && (
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  {validerModal.type === 'kbis'
+                    ? 'Date d\'expiration — lire la date d\'émission sur le Kbis, ajouter 6 mois'
+                    : 'Date d\'expiration (inscrite sur le document)'}
+                </label>
+                <input
+                  type="date"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-green-400"
+                  value={dateExpiration}
+                  onChange={e => setDateExpiration(e.target.value)}
+                />
+                {validerModal.type === 'kbis' && (
+                  <p className="text-xs text-orange-500 mt-1">Ex : Kbis émis le 01/04/2026 → saisir 01/10/2026. Alerte admin automatique à J-30.</p>
+                )}
+              </div>
+            )}
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setValiderModal(null)} className="px-4 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50">
+                Annuler
+              </button>
+              <button
+                onClick={confirmValider}
+                disabled={actionLoading === validerModal.id}
+                className="px-4 py-2 text-sm rounded-lg text-white font-medium disabled:opacity-50"
+                style={{ backgroundColor: '#4CAF82' }}
+              >
+                {actionLoading === validerModal.id ? 'Validation…' : '✓ Confirmer la validation'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal motif de refus */}
       {refusModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
@@ -178,6 +324,15 @@ export default function Chauffeurs() {
                 {refusModal.fichier_verso_url && (
                   <a href={refusModal.fichier_verso_url} target="_blank" rel="noreferrer" className="flex-1 text-center py-2 text-sm text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50">📄 Voir verso</a>
                 )}
+              </div>
+            )}
+            {refusModal.statut === 'valide' && (
+              <div className="flex items-start gap-2 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
+                <span className="text-orange-500 text-lg leading-none mt-0.5">⚠️</span>
+                <div>
+                  <p className="text-sm font-semibold text-orange-700">Document déjà validé</p>
+                  <p className="text-xs text-orange-600 mt-0.5">En refusant ce document, le chauffeur sera <strong>immédiatement mis hors ligne</strong> et ne pourra plus recevoir de courses.</p>
+                </div>
               </div>
             )}
             <div>
@@ -275,10 +430,19 @@ export default function Chauffeurs() {
                             <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                               doc.statut === 'valide' ? 'bg-green-100 text-green-700' :
                               doc.statut === 'refuse' ? 'bg-red-100 text-red-700' :
+                              doc.statut === 'expire' ? 'bg-gray-200 text-gray-500' :
                               'bg-orange-100 text-orange-700'
                             }`}>
-                              {doc.statut === 'valide' ? '✓ Validé' : doc.statut === 'refuse' ? '✗ Refusé' : '⏳ En attente'}
+                              {doc.statut === 'valide' ? '✓ Validé' :
+                               doc.statut === 'refuse' ? '✗ Refusé' :
+                               doc.statut === 'expire' ? '⌛ Expiré' :
+                               '⏳ En attente'}
                             </span>
+                            {doc.date_expiration && doc.statut === 'valide' && (
+                              <span className="text-xs text-gray-400">
+                                expire le {new Date(doc.date_expiration).toLocaleDateString('fr-FR')}
+                              </span>
+                            )}
                             {doc.fichier_recto_url && (
                               <a href={doc.fichier_recto_url} target="_blank" rel="noreferrer" className="text-xs text-blue-500 hover:underline">📄 Voir recto</a>
                             )}
@@ -291,22 +455,38 @@ export default function Chauffeurs() {
                           )}
                         </div>
                         <div className="flex gap-2 ml-4">
-                          <button
-                            onClick={() => handleValidate(doc.id)}
-                            disabled={doc.statut === 'valide' || actionLoading === doc.id}
-                            className="px-3 py-1.5 text-xs font-semibold rounded-lg text-white disabled:opacity-40 transition-opacity hover:opacity-80"
-                            style={{ backgroundColor: '#4CAF82' }}
-                          >
-                            {actionLoading === doc.id ? '…' : '✓ Valider'}
-                          </button>
-                          <button
-                            onClick={() => handleRefuse(doc)}
-                            disabled={doc.statut === 'refuse' || actionLoading === doc.id}
-                            className="px-3 py-1.5 text-xs font-semibold rounded-lg text-white disabled:opacity-40 transition-opacity hover:opacity-80"
-                            style={{ backgroundColor: '#FF6464' }}
-                          >
-                            {actionLoading === doc.id ? '…' : '✗ Refuser'}
-                          </button>
+                          {doc.statut === 'valide' ? (
+                            <div className="flex flex-col items-end gap-1">
+                              {doc.date_expiration ? (
+                                <span className="text-xs font-semibold text-green-600 bg-green-50 px-2 py-1 rounded-lg">
+                                  ✓ Expire le {new Date(doc.date_expiration).toLocaleDateString('fr-FR')}
+                                </span>
+                              ) : (
+                                <span className="text-xs font-semibold text-green-600 bg-green-50 px-2 py-1 rounded-lg">
+                                  ✓ Validé
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => openValiderModal(doc)}
+                                disabled={actionLoading === doc.id}
+                                className="px-3 py-1.5 text-xs font-semibold rounded-lg text-white disabled:opacity-40 transition-opacity hover:opacity-80"
+                                style={{ backgroundColor: '#4CAF82' }}
+                              >
+                                {actionLoading === doc.id ? '…' : '✓ Valider'}
+                              </button>
+                              <button
+                                onClick={() => handleRefuse(doc)}
+                                disabled={actionLoading === doc.id}
+                                className="px-3 py-1.5 text-xs font-semibold rounded-lg text-white disabled:opacity-40 transition-opacity hover:opacity-80"
+                                style={{ backgroundColor: '#FF6464' }}
+                              >
+                                {actionLoading === doc.id ? '…' : '✗ Refuser'}
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -324,14 +504,14 @@ export default function Chauffeurs() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100">
-                  {['Prénom Nom', 'Véhicule', 'Statut compte', 'Disponible', 'Documents', 'Taux Commission', 'Action'].map(h => (
+                  {['Prénom Nom', 'Véhicule', 'Statut compte', 'Disponible', 'Documents', 'Taux Commission', 'Note', 'Action'].map(h => (
                     <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {chauffeurs.length === 0 ? (
-                  <tr><td colSpan={7} className="text-center text-gray-400 py-10">Aucun chauffeur trouvé</td></tr>
+                  <tr><td colSpan={8} className="text-center text-gray-400 py-10">Aucun chauffeur trouvé</td></tr>
                 ) : chauffeurs.map(ch => {
                   const id = String(ch.id);
                   const currentTaux = editingTaux[id] ?? String(ch.taux_commission ?? '');
@@ -372,7 +552,7 @@ export default function Chauffeurs() {
                             color: ch.documents_valides ? '#4CAF82' : '#FF9A3C',
                           }}
                         >
-                          {ch.documents_valides ? '✓ Validés' : '⏳ À vérifier'}
+                          📋 Documents
                         </button>
                       </td>
                       <td className="px-4 py-3">
@@ -382,11 +562,33 @@ export default function Chauffeurs() {
                             value={currentTaux}
                             onChange={e => handleTauxChange(id, e.target.value)}
                             className="w-20 border border-gray-200 rounded-lg px-2 py-1 text-sm outline-none focus:border-yellow-400"
-                            placeholder="0"
+                            placeholder="20"
                           />
                           <span className="text-gray-500 text-sm">%</span>
+                          {!currentTaux && <span className="text-xs text-gray-400">(défaut)</span>}
                         </div>
                       </td>
+                      {/* Colonne Note */}
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col gap-1.5 w-[140px]">
+                          {ch.note_interne && (
+                            <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-2 py-1.5">
+                              <p className="text-xs text-gray-700 whitespace-pre-wrap break-words leading-4">
+                                {ch.note_interne}
+                              </p>
+                            </div>
+                          )}
+                          <button
+                            onClick={() => openNote(ch)}
+                            className="px-2 py-1 text-xs font-semibold rounded-lg text-white transition-opacity hover:opacity-80 whitespace-nowrap"
+                            style={{ backgroundColor: ch.note_interne ? '#C9A84C' : '#9CA3AF' }}
+                          >
+                            {ch.note_interne ? '✏️ Modifier' : '+ Note'}
+                          </button>
+                        </div>
+                      </td>
+
+                      {/* Colonne Action */}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           {isEditing && (
@@ -399,18 +601,6 @@ export default function Chauffeurs() {
                               {saving === id ? '…' : 'Sauvegarder'}
                             </button>
                           )}
-                          <button
-                            onClick={() => openNote(ch)}
-                            title={ch.note_interne ? ch.note_interne : 'Ajouter une note'}
-                            className="px-2 py-1 text-xs rounded-lg border transition-colors hover:bg-gray-50"
-                            style={{
-                              borderColor: ch.note_interne ? '#C9A84C' : '#E5E7EB',
-                              color: ch.note_interne ? '#C9A84C' : '#9CA3AF',
-                              fontWeight: ch.note_interne ? 600 : 400,
-                            }}
-                          >
-                            {ch.note_interne ? '📝 Note' : '+ Note'}
-                          </button>
                         </div>
                       </td>
                     </tr>

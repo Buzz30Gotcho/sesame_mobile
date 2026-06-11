@@ -16,6 +16,8 @@ export default function PointsRing({ points, level, nextLevelPoints, size = 180 
     const progress = Math.min(points / nextLevelPoints, 1);
     const strokeDashoffset = circumference - progress * circumference;
 
+    const innerWidth = radius * 1.2;
+
     return (
         <View style={styles.container}>
             <Svg width={size} height={size}>
@@ -40,9 +42,11 @@ export default function PointsRing({ points, level, nextLevelPoints, size = 180 
                     transform={`rotate(-90 ${size / 2} ${size / 2})`}
                 />
             </Svg>
-            <View style={styles.textContainer}>
+            <View style={[styles.textContainer, { width: innerWidth }]}>
                 <Text style={styles.points}>{points}</Text>
-                <Text style={styles.level}>{level.toUpperCase()} → PRO {nextLevelPoints} pts</Text>
+                <Text style={styles.level} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>
+                    {level.toUpperCase()} → {nextLevelPoints} pts
+                </Text>
             </View>
         </View>
     );
@@ -60,13 +64,14 @@ const styles = StyleSheet.create({
     },
     points: {
         color: '#C9A84C',
-        fontSize: 48,
+        fontSize: 42,
         fontWeight: '900',
     },
     level: {
         color: '#6A6680',
-        fontSize: 10,
+        fontSize: 11,
         fontWeight: '700',
         marginTop: 4,
+        textAlign: 'center',
     },
 });

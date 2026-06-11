@@ -283,7 +283,7 @@ function makeStyles(colors: typeof Colors.nocturne) {
         },
         bonRef: {
             color: colors.textSecondary,
-            fontSize: Typography.sizes.tiny,
+            fontSize: Typography.sizes.small,
             fontFamily: 'monospace',
             marginBottom: 12,
         },
@@ -295,13 +295,13 @@ function makeStyles(colors: typeof Colors.nocturne) {
         },
         bonDateLabel: {
             color: colors.textSecondary,
-            fontSize: Typography.sizes.tiny,
+            fontSize: Typography.sizes.small,
             fontWeight: Typography.weights.black as any,
             letterSpacing: 1,
         },
         bonDateValue: {
             color: colors.textPrimary,
-            fontSize: Typography.sizes.tiny,
+            fontSize: Typography.sizes.small,
             fontFamily: 'monospace',
         },
         qrBtn: {

@@ -20,3 +20,4 @@ mobile/.env
 # Firebase config (contiennent des clés sensibles)
 mobile/GoogleService-Info.plist
 mobile/google-services.json
+backend/sesame-708a3-firebase-adminsdk-fbsvc-038ce93144.json

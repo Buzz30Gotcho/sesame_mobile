@@ -1,7 +1,11 @@
 import express from 'express';
 import { query } from '../db';
+import { ownAmbassadeurParam } from '../middleware/auth';
 
 const router = express.Router();
+
+// Propriété : :id doit être l'ambassadeur du token (sinon 403).
+router.param('id', ownAmbassadeurParam);
 
 router.get('/:id/profile', async (req, res) => {
     const result = await query(
@@ -174,8 +178,27 @@ router.get('/:id/dashboard', async (req, res) => {
         [req.params.id, 'en_attente_admin']
     );
 
+    const annulationsResult = await query(
+        `SELECT count(*) AS count FROM courses
+         WHERE ambassadeur_id = $1 AND annule_par = 'ambassadeur'
+           AND date_annulation > now() - interval '30 days'`,
+        [req.params.id]
+    );
+
+    const weeklyStatsResult = await query(
+        `SELECT
+            count(*) FILTER (WHERE statut = 'terminee' AND date_fin > now() - interval '7 days') AS courses_semaine,
+            COALESCE(sum(points_attribues) FILTER (WHERE statut = 'terminee' AND date_fin > now() - interval '7 days'), 0) AS points_semaine
+         FROM courses
+         WHERE ambassadeur_id = $1`,
+        [req.params.id]
+    );
+
     const activeCourseCount = Number(activeCountResult.rows[0]?.count || 0);
     const pendingBonsCount = Number(pendingBonsResult.rows[0]?.count || 0);
+    const nbAnnulations30j = Number(annulationsResult.rows[0]?.count || 0);
+    const coursesSemaine = Number(weeklyStatsResult.rows[0]?.courses_semaine || 0);
+    const pointsSemaine = Number(weeklyStatsResult.rows[0]?.points_semaine || 0);
 
     res.json({
         ambassadeur_id: profile.ambassadeur_id,
@@ -185,6 +208,9 @@ router.get('/:id/dashboard', async (req, res) => {
         code_parrainage: profile.code_parrainage,
         active_course_count: activeCourseCount,
         pending_bons_count: pendingBonsCount,
+        nb_annulations_30j: nbAnnulations30j,
+        courses_semaine: coursesSemaine,
+        points_semaine: pointsSemaine,
         next_level: nextLevel,
         next_level_target: nextLevelTarget,
         points_to_next_level: pointsToNextLevel,
@@ -196,7 +222,9 @@ router.get('/:id/dashboard', async (req, res) => {
 router.get('/:id/equipe', async (req, res) => {
     const result = await query(
         `SELECT s.id, u.prenom, u.nom, u.email, u.telephone, s.metier, s.statut, s.created_at,
-                (SELECT count(*) FROM courses c WHERE c.ambassadeur_id = s.id) AS nb_courses
+                (SELECT count(*) FROM courses c
+                 JOIN ambassadeurs a ON a.id = c.ambassadeur_id
+                 WHERE a.utilisateur_id = s.utilisateur_id) AS nb_courses
          FROM sous_comptes_employes s
          JOIN utilisateurs u ON u.id = s.utilisateur_id
          WHERE s.ambassadeur_moral_id = $1
@@ -219,12 +247,43 @@ router.post('/:id/equipe', async (req, res) => {
         [prenom, nom, email, telephone, hashed]
     );
     const userId = userResult.rows[0].id;
+
+    // Générer un code parrainage unique pour l'employé
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let codeParrainage = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    let exists = await query('SELECT id FROM ambassadeurs WHERE code_parrainage = $1', [codeParrainage]);
+    while (exists.rows.length > 0) {
+        codeParrainage = Math.random().toString(36).substring(2, 8).toUpperCase();
+        exists = await query('SELECT id FROM ambassadeurs WHERE code_parrainage = $1', [codeParrainage]);
+    }
+
+    // Créer le record ambassadeurs pour que l'employé puisse commander des courses
+    const ambResult = await query(
+        `INSERT INTO ambassadeurs(utilisateur_id, type_ambassadeur, metier, code_parrainage)
+         VALUES ($1, 'physique', $2, $3) RETURNING id`,
+        [userId, metier || null, codeParrainage]
+    );
+    const ambassadeurId = ambResult.rows[0].id;
+
     await query(
         `INSERT INTO sous_comptes_employes(ambassadeur_moral_id, utilisateur_id, metier)
          VALUES ($1, $2, $3)`,
         [req.params.id, userId, metier || null]
     );
-    res.status(201).json({ success: true, utilisateur_id: userId });
+    res.status(201).json({ success: true, utilisateur_id: userId, ambassadeur_id: ambassadeurId });
+});
+
+router.put('/:id/equipe/:employeId/statut', async (req, res) => {
+    const { statut } = req.body;
+    if (!['actif', 'suspendu'].includes(statut)) return res.status(400).json({ error: 'statut invalide' });
+    const employe = await query(
+        'SELECT utilisateur_id FROM sous_comptes_employes WHERE id = $1 AND ambassadeur_moral_id = $2',
+        [req.params.employeId, req.params.id]
+    );
+    if (!employe.rows.length) return res.status(404).json({ error: 'Employé introuvable' });
+    await query('UPDATE sous_comptes_employes SET statut = $1 WHERE id = $2', [statut, req.params.employeId]);
+    await query('UPDATE utilisateurs SET statut = $1 WHERE id = $2', [statut, employe.rows[0].utilisateur_id]);
+    res.json({ success: true });
 });
 
 // Commissions mensuelles (Ambassadeur Moral)
@@ -234,16 +293,25 @@ router.get('/:id/commissions', async (req, res) => {
     );
     const tauxPct = Number(rateResult.rows[0]?.valeur ?? 10);
 
+    // CA mensuel de l'entreprise = ses propres courses + celles de ses sous-comptes employés.
+    // amb_ids regroupe l'ambassadeur moral lui-même ET tous ses employés.
     const result = await query(
-        `SELECT
+        `WITH amb_ids AS (
+            SELECT $2::uuid AS ambassadeur_id
+            UNION
+            SELECT ae.id
+            FROM sous_comptes_employes s
+            JOIN ambassadeurs ae ON ae.utilisateur_id = s.utilisateur_id
+            WHERE s.ambassadeur_moral_id = $2
+         )
+         SELECT
             to_char(date_trunc('month', c.date_fin), 'YYYY-MM') AS mois,
             count(*) AS nb_courses,
             sum(c.montant) AS ca_brut_ttc,
             round(sum(c.montant) * $1 / 100, 2) AS commission
          FROM courses c
-         JOIN ambassadeurs a ON a.id = c.ambassadeur_id
-         WHERE (a.id = $2 OR a.ambassadeur_moral_id = $2)
-           AND c.statut = 'terminee'
+         JOIN amb_ids ON amb_ids.ambassadeur_id = c.ambassadeur_id
+         WHERE c.statut = 'terminee'
            AND c.code_valide_at IS NOT NULL
            AND c.date_fin IS NOT NULL
          GROUP BY date_trunc('month', c.date_fin)
@@ -252,27 +320,7 @@ router.get('/:id/commissions', async (req, res) => {
         [tauxPct, req.params.id]
     );
 
-    // Chercher aussi les sous-comptes
-    const subResult = await query(
-        `SELECT
-            to_char(date_trunc('month', c.date_fin), 'YYYY-MM') AS mois,
-            count(*) AS nb_courses,
-            sum(c.montant) AS ca_brut_ttc,
-            round(sum(c.montant) * $1 / 100, 2) AS commission
-         FROM courses c
-         JOIN ambassadeurs a ON a.id = c.ambassadeur_id
-         JOIN sous_comptes_employes s ON s.id = a.id
-         WHERE s.ambassadeur_moral_id = $2
-           AND c.statut = 'terminee'
-           AND c.code_valide_at IS NOT NULL
-           AND c.date_fin IS NOT NULL
-         GROUP BY date_trunc('month', c.date_fin)
-         ORDER BY date_trunc('month', c.date_fin) DESC
-         LIMIT 12`,
-        [tauxPct, req.params.id]
-    );
-
-    res.json({ taux_pct: tauxPct, mois: result.rows, sous_comptes_mois: subResult.rows });
+    res.json({ taux_pct: tauxPct, mois: result.rows });
 });
 
 export default router;

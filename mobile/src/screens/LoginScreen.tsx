@@ -18,8 +18,8 @@ export default function LoginScreen({ navigation }: NativeStackScreenProps<RootS
     const { setAuth } = useAuth();
 
     // Reset mot de passe
-    const [resetStep, setResetStep] = useState<0 | 1 | 2 | 3>(0); // 0=fermé 1=téléphone 2=code 3=nouveau mdp
-    const [resetTelephone, setResetTelephone] = useState('');
+    const [resetStep, setResetStep] = useState<0 | 1 | 2 | 3>(0); // 0=fermé 1=email 2=code 3=nouveau mdp
+    const [resetEmail, setResetEmail] = useState('');
     const [resetCode, setResetCode] = useState('');
     const [resetNewPassword, setResetNewPassword] = useState('');
     const [resetLoading, setResetLoading] = useState(false);
@@ -69,17 +69,20 @@ export default function LoginScreen({ navigation }: NativeStackScreenProps<RootS
                 setError('Type de compte non géré.');
             }
         } catch (error: any) {
-            setError(error.response?.data?.error || 'Email ou mot de passe incorrect.');
+            const msg = error.response?.data?.error
+                || (error.message === 'Network Error' ? `Serveur inaccessible (${error.config?.baseURL ?? 'URL inconnue'})` : error.message)
+                || 'Email ou mot de passe incorrect.';
+            setError(msg);
         } finally {
             setLoading(false);
         }
     };
 
     const handleDemanderReset = async () => {
-        if (!resetTelephone) { setResetError('Numéro de téléphone requis'); return; }
+        if (!resetEmail) { setResetError('Email requis'); return; }
         setResetLoading(true); setResetError(null);
         try {
-            await demanderResetMotDePasse(resetTelephone);
+            await demanderResetMotDePasse(resetEmail);
             setResetStep(2);
         } catch {
             setResetError('Erreur réseau. Réessayez.');
@@ -95,17 +98,17 @@ export default function LoginScreen({ navigation }: NativeStackScreenProps<RootS
     };
 
     const handleNouveauMotDePasse = async () => {
-        if (!resetNewPassword || resetNewPassword.length < 4) {
-            setResetError('Mot de passe trop court (4 caractères minimum)');
+        if (!resetNewPassword || resetNewPassword.length < 8) {
+            setResetError('Mot de passe trop court (8 caractères minimum)');
             return;
         }
         setResetLoading(true); setResetError(null);
         try {
-            await reinitialiserMotDePasse(resetTelephone, resetCode, resetNewPassword);
+            await reinitialiserMotDePasse(resetEmail, resetCode, resetNewPassword);
             setResetSuccess(true);
             setTimeout(() => {
                 setResetStep(0);
-                setResetTelephone(''); setResetCode(''); setResetNewPassword('');
+                setResetEmail(''); setResetCode(''); setResetNewPassword('');
                 setResetSuccess(false);
             }, 2000);
         } catch (e: any) {
@@ -117,7 +120,7 @@ export default function LoginScreen({ navigation }: NativeStackScreenProps<RootS
 
     const fermerReset = () => {
         setResetStep(0);
-        setResetTelephone(''); setResetCode(''); setResetNewPassword('');
+        setResetEmail(''); setResetCode(''); setResetNewPassword('');
         setResetError(null); setResetSuccess(false);
     };
 
@@ -192,7 +195,7 @@ export default function LoginScreen({ navigation }: NativeStackScreenProps<RootS
 
                             <View style={styles.registerRow}>
                                 <Text style={styles.registerText}>Pas encore de compte ? </Text>
-                                <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+                                <TouchableOpacity onPress={() => navigation.navigate('Register', { initialRole: (selectedRole === 'admin' ? undefined : selectedRole) ?? undefined })}>
                                     <Text style={styles.registerLink}>S'inscrire</Text>
                                 </TouchableOpacity>
                             </View>
@@ -220,21 +223,21 @@ export default function LoginScreen({ navigation }: NativeStackScreenProps<RootS
                                 </Text>
                                 <Text style={styles.modalSubtitle}>
                                     {resetStep === 1
-                                        ? 'Entrez votre numéro de téléphone pour recevoir un code par SMS.'
+                                        ? 'Entrez votre email pour recevoir un code par email.'
                                         : resetStep === 2
-                                        ? `Un code à 6 chiffres a été envoyé par SMS au ${resetTelephone}`
+                                        ? `Un code à 6 chiffres a été envoyé à ${resetEmail}`
                                         : 'Choisissez un nouveau mot de passe.'}
                                 </Text>
 
                                 {resetStep === 1 && (
                                     <TextInput
                                         style={styles.modalInput}
-                                        placeholder="+33 6 xx xx xx xx"
+                                        placeholder="votre@email.com"
                                         placeholderTextColor={Colors.nocturne.textSecondary}
-                                        keyboardType="phone-pad"
+                                        keyboardType="email-address"
                                         autoCapitalize="none"
-                                        value={resetTelephone}
-                                        onChangeText={setResetTelephone}
+                                        value={resetEmail}
+                                        onChangeText={setResetEmail}
                                     />
                                 )}
                                 {resetStep === 2 && (
@@ -276,7 +279,7 @@ export default function LoginScreen({ navigation }: NativeStackScreenProps<RootS
 
                                 {resetStep === 2 && (
                                     <TouchableOpacity onPress={() => { setResetCode(''); setResetStep(1); }} style={styles.modalRetry}>
-                                        <Text style={styles.modalRetryText}>Renvoyer un code</Text>
+                                        <Text style={styles.modalRetryText}>Renvoyer un code par email</Text>
                                     </TouchableOpacity>
                                 )}
                             </>

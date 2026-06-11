@@ -82,8 +82,14 @@ export default function AmbassadorBoutiqueScreen() {
     return (
         <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
             <StatusBar barStyle={colors.background === '#101018' ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
-            <ScrollView contentContainerStyle={styles.scrollContent}>
+            <View style={styles.header}>
+                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+                    <Text style={styles.backText}>←</Text>
+                </TouchableOpacity>
                 <Text style={styles.title}>{t('boutique')}</Text>
+                <View style={{ width: 36 }} />
+            </View>
+            <ScrollView contentContainerStyle={styles.scrollContent}>
                 <Text style={styles.subtitle}>{t('echangez_points')}</Text>
 
                 {/* Solde */}
@@ -150,12 +156,22 @@ export default function AmbassadorBoutiqueScreen() {
 function makeStyles(colors: typeof Colors.nocturne) {
     return StyleSheet.create({
         safeArea: { flex: 1, backgroundColor: colors.background },
+        header: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingHorizontal: 20,
+            paddingVertical: 16,
+            borderBottomWidth: 1,
+            borderBottomColor: 'rgba(255,255,255,0.05)',
+        },
+        backBtn: { width: 36, height: 36, justifyContent: 'center' },
+        backText: { color: Colors.brand.gold, fontSize: 22, fontWeight: Typography.weights.bold as any },
         scrollContent: { padding: 20, paddingBottom: 120 },
         title: {
             color: Colors.brand.gold,
             fontSize: Typography.sizes.title,
             fontWeight: Typography.weights.black as any,
-            marginBottom: 4,
         },
         subtitle: {
             color: colors.textSecondary,

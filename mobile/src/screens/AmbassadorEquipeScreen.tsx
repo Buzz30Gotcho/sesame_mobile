@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, StatusBar,
     TouchableOpacity, TextInput, Modal, ActivityIndicator, Alert,
+    KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -9,7 +10,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useLang } from '../context/LanguageContext';
-import { getEquipe, addEquipeEmployee } from '../services/api';
+import { getEquipe, addEquipeEmployee, updateEmployeStatut } from '../services/api';
 import { Colors } from '../theme';
 import BottomNav from '../components/BottomNav';
 import type { RootStackParamList, EquipeEmployee } from '../types';
@@ -24,6 +25,7 @@ export default function AmbassadorEquipeScreen() {
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [togglingId, setTogglingId] = useState<string | null>(null);
 
     const [prenom, setPrenom] = useState('');
     const [nom, setNom] = useState('');
@@ -40,6 +42,32 @@ export default function AmbassadorEquipeScreen() {
     };
 
     useEffect(load, [ambassadorId]);
+
+    const handleToggleStatut = async (e: EquipeEmployee) => {
+        if (!ambassadorId) return;
+        const newStatut = e.statut === 'actif' ? 'suspendu' : 'actif';
+        const msg = newStatut === 'suspendu'
+            ? `Suspendre ${e.prenom} ${e.nom} ? Il ne pourra plus se connecter.`
+            : `Réactiver ${e.prenom} ${e.nom} ?`;
+        Alert.alert('Confirmation', msg, [
+            { text: 'Annuler', style: 'cancel' },
+            {
+                text: newStatut === 'suspendu' ? 'Suspendre' : 'Réactiver',
+                style: newStatut === 'suspendu' ? 'destructive' : 'default',
+                onPress: async () => {
+                    setTogglingId(e.id);
+                    try {
+                        await updateEmployeStatut(ambassadorId, e.id, newStatut);
+                        load();
+                    } catch {
+                        Alert.alert('Erreur', 'Impossible de modifier le statut.');
+                    } finally {
+                        setTogglingId(null);
+                    }
+                },
+            },
+        ]);
+    };
 
     const handleAdd = async () => {
         if (!prenom || !nom || !email || !telephone || !mdp) {
@@ -83,12 +111,25 @@ export default function AmbassadorEquipeScreen() {
                         <View style={styles.cardTop}>
                             <Text style={styles.cardName}>{e.prenom} {e.nom}</Text>
                             <View style={[styles.badge, e.statut === 'actif' ? styles.badgeActive : styles.badgeSuspend]}>
-                                <Text style={styles.badgeText}>{e.statut}</Text>
+                                <Text style={[styles.badgeText, { color: e.statut === 'actif' ? Colors.brand.success : Colors.brand.error }]}>
+                                    {e.statut === 'actif' ? 'Actif' : 'Suspendu'}
+                                </Text>
                             </View>
                         </View>
                         {e.metier ? <Text style={styles.cardSub}>{e.metier}</Text> : null}
                         <Text style={styles.cardSub}>{e.email} · {e.telephone}</Text>
-                        <Text style={styles.cardCourses}>{e.nb_courses} course{Number(e.nb_courses) > 1 ? 's' : ''}</Text>
+                        <View style={styles.cardBottom}>
+                            <Text style={styles.cardCourses}>{e.nb_courses} course{Number(e.nb_courses) > 1 ? 's' : ''}</Text>
+                            <TouchableOpacity
+                                onPress={() => handleToggleStatut(e)}
+                                disabled={togglingId === e.id}
+                                style={[styles.toggleBtn, { backgroundColor: e.statut === 'actif' ? Colors.brand.error + '20' : Colors.brand.success + '20' }]}
+                            >
+                                <Text style={[styles.toggleBtnText, { color: e.statut === 'actif' ? Colors.brand.error : Colors.brand.success }]}>
+                                    {togglingId === e.id ? '...' : e.statut === 'actif' ? 'Suspendre' : 'Réactiver'}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 ))}
             </ScrollView>
@@ -96,39 +137,48 @@ export default function AmbassadorEquipeScreen() {
 
             {/* Modal ajout employé */}
             <Modal visible={showModal} animationType="slide" transparent>
-                <View style={styles.modalOverlay}>
+                <KeyboardAvoidingView
+                    style={styles.modalOverlay}
+                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                >
                     <View style={styles.modal}>
-                        <Text style={styles.modalTitle}>Nouvel employé</Text>
-                        {[
-                            { label: 'Prénom *', value: prenom, set: setPrenom },
-                            { label: 'Nom *', value: nom, set: setNom },
-                            { label: 'Email *', value: email, set: setEmail, keyboard: 'email-address' as any },
-                            { label: 'Téléphone *', value: telephone, set: setTelephone, keyboard: 'phone-pad' as any },
-                            { label: 'Métier', value: metier, set: setMetier },
-                            { label: 'Mot de passe *', value: mdp, set: setMdp, secure: true },
-                        ].map(f => (
-                            <View key={f.label} style={styles.field}>
-                                <Text style={styles.fieldLabel}>{f.label}</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    value={f.value}
-                                    onChangeText={f.set}
-                                    keyboardType={f.keyboard}
-                                    secureTextEntry={f.secure}
-                                    placeholderTextColor={colors.textSecondary}
-                                />
+                        <ScrollView
+                            keyboardShouldPersistTaps="handled"
+                            showsVerticalScrollIndicator={false}
+                            contentContainerStyle={styles.modalContent}
+                        >
+                            <Text style={styles.modalTitle}>Nouvel employé</Text>
+                            {[
+                                { label: 'Prénom *', value: prenom, set: setPrenom },
+                                { label: 'Nom *', value: nom, set: setNom },
+                                { label: 'Email *', value: email, set: setEmail, keyboard: 'email-address' as any },
+                                { label: 'Téléphone *', value: telephone, set: setTelephone, keyboard: 'phone-pad' as any },
+                                { label: 'Métier', value: metier, set: setMetier },
+                                { label: 'Mot de passe *', value: mdp, set: setMdp, secure: true },
+                            ].map(f => (
+                                <View key={f.label} style={styles.field}>
+                                    <Text style={styles.fieldLabel}>{f.label}</Text>
+                                    <TextInput
+                                        style={styles.input}
+                                        value={f.value}
+                                        onChangeText={f.set}
+                                        keyboardType={f.keyboard}
+                                        secureTextEntry={f.secure}
+                                        placeholderTextColor={colors.textSecondary}
+                                    />
+                                </View>
+                            ))}
+                            <View style={styles.modalBtns}>
+                                <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowModal(false)}>
+                                    <Text style={styles.cancelText}>Annuler</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={styles.saveBtn} onPress={handleAdd} disabled={saving}>
+                                    <Text style={styles.saveText}>{saving ? '...' : 'Ajouter'}</Text>
+                                </TouchableOpacity>
                             </View>
-                        ))}
-                        <View style={styles.modalBtns}>
-                            <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowModal(false)}>
-                                <Text style={styles.cancelText}>Annuler</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.saveBtn} onPress={handleAdd} disabled={saving}>
-                                <Text style={styles.saveText}>{saving ? '...' : 'Ajouter'}</Text>
-                            </TouchableOpacity>
-                        </View>
+                        </ScrollView>
                     </View>
-                </View>
+                </KeyboardAvoidingView>
             </Modal>
         </SafeAreaView>
     );
@@ -151,10 +201,14 @@ function makeStyles(colors: typeof Colors.nocturne) {
         badgeSuspend: { backgroundColor: Colors.brand.error + '30' },
         badgeText: { fontSize: 11, fontWeight: '600', color: colors.textPrimary },
         cardSub: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
-        cardCourses: { fontSize: 13, color: Colors.brand.info, marginTop: 6, fontWeight: '600' },
+        cardBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
+        cardCourses: { fontSize: 13, color: Colors.brand.info, fontWeight: '600' },
+        toggleBtn: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 6 },
+        toggleBtnText: { fontSize: 12, fontWeight: '700' },
         empty: { textAlign: 'center', color: colors.textSecondary, marginTop: 40 },
         modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-        modal: { backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24 },
+        modal: { backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '90%' },
+        modalContent: { padding: 24 },
         modalTitle: { fontSize: 18, fontWeight: '700', color: Colors.brand.gold, marginBottom: 20, textAlign: 'center' },
         field: { marginBottom: 12 },
         fieldLabel: { fontSize: 12, color: colors.textSecondary, marginBottom: 4 },

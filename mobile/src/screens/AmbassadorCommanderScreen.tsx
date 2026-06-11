@@ -37,7 +37,8 @@ async function searchAddress(query: string, bias?: Coords): Promise<Suggestion[]
                 const p = f.properties;
                 const name = p.name || '';
                 const street = [p.housenumber, p.street].filter(Boolean).join(' ');
-                const city = [p.postcode, p.city].filter(Boolean).join(' ');
+                const postcode = Array.isArray(p.postcode) ? null : p.postcode;
+                const city = [postcode, p.city].filter(Boolean).join(' ');
                 const label = [name || street, city].filter(Boolean).join(', ');
                 return { label, lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] } as Suggestion;
             }).filter((s: Suggestion) => s.label.length > 0)),
@@ -214,7 +215,7 @@ export default function AmbassadorCommanderScreen() {
                     ambassadorId ? getAmbassadorProfile(ambassadorId) : Promise.resolve(null),
                 ]);
                 const p: any = {};
-                paramsRes.data.forEach((item: any) => { p[item.cle] = item.valeur; });
+                Object.entries(paramsRes.data as Record<string, string>).forEach(([cle, valeur]) => { p[cle] = valeur; });
                 setParams(p);
                 setIsImmediateEnabled(p.mode_course_immediate === 'true');
                 const delai = Number(p.delai_minimum_reservation_heures || 1);
@@ -302,7 +303,12 @@ export default function AmbassadorCommanderScreen() {
             });
             navigation.navigate('AmbassadorAccueil');
         } catch (err: any) {
-            setError(err.response?.data?.error || "Impossible d'enregistrer la commande.");
+            const backendError = err.response?.data?.error;
+            if (backendError === 'LIMIT_5_COURSES') {
+                setError('Vous avez atteint la limite de 5 courses simultanées. Attendez qu\'une course se termine avant d\'en créer une nouvelle.');
+            } else {
+                setError(backendError || "Impossible d'enregistrer la commande.");
+            }
         } finally {
             setLoading(false);
         }
@@ -565,7 +571,7 @@ const styles = StyleSheet.create({
     },
     backButton: { width: 40, height: 40, justifyContent: 'center' },
     backText: { color: Colors.brand.gold, fontSize: 24 },
-    title: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
+    title: { color: Colors.brand.gold, fontSize: Typography.sizes.title, fontWeight: Typography.weights.black as any },
     modeAlert: {
         backgroundColor: 'rgba(74, 158, 255, 0.1)',
         borderWidth: 1, borderColor: 'rgba(74, 158, 255, 0.3)',
@@ -608,7 +614,7 @@ const styles = StyleSheet.create({
         borderBottomColor: 'rgba(255,255,255,0.05)',
     },
     suggestionIcon: { fontSize: 14, marginTop: 1 },
-    suggestionText: { flex: 1, color: '#E0DBD2', fontSize: 13, lineHeight: 18 },
+    suggestionText: { flex: 1, color: '#E0DBD2', fontSize: Typography.sizes.sub, lineHeight: 20 },
     distanceRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     distanceErrorText: { color: Colors.brand.error, fontSize: 11, marginTop: 6, fontWeight: '600' },
     distanceOkText: { color: Colors.brand.success, fontSize: 11, marginTop: 6, fontWeight: '600' },

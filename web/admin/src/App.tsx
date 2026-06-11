@@ -38,6 +38,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'courses', label: 'Courses', icon: '🚗' },
   { key: 'echanges', label: 'Échanges', icon: '🎁' },
   { key: 'ambassadeurs', label: 'Ambassadeurs', icon: '👤' },
+  { key: 'commissions', label: 'Commissions', icon: '💶' },
   { key: 'chauffeurs', label: 'Chauffeurs', icon: '🚘' },
   { key: 'fournisseurs', label: 'Fournisseurs', icon: '🏪' },
   { key: 'blacklist', label: 'Blacklist', icon: '🔕' },

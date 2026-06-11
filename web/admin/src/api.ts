@@ -37,6 +37,8 @@ export interface DashboardStats {
   totalAmbassadeurs: number;
   totalChauffeurs: number;
   pendingExchanges: number;
+  ambassadeursSuspendus?: number;
+  kbis_expiring_soon?: number;
   coursesEnCours?: number;
   coursesTerminees?: number;
   coursesAnnulees?: number;
@@ -51,7 +53,7 @@ export interface Ambassadeur {
   utilisateur_id?: string;
   prenom: string;
   nom: string;
-  type: 'physique' | 'moral';
+  type: 'physique' | 'moral' | 'sous_compte';
   niveau?: string;
   points?: number;
   commission?: number;
@@ -61,6 +63,12 @@ export interface Ambassadeur {
   societe?: string;
   note_interne?: string;
   created_at?: string;
+  contrat_moral_signe?: boolean;
+  entreprise_nom?: string;
+  entreprise_id?: number;
+  siret?: string;
+  iban?: string;
+  responsable_legal_nom?: string;
 }
 
 export interface Chauffeur {
@@ -159,7 +167,8 @@ export const getAmbassadeurs = () => api.get<Ambassadeur[]>('/admin/ambassadeurs
 // Chauffeurs
 export const getChauffeurs = () => api.get<Chauffeur[]>('/admin/chauffeurs').then(r => r.data);
 export const getChauffeurDocuments = (id: string) => api.get(`/admin/chauffeurs/${id}/documents`).then(r => r.data);
-export const validerDocument = (id: string) => api.put(`/admin/documents/${id}/valider`).then(r => r.data);
+export const validerDocument = (id: string, date_expiration?: string, rc_circulation_mention_valide?: boolean) =>
+  api.put(`/admin/documents/${id}/valider`, { date_expiration: date_expiration || null, rc_circulation_mention_valide }).then(r => r.data);
 export const refuserDocument = (id: string, motif?: string) => api.put(`/admin/documents/${id}/refuser`, { motif }).then(r => r.data);
 export const updateChauffeurTaux = (id: number, taux: number) =>
   api.put(`/admin/chauffeurs/${id}/taux`, { taux }).then(r => r.data);
@@ -167,8 +176,14 @@ export const updateChauffeurStatut = (utilisateur_id: string, statut: 'actif' | 
   api.put(`/admin/utilisateurs/${utilisateur_id}/statut`, { statut }).then(r => r.data);
 export const updateChauffeurNote = (id: number, note: string) =>
   api.put(`/admin/chauffeurs/${id}/note`, { note }).then(r => r.data);
+export const deleteAmbassadeur = (id: number) =>
+  api.delete(`/admin/ambassadeurs/${id}`);
+
 export const updateAmbassadeurNote = (id: number, note: string) =>
   api.put(`/admin/ambassadeurs/${id}/note`, { note }).then(r => r.data);
+
+export const validerAmbassadeurMoral = (id: string) =>
+  api.put(`/admin/ambassadeurs/${id}/valider-moral`).then(r => r.data);
 
 // Courses
 export const getCourses = () => api.get<Course[]>('/admin/courses').then(r => r.data);
@@ -197,18 +212,24 @@ export const getParametres = () => api.get<Parametre[]>('/admin/parametres').the
 export const updateParametre = (cle: string, valeur: string) =>
   api.put(`/admin/parametres/${cle}`, { valeur }).then(r => r.data);
 
-// Commissions moraux — le backend retourne { taux_pct, ambassadeurs: [...] }
-export const getCommissionsMoraux = () =>
-  api.get('/admin/commissions/moraux').then(r => ({
+// Commissions moraux — le backend retourne { taux_pct, mois, ambassadeurs: [...] }
+// mois optionnel au format 'YYYY-MM' (défaut côté backend : mois courant).
+export const getCommissionsMoraux = (mois?: string) =>
+  api.get('/admin/commissions/moraux', { params: mois ? { mois } : undefined }).then(r => ({
     taux_pct: r.data?.taux_pct ?? 10,
+    mois: r.data?.mois as string | undefined,
     ambassadeurs: (r.data?.ambassadeurs ?? []).map((a: any) => ({
       ...a,
+      etablissement: (a.etablissement ?? null) as string | null,
       ca_brut: Number(a.ca_brut_ttc ?? 0),
       commission: Number(a.commission ?? 0),
       nb_courses: Number(a.nb_courses ?? 0),
+      statut_versement: (a.statut_versement ?? null) as string | null,
+      date_versement: (a.date_versement ?? null) as string | null,
     })),
   }));
-export const declencherVirements = () => api.post('/admin/commissions/declencher').then(r => r.data);
+export const declencherVirements = (mois?: string) =>
+  api.post('/admin/commissions/declencher', mois ? { mois } : {}).then(r => r.data);
 
 // Chat
 export const getChatMessages = (courseId: number) =>

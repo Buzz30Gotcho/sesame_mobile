@@ -4,6 +4,11 @@ import { query } from '../db';
 import { getSystemParameters, getSystemParameter } from '../lib/params';
 import { sendPushNotification } from '../lib/pushNotifications';
 
+import { randomInt } from 'crypto';
+import { crediterPaliersParrainage, executerSanctionsEnAttente } from '../lib/courseHelpers';
+import { ownCourseParam, ownActorBodyQuery, resolveIdentity, AuthedRequest } from '../middleware/auth';
+import { codeLimiter } from '../middleware/rateLimit';
+
 async function notifyChauffeursDisponibles(vehicule_type: string, adresse_depart: string, adresse_destination: string, montant: number) {
     const result = await query(
         `SELECT push_token FROM chauffeurs WHERE disponible = true AND vehicule_type = $1 AND push_token IS NOT NULL`,
@@ -17,9 +22,14 @@ async function notifyChauffeursDisponibles(vehicule_type: string, adresse_depart
 
 const router = express.Router();
 
+// Propriété : pour /:id et /:id/annuler, le token doit être partie de la course.
+router.param('id', ownCourseParam);
+// Cohérence : l'ambassadeur_id / chauffeur_id envoyé (body/query) doit être celui du token.
+router.use(ownActorBodyQuery);
+
 function makeReference(prefix: string) {
     const ts = Date.now().toString().slice(-8);
-    const rand = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    const rand = randomInt(10000).toString().padStart(4, '0');
     return `${prefix}-${ts}-${rand}`;
 }
 
@@ -50,6 +60,16 @@ router.post('/creer', async (req, res) => {
         return res.status(403).json({ error: `Commande suspendue jusqu'au ${dateStr}. Trop d'annulations récentes.` });
     }
 
+    // Vérifier limite 5 courses simultanées
+    const activeLimitResult = await query(
+        `SELECT count(*) AS count FROM courses
+         WHERE ambassadeur_id = $1 AND statut IN ('recherche','acceptee','en_route','code_valide','en_cours')`,
+        [ambassadeur_id]
+    );
+    if (Number(activeLimitResult.rows[0]?.count) >= 5) {
+        return res.status(403).json({ error: 'LIMIT_5_COURSES' });
+    }
+
     const sysParams = await getSystemParameters();
     const pricingParams = {
         berline_forfait: Number(sysParams.berline_forfait),
@@ -64,9 +84,11 @@ router.post('/creer', async (req, res) => {
     const reference = makeReference('CRS');
     const points_attribues = calculatePoints(montant);
 
+    const tauxGlobal = Number(sysParams.taux_commission_global ?? 20);
+
     const result = await query(
-        'INSERT INTO courses(reference, ambassadeur_id, statut, type_course, adresse_depart, adresse_destination, vehicule_type, montant, points_attribues) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
-        [reference, ambassadeur_id, 'recherche', courseType, adresse_depart, adresse_destination, vehicule_type, montant, points_attribues]
+        'INSERT INTO courses(reference, ambassadeur_id, statut, type_course, adresse_depart, adresse_destination, vehicule_type, montant, points_attribues, taux_commission_applique) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
+        [reference, ambassadeur_id, 'recherche', courseType, adresse_depart, adresse_destination, vehicule_type, montant, points_attribues, tauxGlobal]
     );
 
     notifyChauffeursDisponibles(vehicule_type, adresse_depart, adresse_destination, montant).catch(() => {});
@@ -76,7 +98,15 @@ router.post('/creer', async (req, res) => {
 
 // Routes statiques AVANT /:id pour éviter la capture par le paramètre dynamique
 router.get('/active', async (req, res) => {
-    const { ambassadeur_id, chauffeur_id } = req.query;
+    const r = req as AuthedRequest;
+    let { ambassadeur_id, chauffeur_id } = req.query as { ambassadeur_id?: string; chauffeur_id?: string };
+    // Non-admin : le périmètre est TOUJOURS borné à l'identité du token (jamais « toutes les courses »).
+    if (!r.isAdmin) {
+        const ident = await resolveIdentity(r);
+        ambassadeur_id = ident.ambassadeurId ?? undefined;
+        chauffeur_id = ident.chauffeurId ?? undefined;
+        if (!ambassadeur_id && !chauffeur_id) return res.json([]);
+    }
     let sql = `SELECT * FROM courses WHERE statut IN ('recherche','acceptee','en_route','code_valide','en_cours')`;
     const params: any[] = [];
     if (ambassadeur_id) { params.push(ambassadeur_id); sql += ` AND ambassadeur_id = $${params.length}`; }
@@ -86,7 +116,14 @@ router.get('/active', async (req, res) => {
 });
 
 router.get('/historique', async (req, res) => {
-    const { ambassadeur_id } = req.query;
+    const r = req as AuthedRequest;
+    let { ambassadeur_id } = req.query as { ambassadeur_id?: string };
+    // Non-admin : périmètre borné à l'ambassadeur du token (sinon on exposerait l'historique global).
+    if (!r.isAdmin) {
+        const ident = await resolveIdentity(r);
+        ambassadeur_id = ident.ambassadeurId ?? undefined;
+        if (!ambassadeur_id) return res.json([]);
+    }
     let sql = `SELECT * FROM courses WHERE statut IN ('terminee','annulee') ORDER BY date_fin DESC NULLS LAST, date_annulation DESC NULLS LAST LIMIT 100`;
     const params: any[] = [];
     if (ambassadeur_id) {
@@ -111,6 +148,37 @@ router.put('/:id/annuler', async (req, res) => {
 
     const annulePar = raison || 'ambassadeur';
     await query('UPDATE courses SET statut = $1, date_annulation = now(), annule_par = $2 WHERE id = $3', ['annulee', annulePar, req.params.id]);
+
+    // Compensation ambassadeur si code déjà validé (PIVOT JURIDIQUE — specs §1.5)
+    if (course.code_valide_at && course.ambassadeur_id && course.montant && (annulePar === 'chauffeur' || annulePar === 'admin')) {
+        const pts = calculatePoints(Number(course.montant));
+        if (pts > 0) {
+            const ambResult = await query('SELECT points_solde, type_ambassadeur, parrain_id, niveau FROM ambassadeurs WHERE id = $1', [course.ambassadeur_id]);
+            const amb = ambResult.rows[0];
+            if (amb && amb.type_ambassadeur !== 'moral') {
+                const solde_avant = Number(amb.points_solde || 0);
+                const solde_apres = solde_avant + pts;
+                const newLevel = nextAmbassadorLevel(solde_apres);
+                await query('UPDATE ambassadeurs SET points_solde = $1, niveau = $2 WHERE id = $3', [solde_apres, newLevel, course.ambassadeur_id]);
+                await query(
+                    'INSERT INTO points_historique(ambassadeur_id, type, montant, solde_avant, solde_apres, course_id, description) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+                    [course.ambassadeur_id, 'compensation', pts, solde_avant, solde_apres, req.params.id, `Compensation annulation après code validé — course ${course.reference}`]
+                );
+                await query('UPDATE courses SET compensation = true WHERE id = $1', [req.params.id]);
+                // Parrainage paliers sur la compensation
+                if (amb.parrain_id) {
+                    await crediterPaliersParrainage(course.ambassadeur_id, amb.parrain_id, solde_apres, newLevel, req.params.id);
+                }
+                // Vérifier sanctions différées sur le nouveau solde
+                await executerSanctionsEnAttente(course.ambassadeur_id);
+                try {
+                    const tokenRes = await query('SELECT push_token FROM ambassadeurs WHERE id = $1', [course.ambassadeur_id]);
+                    const token = tokenRes.rows[0]?.push_token;
+                    if (token) await sendPushNotification(token, 'Course terminée', `+${pts} points crédités.`, { type: 'COURSE_TERMINEE' });
+                } catch { /* Non bloquant */ }
+            }
+        }
+    }
 
     // Notification CHAUFFEUR_ANNULE à l'ambassadeur si c'est le chauffeur qui annule
     if (annulePar === 'chauffeur' && course.ambassadeur_id) {
@@ -139,6 +207,13 @@ router.put('/:id/annuler', async (req, res) => {
                 "UPDATE utilisateurs SET statut = 'suspendu' WHERE id = (SELECT utilisateur_id FROM ambassadeurs WHERE id = $1)",
                 [course.ambassadeur_id]
             );
+            // Proposition blacklist — confirmation admin obligatoire (specs §9.0)
+            await query(
+                `INSERT INTO blacklist_propositions(ambassadeur_id, motif, nb_annulations, statut)
+                 VALUES ($1, '5 annulations en 30 jours', $2, 'en_attente_admin')
+                 ON CONFLICT (ambassadeur_id) DO UPDATE SET nb_annulations = $2, updated_at = now()`,
+                [course.ambassadeur_id, count]
+            ).catch(() => {}); // table créée via migration
             return res.json({ success: true, sanction: 'suspension' });
         } else if (count >= 3) {
             await query(
@@ -169,6 +244,16 @@ router.post('/reserver', async (req, res) => {
     if (restrictionResv2 && new Date(restrictionResv2) > new Date()) {
         const dateStr = new Date(restrictionResv2).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
         return res.status(403).json({ error: `Commande suspendue jusqu'au ${dateStr}. Trop d'annulations récentes.` });
+    }
+
+    // Vérifier limite 5 courses simultanées
+    const activeLimitResv = await query(
+        `SELECT count(*) AS count FROM courses
+         WHERE ambassadeur_id = $1 AND statut IN ('recherche','acceptee','en_route','code_valide','en_cours')`,
+        [ambassadeur_id]
+    );
+    if (Number(activeLimitResv.rows[0]?.count) >= 5) {
+        return res.status(403).json({ error: 'LIMIT_5_COURSES' });
     }
 
     // Validate 1h minimum delay
@@ -205,7 +290,8 @@ router.post('/reserver', async (req, res) => {
     res.status(201).json(result.rows[0]);
 });
 
-router.post('/chauffeur/valider-code', async (req, res) => {
+router.post('/chauffeur/valider-code', codeLimiter, async (req, res) => {
+    const r = req as AuthedRequest;
     const { course_id, code } = req.body;
     if (!course_id || !code) return res.status(400).json({ error: 'course_id et code requis' });
 
@@ -213,47 +299,20 @@ router.post('/chauffeur/valider-code', async (req, res) => {
     const course = courseResult.rows[0];
     if (!course) return res.status(404).json({ error: 'Course introuvable' });
 
+    // Propriété : seul le chauffeur assigné (ou un admin) peut valider le code pivot de cette course.
+    if (!r.isAdmin) {
+        const ident = await resolveIdentity(r);
+        if (!ident.chauffeurId || course.chauffeur_id !== ident.chauffeurId) {
+            return res.status(403).json({ error: 'Accès refusé' });
+        }
+    }
+
     if (!course.code_validation || course.code_validation !== code) {
         return res.status(400).json({ error: 'Code invalide — contactez l\'Ambassadeur' });
     }
 
     await query('UPDATE courses SET statut = $1, code_valide_at = now() WHERE id = $2', ['code_valide', course_id]);
     res.json({ success: true, courseId: course_id, statut: 'code_valide' });
-});
-
-router.put('/chauffeur/terminer-course', async (req, res) => {
-    const { course_id } = req.body;
-    if (!course_id) return res.status(400).json({ error: 'course_id requis' });
-
-    const courseResult = await query('SELECT * FROM courses WHERE id = $1', [course_id]);
-    const course = courseResult.rows[0];
-    if (!course) return res.status(404).json({ error: 'Course introuvable' });
-
-    if (course.statut === 'terminee') {
-        return res.status(400).json({ error: 'Course déjà terminée' });
-    }
-
-    await query('UPDATE courses SET statut = $1, date_fin = now() WHERE id = $2', ['terminee', course_id]);
-
-    // Créditer les points Ambassadeur UNIQUEMENT si le code pivot a été validé (PIVOT JURIDIQUE)
-    if (course.code_valide_at && course.ambassadeur_id && course.montant) {
-        const pts = calculatePoints(Number(course.montant));
-        if (pts > 0) {
-            const ambResult = await query('SELECT points_solde FROM ambassadeurs WHERE id = $1', [course.ambassadeur_id]);
-            const solde_avant = Number(ambResult.rows[0]?.points_solde || 0);
-            const solde_apres = solde_avant + pts;
-            const newLevel = nextAmbassadorLevel(solde_apres);
-
-            await query('UPDATE ambassadeurs SET points_solde = $1, niveau = $2 WHERE id = $3', [solde_apres, newLevel, course.ambassadeur_id]);
-            await query(
-                'INSERT INTO points_historique(ambassadeur_id, type, montant, solde_avant, solde_apres, course_id, description) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-                [course.ambassadeur_id, 'gain', pts, solde_avant, solde_apres, course_id, `Points gagnés pour la course ${course.reference}`]
-            );
-            await query('UPDATE courses SET points_attribues = $1 WHERE id = $2', [pts, course_id]);
-        }
-    }
-
-    res.json({ success: true });
 });
 
 export default router;

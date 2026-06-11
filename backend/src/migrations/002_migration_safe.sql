@@ -99,11 +99,12 @@ CREATE TABLE IF NOT EXISTS documents_chauffeur (
     id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     chauffeur_id        uuid REFERENCES chauffeurs(id) ON DELETE CASCADE,
     type                doc_type NOT NULL,
-    fichier_recto_url   varchar(500) NOT NULL,
+    fichier_recto_url   varchar(500),
     fichier_verso_url   varchar(500),
     date_expiration     date,
     statut              document_statut NOT NULL DEFAULT 'en_attente',
     valide_par_admin_id uuid,
+    motif_refus         text,
     uploaded_at         timestamptz NOT NULL DEFAULT now()
 );
 
@@ -311,7 +312,7 @@ ALTER TABLE fournisseurs ADD COLUMN IF NOT EXISTS contrat_signe_at       timesta
 -- ─── 5. VALEURS INITIALES (ignorées si déjà présentes) ────────
 INSERT INTO parametres_systeme (cle, valeur, description) VALUES
     ('taux_commission_global',          '20',    'Taux SESAME en pourcentage (variable par admin)'),
-    ('mode_course_immediate',           'true',  'false = reservation uniquement / true = 2 modes actifs'),
+    ('mode_course_immediate',           'false',  'false = reservation uniquement / true = 2 modes actifs'),
     ('delai_minimum_reservation_heures','1',     'Delai minimum en heures avant le depart'),
     ('indemnisation_chauffeur_defaut',  '5.00',  'Montant en EUR pour client absent'),
     ('berline_forfait',                 '12.00', NULL),
@@ -338,3 +339,53 @@ ALTER TABLE echanges              ENABLE ROW LEVEL SECURITY;
 ALTER TABLE blacklist             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages_chat         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE parametres_systeme    ENABLE ROW LEVEL SECURITY;
+
+-- Tables additionnelles
+CREATE TABLE IF NOT EXISTS parrainage_paliers (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    filleul_id uuid REFERENCES ambassadeurs(id) ON DELETE CASCADE,
+    parrain_id uuid REFERENCES ambassadeurs(id) ON DELETE CASCADE,
+    cle varchar(20) NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE(filleul_id, cle)
+);
+
+CREATE TABLE IF NOT EXISTS blacklist_propositions (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    ambassadeur_id uuid REFERENCES ambassadeurs(id) ON DELETE CASCADE UNIQUE,
+    motif text NOT NULL,
+    nb_annulations integer NOT NULL DEFAULT 0,
+    statut varchar(30) NOT NULL DEFAULT 'en_attente_admin',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS commissions_moraux (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    ambassadeur_id uuid REFERENCES ambassadeurs(id) ON DELETE CASCADE,
+    montant numeric(10,2) NOT NULL,
+    ca_mois numeric(10,2) NOT NULL,
+    taux numeric(5,2) NOT NULL,
+    mois_reference varchar(50) NOT NULL,
+    statut varchar(20) NOT NULL DEFAULT 'en_attente',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    vire_at timestamptz
+);
+
+ALTER TABLE documents_chauffeur ADD COLUMN IF NOT EXISTS motif_refus text;
+
+-- Trace des virements de commissions déclenchés par l'admin (specs : « statut versement »).
+-- mois = premier jour du mois concerné. UNIQUE → un seul virement par entreprise et par mois.
+CREATE TABLE IF NOT EXISTS virements_commissions (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    ambassadeur_id uuid REFERENCES ambassadeurs(id) ON DELETE CASCADE,
+    mois date NOT NULL,
+    nb_courses integer NOT NULL DEFAULT 0,
+    ca_brut_ttc numeric(10,2) NOT NULL DEFAULT 0,
+    taux_pct numeric(5,2) NOT NULL,
+    montant_commission numeric(10,2) NOT NULL DEFAULT 0,
+    statut varchar(20) NOT NULL DEFAULT 'verse',
+    date_versement timestamptz NOT NULL DEFAULT now(),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE(ambassadeur_id, mois)
+);

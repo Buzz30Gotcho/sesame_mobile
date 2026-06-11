@@ -1,25 +1,42 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import twilio from 'twilio';
+import nodemailer from 'nodemailer';
+import { randomInt } from 'crypto';
 import { query } from '../db';
 import { stripe } from '../lib/stripeClient';
+import { JWT_SECRET, IS_PROD } from '../config';
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'sesame-secret';
 
-const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+const mailer = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_APP_PASSWORD,
+    },
+});
 
-function toE164(phone: string): string {
-    const digits = phone.replace(/\D/g, '');
-    if (phone.startsWith('+')) return '+' + digits;
-    // Numéro français : 10 chiffres commençant par 0
-    if (digits.length === 10 && digits.startsWith('0')) return '+33' + digits.slice(1);
-    // Numéro sénégalais : 9 chiffres commençant par 7
-    if (digits.length === 9 && digits.startsWith('7')) return '+221' + digits;
-    // Déjà un indicatif sans le +
-    if (digits.length > 10) return '+' + digits;
-    return '+' + digits;
+async function sendResetEmail(to: string, code: string): Promise<void> {
+    if (process.env.EMAIL_DEV_MODE === 'true') {
+        console.log(`[EMAIL DEV] To: ${to} | Code: ${code}`);
+        return;
+    }
+    await mailer.sendMail({
+        from: `SÉSAME <${process.env.GMAIL_USER}>`,
+        to,
+        subject: 'Réinitialisation de votre mot de passe SÉSAME',
+        html: `
+            <div style="font-family:sans-serif;max-width:480px;margin:auto;">
+                <h2 style="color:#C9A84C;">SÉSAME</h2>
+                <p>Voici votre code de réinitialisation :</p>
+                <div style="font-size:36px;font-weight:bold;letter-spacing:12px;text-align:center;padding:24px;background:#f5f5f5;border-radius:8px;">
+                    ${code}
+                </div>
+                <p style="color:#666;font-size:13px;margin-top:16px;">Ce code est valable 15 minutes. Si vous n'avez pas demandé cette réinitialisation, ignorez cet email.</p>
+            </div>
+        `,
+    });
 }
 
 function luhnCheck(num: string): boolean {
@@ -32,20 +49,10 @@ function luhnCheck(num: string): boolean {
     return sum % 10 === 0;
 }
 
-async function sendSMS(to: string, body: string): Promise<void> {
-    if (process.env.SMS_DEV_MODE === 'true') {
-        console.log(`[SMS DEV] To: ${toE164(to)} | Message: ${body}`);
-        return;
-    }
-    await twilioClient.messages.create({
-        from: process.env.TWILIO_PHONE_NUMBER!,
-        to: toE164(to),
-        body,
-    });
-}
 
 function signToken(userId: string) {
-    return jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: '2h' });
+    // 24h : l'app rafraîchit automatiquement le token avant/à son expiration (intercepteur axios).
+    return jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: '24h' });
 }
 
 function parseDateNaissance(dateStr: string | undefined | null): string | null {
@@ -61,7 +68,7 @@ function generateCodeParrainage(): string {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let code = '';
     for (let i = 0; i < 6; i++) {
-        code += chars[Math.floor(Math.random() * chars.length)];
+        code += chars[randomInt(chars.length)];
     }
     return code;
 }
@@ -88,7 +95,8 @@ router.post('/inscription', async (req, res) => {
         vehicule_marque,
         vehicule_modele,
         vehicule_couleur,
-        vehicule_immat
+        vehicule_immat,
+        code_parrainage_parrain,
     } = req.body;
 
     try {
@@ -96,6 +104,9 @@ router.post('/inscription', async (req, res) => {
         if (!email) return res.status(400).json({ error: 'Email obligatoire' });
         if (!telephone) return res.status(400).json({ error: 'Téléphone obligatoire' });
         if (!mot_de_passe) return res.status(400).json({ error: 'Mot de passe obligatoire' });
+        if (mot_de_passe.length < 8) {
+            return res.status(400).json({ error: 'Mot de passe trop court (8 caractères minimum).' });
+        }
 
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
             return res.status(400).json({ error: 'Adresse email invalide.' });
@@ -136,10 +147,11 @@ router.post('/inscription', async (req, res) => {
 
         const hashed = await bcrypt.hash(mot_de_passe, 10);
 
+        const statutInscription = (type === 'ambassadeur' && ambassador_type === 'moral') ? 'suspendu' : 'actif';
         const userResult = await query(
-            `INSERT INTO utilisateurs(type, prenom, nom, email, telephone, mot_de_passe_hash, date_naissance, lieu_naissance, pays_naissance)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-            [type, prenom || '', nom || '', email, telephone, hashed, dateNaissanceISO, lieu_naissance || null, pays_naissance || null]
+            `INSERT INTO utilisateurs(type, prenom, nom, email, telephone, mot_de_passe_hash, date_naissance, lieu_naissance, pays_naissance, statut)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+            [type, prenom || '', nom || '', email, telephone, hashed, dateNaissanceISO, lieu_naissance || null, pays_naissance || null, statutInscription]
         );
 
         const userId = userResult.rows[0].id;
@@ -153,9 +165,21 @@ router.post('/inscription', async (req, res) => {
                 exists = await query('SELECT id FROM ambassadeurs WHERE code_parrainage = $1', [codeParrainage]);
             }
 
+            // Résoudre le parrain si un code de parrainage a été saisi (uniquement Physique)
+            let parrainId: string | null = null;
+            if (code_parrainage_parrain && (ambassador_type === 'physique' || !ambassador_type)) {
+                const parrainRes = await query(
+                    `SELECT a.id FROM ambassadeurs a
+                     JOIN utilisateurs u ON u.id = a.utilisateur_id
+                     WHERE a.code_parrainage = $1 AND a.type_ambassadeur = 'physique' AND u.statut = 'actif'`,
+                    [code_parrainage_parrain.trim().toUpperCase()]
+                );
+                parrainId = parrainRes.rows[0]?.id || null;
+            }
+
             await query(
-                `INSERT INTO ambassadeurs(utilisateur_id, type_ambassadeur, etablissement, metier, siret, iban, responsable_legal_nom, code_parrainage)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                `INSERT INTO ambassadeurs(utilisateur_id, type_ambassadeur, etablissement, metier, siret, iban, responsable_legal_nom, code_parrainage, parrain_id)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
                 [
                     userId,
                     ambassador_type || 'physique',
@@ -164,7 +188,8 @@ router.post('/inscription', async (req, res) => {
                     siret || null,
                     iban || null,
                     ambassador_type === 'moral' ? `${prenom} ${nom}` : null,
-                    codeParrainage
+                    codeParrainage,
+                    parrainId,
                 ]
             );
         } else if (type === 'chauffeur') {
@@ -215,6 +240,7 @@ router.post('/connexion', async (req, res) => {
                 u.type AS utilisateur_type,
                 a.id AS ambassadeur_id,
                 a.type_ambassadeur,
+                a.contrat_moral_signe,
                 c.id AS chauffeur_id,
                 (SELECT id FROM sous_comptes_employes WHERE utilisateur_id = u.id LIMIT 1) AS sous_compte_id
          FROM utilisateurs u
@@ -225,14 +251,22 @@ router.post('/connexion', async (req, res) => {
     );
 
     const user = result.rows[0];
-    console.log('[connexion] email:', email, 'user_id:', user?.id, 'ambassadeur_id:', user?.ambassadeur_id, 'prenom:', user?.prenom);
+    // En prod : ne pas loguer de données personnelles (PII / RGPD). Log de débogage en dev uniquement.
+    if (!IS_PROD) {
+        console.log('[connexion] email:', email, 'user_id:', user?.id, 'ambassadeur_id:', user?.ambassadeur_id);
+    }
     if (!user || !(await bcrypt.compare(mot_de_passe, user.mot_de_passe_hash))) {
         return res.status(401).json({ error: 'Identifiants invalides' });
     }
     if (user.statut === 'suspendu') {
-        const msg = user.utilisateur_type === 'chauffeur'
-            ? 'Compte suspendu.\nRéglez votre facture depuis l\'app pour réactiver votre accès.'
-            : 'Votre compte a été suspendu.\nContactez support@sesame-pro.com pour plus d\'informations.';
+        let msg: string;
+        if (user.type_ambassadeur === 'moral' && !user.contrat_moral_signe) {
+            msg = 'Votre compte entreprise est en attente de validation par notre équipe.\nVous serez contacté dès que votre dossier sera examiné.';
+        } else if (user.utilisateur_type === 'chauffeur') {
+            msg = 'Compte suspendu.\nRéglez votre facture depuis l\'app pour réactiver votre accès.';
+        } else {
+            msg = 'Votre compte a été suspendu.\nContactez support@sesame-pro.com pour plus d\'informations.';
+        }
         return res.status(403).json({ error: msg });
     }
     if (user.statut === 'blackliste') {
@@ -255,37 +289,39 @@ router.post('/deconnexion', async (req, res) => {
 });
 
 router.post('/mot-de-passe-oublie', async (req, res) => {
-    const { telephone } = req.body;
-    if (!telephone) return res.status(400).json({ error: 'Numéro de téléphone requis' });
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email requis' });
 
-    const result = await query('SELECT id, prenom FROM utilisateurs WHERE telephone = $1', [telephone]);
-    // Réponse identique que le compte existe ou non (sécurité)
+    const result = await query('SELECT id FROM utilisateurs WHERE LOWER(email) = LOWER($1)', [email]);
     if (result.rows.length === 0) {
         return res.json({ message: 'Code envoyé si le compte existe.' });
     }
 
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const expires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+    const code = randomInt(100000, 1000000).toString();
+    const expires = new Date(Date.now() + 15 * 60 * 1000);
 
     await query(
-        'UPDATE utilisateurs SET reset_code = $1, reset_code_expires_at = $2 WHERE telephone = $3',
-        [code, expires, telephone]
+        'UPDATE utilisateurs SET reset_code = $1, reset_code_expires_at = $2 WHERE LOWER(email) = LOWER($3)',
+        [code, expires, email]
     );
 
-    await sendSMS(telephone, `SÉSAME - Votre code de réinitialisation : ${code}\nValable 15 minutes.`);
+    await sendResetEmail(email, code);
 
     res.json({ message: 'Code envoyé si le compte existe.' });
 });
 
 router.post('/reinitialiser-mot-de-passe', async (req, res) => {
-    const { telephone, code, nouveau_mot_de_passe } = req.body;
-    if (!telephone || !code || !nouveau_mot_de_passe) {
-        return res.status(400).json({ error: 'Téléphone, code et nouveau mot de passe requis' });
+    const { email, code, nouveau_mot_de_passe } = req.body;
+    if (!email || !code || !nouveau_mot_de_passe) {
+        return res.status(400).json({ error: 'Email, code et nouveau mot de passe requis' });
+    }
+    if (nouveau_mot_de_passe.length < 8) {
+        return res.status(400).json({ error: 'Mot de passe trop court (8 caractères minimum).' });
     }
 
     const result = await query(
-        'SELECT id, reset_code, reset_code_expires_at FROM utilisateurs WHERE telephone = $1',
-        [telephone]
+        'SELECT id, reset_code, reset_code_expires_at FROM utilisateurs WHERE LOWER(email) = LOWER($1)',
+        [email]
     );
 
     const user = result.rows[0];
@@ -298,8 +334,8 @@ router.post('/reinitialiser-mot-de-passe', async (req, res) => {
 
     const hashed = await bcrypt.hash(nouveau_mot_de_passe, 10);
     await query(
-        'UPDATE utilisateurs SET mot_de_passe_hash = $1, reset_code = NULL, reset_code_expires_at = NULL WHERE telephone = $2',
-        [hashed, telephone]
+        'UPDATE utilisateurs SET mot_de_passe_hash = $1, reset_code = NULL, reset_code_expires_at = NULL WHERE LOWER(email) = LOWER($2)',
+        [hashed, email]
     );
 
     res.json({ message: 'Mot de passe réinitialisé.' });
@@ -310,7 +346,13 @@ router.post('/refresh', async (req, res) => {
     if (!authHeader) return res.status(401).json({ error: 'Token requis' });
     const token = authHeader.split(' ')[1];
     try {
-        const payload = jwt.verify(token, JWT_SECRET) as { sub: string };
+        // On accepte un token EXPIRÉ (on vérifie juste la signature) pour pouvoir le rafraîchir.
+        // Garde-fou : un token plus vieux que 30 jours ne peut plus être rafraîchi → reconnexion forcée.
+        const payload = jwt.verify(token, JWT_SECRET, { ignoreExpiration: true }) as { sub: string; iat?: number };
+        const MAX_AGE_S = 30 * 24 * 3600;
+        if (payload.iat && Date.now() / 1000 - payload.iat > MAX_AGE_S) {
+            return res.status(401).json({ error: 'Session expirée, reconnexion requise' });
+        }
         const result = await query(
             `SELECT u.id,
                     u.type AS utilisateur_type,

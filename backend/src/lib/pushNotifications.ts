@@ -20,7 +20,8 @@ export async function sendPushNotification(
     token: string,
     title: string,
     body: string,
-    data?: Record<string, unknown>
+    data?: Record<string, unknown>,
+    persistent = false
 ): Promise<void> {
     if (!token) return;
 
@@ -32,6 +33,7 @@ export async function sendPushNotification(
             body,
             data: data ?? {},
             sound: 'default',
+            ...(persistent ? { sticky: true, priority: 'high' } : {}),
         });
         return new Promise((resolve) => {
             const req = https.request(
@@ -58,8 +60,16 @@ export async function sendPushNotification(
             token,
             notification: { title, body },
             data: data ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])) : {},
-            android: { priority: 'high', notification: { sound: 'default' } },
-            apns: { payload: { aps: { sound: 'default' } } },
+            android: {
+                priority: 'high',
+                notification: {
+                    sound: 'default',
+                    ...(persistent ? { ongoing: true, sticky: true } : {}),
+                },
+            },
+            apns: {
+                payload: { aps: { sound: 'default', ...(persistent ? { 'content-available': 1 } : {}) } },
+            },
         });
     } catch {
         // Non bloquant

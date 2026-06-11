@@ -22,10 +22,17 @@ const AMBASSADOR_NAV_FULL: NavItem[] = [
     { label: 'Profil', icon: '👤', screen: 'AmbassadorProfil' },
 ];
 
+const AMBASSADOR_NAV_MORAL: NavItem[] = [
+    { label: 'Accueil', icon: '🏠', screen: 'AmbassadorAccueil' },
+    { label: 'Commander', icon: '🚗', screen: 'AmbassadorHome' },
+    { label: 'Commissions', icon: '💶', screen: 'AmbassadorCommissions' },
+    { label: 'Équipe', icon: '👥', screen: 'AmbassadorEquipe' },
+    { label: 'Profil', icon: '👤', screen: 'AmbassadorProfil' },
+];
+
 const AMBASSADOR_NAV_SOUS_COMPTE: NavItem[] = [
     { label: 'Accueil', icon: '🏠', screen: 'AmbassadorAccueil' },
-    { label: 'Courses', icon: '🚗', screen: 'AmbassadorHome' },
-    { label: 'Niveaux', icon: '🏆', screen: 'AmbassadorNiveaux' },
+    { label: 'Commander', icon: '🚗', screen: 'AmbassadorHome' },
     { label: 'Profil', icon: '👤', screen: 'AmbassadorProfil' },
 ];
 
@@ -43,14 +50,16 @@ type Props = {
 export default function BottomNav({ role }: Props) {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const route = useRoute();
-    const { isSousCompte } = useAuth();
+    const { isSousCompte, typeAmbassadeur } = useAuth();
     const { colors } = useTheme();
     const insets = useSafeAreaInsets();
     const styles = useMemo(() => makeStyles(colors), [colors]);
 
     let items: NavItem[];
     if (role === 'ambassadeur') {
-        items = isSousCompte ? AMBASSADOR_NAV_SOUS_COMPTE : AMBASSADOR_NAV_FULL;
+        if (isSousCompte) items = AMBASSADOR_NAV_SOUS_COMPTE;
+        else if (typeAmbassadeur === 'moral') items = AMBASSADOR_NAV_MORAL;
+        else items = AMBASSADOR_NAV_FULL;
     } else {
         items = CHAUFFEUR_NAV;
     }
