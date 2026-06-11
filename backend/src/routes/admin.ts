@@ -26,15 +26,22 @@ router.post('/login', async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email et mot de passe requis' });
     const adminEmail = process.env.ADMIN_EMAIL;
-    const adminPassword = process.env.ADMIN_PASSWORD;
-    if (!adminEmail || !adminPassword) {
-        console.error('[admin/login] ADMIN_EMAIL ou ADMIN_PASSWORD non défini — login admin désactivé.');
+    const adminPasswordHash = process.env.ADMIN_PASSWORD_HASH;
+    const adminPasswordPlain = process.env.ADMIN_PASSWORD; // legacy (clair) — toléré le temps de migrer
+    if (!adminEmail || (!adminPasswordHash && !adminPasswordPlain)) {
+        console.error('[admin/login] ADMIN_EMAIL ou ADMIN_PASSWORD_HASH non défini — login admin désactivé.');
         return res.status(500).json({ error: 'Configuration serveur incomplète' });
     }
-    if (!safeEqual(email, adminEmail) || !safeEqual(password, adminPassword)) {
+    // Email comparé à temps constant. Mot de passe vérifié contre un hash bcrypt (ADMIN_PASSWORD_HASH,
+    // recommandé) ou, à défaut, contre la valeur en clair héritée (ADMIN_PASSWORD).
+    const emailOk = safeEqual(email, adminEmail);
+    const passwordOk = adminPasswordHash
+        ? await bcrypt.compare(password, adminPasswordHash)
+        : safeEqual(password, adminPasswordPlain as string);
+    if (!emailOk || !passwordOk) {
         return res.status(401).json({ error: 'Identifiants incorrects' });
     }
-    const token = jwt.sign({ sub: 'admin', role: 'admin' }, JWT_SECRET, { expiresIn: '8h' });
+    const token = jwt.sign({ sub: 'admin', role: 'admin' }, JWT_SECRET, { expiresIn: '4h' });
     res.json({ token });
 });
 

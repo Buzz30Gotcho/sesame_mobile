@@ -1,6 +1,7 @@
 import express from 'express';
 import { query } from '../db';
 import { ownAmbassadeurParam } from '../middleware/auth';
+import { IS_PROD } from '../config';
 
 const router = express.Router();
 
@@ -129,7 +130,10 @@ router.get('/:id/dashboard', async (req, res) => {
         [req.params.id]
     );
 
-    console.log('[dashboard] id:', req.params.id, 'rows:', profileResult.rows.length, 'data:', profileResult.rows[0]);
+    // En prod : pas de log de données personnelles (PII / RGPD).
+    if (!IS_PROD) {
+        console.log('[dashboard] id:', req.params.id, 'rows:', profileResult.rows.length);
+    }
 
     if (!profileResult.rows.length) {
         return res.status(404).json({ error: 'Ambassadeur introuvable' });

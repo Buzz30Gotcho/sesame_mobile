@@ -17,7 +17,7 @@ import chauffeursRoutes from './routes/chauffeurs';
 import adminRoutes from './routes/admin';
 import stripeWebhookRoutes from './routes/stripeWebhook';
 import { requireAuth } from './middleware/auth';
-import { authLimiter, adminLimiter } from './middleware/rateLimit';
+import { authLimiter, adminLimiter, inscriptionLimiter } from './middleware/rateLimit';
 
 const app = express();
 
@@ -83,6 +83,8 @@ app.use(express.json());
 app.use('/api/auth/connexion', authLimiter);
 app.use('/api/auth/mot-de-passe-oublie', authLimiter);
 app.use('/api/auth/reinitialiser-mot-de-passe', authLimiter);
+// Anti-spam sur la création de comptes.
+app.use('/api/auth/inscription', inscriptionLimiter);
 app.use('/api/auth', authRoutes);
 // Anti-brute-force sur le login admin (compte le plus privilégié).
 app.use('/api/admin/login', adminLimiter);

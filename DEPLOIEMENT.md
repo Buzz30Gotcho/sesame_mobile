@@ -15,7 +15,8 @@ Domaine officiel (specs) : **`sesame-pro.com`** — page fournisseur : **`sesame
 |---|---|---|
 | `JWT_SECRET` | Signe les tokens de connexion | **≥ 32 caractères aléatoires** (le serveur refuse de démarrer sinon). Générer : `openssl rand -base64 48` |
 | `ADMIN_EMAIL` | Identifiant admin | — |
-| `ADMIN_PASSWORD` | Mot de passe admin (stocké en clair dans l'env) | **long et aléatoire** |
+| `ADMIN_PASSWORD_HASH` | Mot de passe admin **haché (bcrypt)** | Générer : `cd backend && npm run genhash -- "MotDePasse"`. Le clair n'est jamais stocké. Pour le changer, relancer la commande et remplacer la valeur. |
+| `ADMIN_PASSWORD` | *(Hérité)* mot de passe admin en clair | **À ne plus utiliser** — toléré seulement si `ADMIN_PASSWORD_HASH` est absent. À supprimer une fois le hash en place. |
 | `NODE_ENV` | Mode production | `production` (masque les erreurs 500, coupe les logs PII) |
 
 ### 🟠 Connexions externes (obligatoires)

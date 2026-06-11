@@ -356,6 +356,7 @@ router.post('/refresh', async (req, res) => {
         const result = await query(
             `SELECT u.id,
                     u.type AS utilisateur_type,
+                    u.statut,
                     a.id AS ambassadeur_id,
                     a.type_ambassadeur,
                     c.id AS chauffeur_id,
@@ -368,6 +369,11 @@ router.post('/refresh', async (req, res) => {
         );
         const user = result.rows[0];
         if (!user) return res.status(401).json({ error: 'Utilisateur introuvable' });
+        // Sécurité : un compte suspendu / blacklisté ne doit pas pouvoir renouveler son token.
+        // On force la reconnexion → /connexion renverra le message détaillé adapté à son statut.
+        if (user.statut !== 'actif') {
+            return res.status(401).json({ error: 'Compte non actif, reconnexion requise' });
+        }
         res.json({
             token: signToken(user.id),
             userId: user.id,
