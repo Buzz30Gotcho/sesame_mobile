@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, StatusBar, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, StatusBar, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -21,6 +21,7 @@ export default function AmbassadorCommissionsScreen() {
     const [mois, setMois] = useState<CommissionMois[]>([]);
     const [tauxPct, setTauxPct] = useState(10);
     const [totalGlobal, setTotalGlobal] = useState(0);
+    const [selectedYear, setSelectedYear] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
     // Confidentialité (specs) : commissions réservées au responsable légal (Moral, compte principal).
@@ -40,10 +41,16 @@ export default function AmbassadorCommissionsScreen() {
     const moisCourant = new Date().toISOString().slice(0, 7);
     const commissionMoisCourant = mois.find(m => m.mois === moisCourant);
 
-    const formatMois = (moisStr: string) => {
+    const formatMoisMois = (moisStr: string) => {
         const [y, m] = moisStr.split('-');
-        return new Date(parseInt(y), parseInt(m) - 1).toLocaleDateString(locale, { month: 'short', year: 'numeric' });
+        return new Date(parseInt(y), parseInt(m) - 1).toLocaleDateString(locale, { month: 'long' });
     };
+
+    // Sélecteur d'année : la liste mensuelle est filtrée par année pour éviter un scroll infini.
+    const years = Array.from(new Set(mois.map(m => m.mois.slice(0, 4)))).sort((a, b) => b.localeCompare(a));
+    const effectiveYear = selectedYear && years.includes(selectedYear) ? selectedYear : years[0];
+    const moisAnnee = mois.filter(m => m.mois.startsWith(`${effectiveYear}-`));
+    const totalAnnee = moisAnnee.reduce((s, m) => s + Number(m.commission ?? 0), 0);
 
     if (!isAllowed) {
         return <AccessDenied message="Les commissions ne sont visibles que par le responsable légal de l'entreprise." />;
@@ -76,10 +83,30 @@ export default function AmbassadorCommissionsScreen() {
                         {mois.length > 0 && (
                             <View style={styles.section}>
                                 <Text style={styles.sectionTitle}>{t('historique_12_mois')}</Text>
-                                {mois.map(m => (
+
+                                {/* Sélecteur d'année (affiché si plusieurs années) */}
+                                {years.length > 1 && (
+                                    <ScrollView
+                                        horizontal
+                                        showsHorizontalScrollIndicator={false}
+                                        contentContainerStyle={styles.yearBar}
+                                    >
+                                        {years.map(y => (
+                                            <TouchableOpacity
+                                                key={y}
+                                                style={[styles.yearChip, y === effectiveYear && styles.yearChipActive]}
+                                                onPress={() => setSelectedYear(y)}
+                                            >
+                                                <Text style={[styles.yearChipText, y === effectiveYear && styles.yearChipTextActive]}>{y}</Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </ScrollView>
+                                )}
+
+                                {moisAnnee.map(m => (
                                     <View key={m.mois} style={styles.row}>
                                         <View>
-                                            <Text style={styles.rowMois}>{formatMois(m.mois)}</Text>
+                                            <Text style={styles.rowMois}>{formatMoisMois(m.mois)}</Text>
                                             <Text style={styles.rowSub}>{t('courses_ca').replace('{nb}', String(m.nb_courses)).replace('{ca}', Number(m.ca_brut_ttc).toFixed(2))}</Text>
                                         </View>
                                         <Text style={styles.rowCommission}>
@@ -87,9 +114,16 @@ export default function AmbassadorCommissionsScreen() {
                                         </Text>
                                     </View>
                                 ))}
+
+                                {/* Total de l'année sélectionnée */}
                                 <View style={styles.totalRow}>
-                                    <Text style={styles.totalLabel}>{t('total_cumule')}</Text>
-                                    <Text style={styles.totalValue}>{totalGlobal.toFixed(2)} €</Text>
+                                    <Text style={styles.totalLabel}>Total {effectiveYear}</Text>
+                                    <Text style={styles.totalValue}>{totalAnnee.toFixed(2)} €</Text>
+                                </View>
+                                {/* Total tous mois confondus */}
+                                <View style={styles.grandTotalRow}>
+                                    <Text style={styles.grandTotalLabel}>{t('total_cumule')}</Text>
+                                    <Text style={styles.grandTotalValue}>{totalGlobal.toFixed(2)} €</Text>
                                 </View>
                             </View>
                         )}
@@ -135,7 +169,21 @@ function makeStyles(colors: typeof Colors.nocturne) {
             alignItems: 'center', paddingTop: 12, marginTop: 4,
         },
         totalLabel: { fontSize: 14, fontWeight: '600', color: colors.textPrimary },
-        totalValue: { fontSize: 18, fontWeight: '700', color: Colors.brand.gold },
+        totalValue: { fontSize: 18, fontWeight: '700', color: colors.textPrimary },
+        yearBar: { gap: 8, paddingBottom: 14 },
+        yearChip: {
+            paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20,
+            backgroundColor: colors.background, borderWidth: 1, borderColor: '#1E1E30',
+        },
+        yearChipActive: { backgroundColor: Colors.brand.gold, borderColor: Colors.brand.gold },
+        yearChipText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
+        yearChipTextActive: { color: '#101018' },
+        grandTotalRow: {
+            flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+            paddingTop: 12, marginTop: 8, borderTopWidth: 1, borderTopColor: '#1E1E30',
+        },
+        grandTotalLabel: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
+        grandTotalValue: { fontSize: 18, fontWeight: '700', color: Colors.brand.gold },
         empty: { textAlign: 'center', color: colors.textSecondary, marginTop: 40 },
     });
 }
