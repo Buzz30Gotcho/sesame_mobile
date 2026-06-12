@@ -7,6 +7,7 @@ import { clearDashboardCache } from './AmbassadorAccueilScreen';
 import { useAuth } from '../context/AuthContext';
 import { registerForPushNotifications } from '../services/notifications';
 import { Colors, Typography } from '../theme';
+import PasswordInput from '../components/PasswordInput';
 import type { RootStackParamList, UserRole } from '../types';
 
 export default function LoginScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'Login'>) {
@@ -172,11 +173,10 @@ export default function LoginScreen({ navigation }: NativeStackScreenProps<RootS
                                 value={email}
                                 onChangeText={setEmail}
                             />
-                            <TextInput
+                            <PasswordInput
                                 style={styles.input}
                                 placeholder="Mot de passe"
                                 placeholderTextColor={Colors.nocturne.textSecondary}
-                                secureTextEntry
                                 value={password}
                                 onChangeText={setPassword}
                             />
@@ -252,11 +252,10 @@ export default function LoginScreen({ navigation }: NativeStackScreenProps<RootS
                                     />
                                 )}
                                 {resetStep === 3 && (
-                                    <TextInput
+                                    <PasswordInput
                                         style={styles.modalInput}
                                         placeholder="Nouveau mot de passe"
                                         placeholderTextColor={Colors.nocturne.textSecondary}
-                                        secureTextEntry
                                         value={resetNewPassword}
                                         onChangeText={setResetNewPassword}
                                     />

@@ -14,6 +14,7 @@ import { getEquipe, addEquipeEmployee, updateEmployeStatut } from '../services/a
 import { Colors } from '../theme';
 import BottomNav from '../components/BottomNav';
 import AccessDenied from '../components/AccessDenied';
+import PasswordInput from '../components/PasswordInput';
 import type { RootStackParamList, EquipeEmployee } from '../types';
 
 export default function AmbassadorEquipeScreen() {
@@ -166,14 +167,22 @@ export default function AmbassadorEquipeScreen() {
                             ].map(f => (
                                 <View key={f.label} style={styles.field}>
                                     <Text style={styles.fieldLabel}>{f.label}</Text>
-                                    <TextInput
-                                        style={styles.input}
-                                        value={f.value}
-                                        onChangeText={f.set}
-                                        keyboardType={f.keyboard}
-                                        secureTextEntry={f.secure}
-                                        placeholderTextColor={colors.textSecondary}
-                                    />
+                                    {f.secure ? (
+                                        <PasswordInput
+                                            style={styles.input}
+                                            value={f.value}
+                                            onChangeText={f.set}
+                                            placeholderTextColor={colors.textSecondary}
+                                        />
+                                    ) : (
+                                        <TextInput
+                                            style={styles.input}
+                                            value={f.value}
+                                            onChangeText={f.set}
+                                            keyboardType={f.keyboard}
+                                            placeholderTextColor={colors.textSecondary}
+                                        />
+                                    )}
                                 </View>
                             ))}
                             <View style={styles.modalBtns}>

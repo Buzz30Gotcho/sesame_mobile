@@ -5,6 +5,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
 import { register, setAuthToken, uploadChauffeurDocument } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import PasswordInput from '../components/PasswordInput';
 import type { RootStackParamList, UserRole } from '../types';
 
 type Step = 1 | 2 | 3 | 4;
@@ -406,7 +407,7 @@ export default function RegisterScreen({ navigation, route }: NativeStackScreenP
                         <TextInput style={styles.input} placeholder="Nom" placeholderTextColor="#6A6680" value={nom} onChangeText={setNom} />
                         <TextInput style={styles.input} placeholder="Email" placeholderTextColor="#6A6680" keyboardType="email-address" autoCapitalize="none" value={email} onChangeText={setEmail} />
                         <TextInput style={styles.input} placeholder="Téléphone" placeholderTextColor="#6A6680" keyboardType="phone-pad" value={telephone} onChangeText={setTelephone} />
-                        <TextInput style={styles.input} placeholder="Mot de passe" placeholderTextColor="#6A6680" secureTextEntry value={password} onChangeText={setPassword} />
+                        <PasswordInput style={styles.input} placeholder="Mot de passe" placeholderTextColor="#6A6680" value={password} onChangeText={setPassword} />
 
                         <Text style={styles.sectionLabel}>Informations complémentaires</Text>
                         <TextInput style={styles.input} placeholder="Date de naissance (JJ/MM/AAAA)" placeholderTextColor="#6A6680" value={dateNaissance} onChangeText={setDateNaissance} />
@@ -460,7 +461,7 @@ export default function RegisterScreen({ navigation, route }: NativeStackScreenP
                     <Text style={styles.fieldLabel}>Téléphone *</Text>
                     <TextInput style={styles.input} placeholder="0612345678" placeholderTextColor="#6A6680" keyboardType="phone-pad" value={telephone} onChangeText={setTelephone} />
                     <Text style={styles.fieldLabel}>Mot de passe *</Text>
-                    <TextInput style={styles.input} placeholder="8 caractères minimum" placeholderTextColor="#6A6680" secureTextEntry value={password} onChangeText={setPassword} />
+                    <PasswordInput style={styles.input} placeholder="8 caractères minimum" placeholderTextColor="#6A6680" value={password} onChangeText={setPassword} />
 
                     <View style={styles.moralInfoBox}>
                         <Text style={styles.moralInfoText}>
@@ -490,7 +491,7 @@ export default function RegisterScreen({ navigation, route }: NativeStackScreenP
                 <TextInput style={styles.input} placeholder="Nom" placeholderTextColor="#6A6680" value={nom} onChangeText={setNom} />
                 <TextInput style={styles.input} placeholder="Email" placeholderTextColor="#6A6680" keyboardType="email-address" autoCapitalize="none" value={email} onChangeText={setEmail} />
                 <TextInput style={styles.input} placeholder="Téléphone" placeholderTextColor="#6A6680" keyboardType="phone-pad" value={telephone} onChangeText={setTelephone} />
-                <TextInput style={styles.input} placeholder="Mot de passe" placeholderTextColor="#6A6680" secureTextEntry value={password} onChangeText={setPassword} />
+                <PasswordInput style={styles.input} placeholder="Mot de passe" placeholderTextColor="#6A6680" value={password} onChangeText={setPassword} />
                 
                 <Text style={styles.sectionLabel}>Informations complémentaires</Text>
                 <TextInput style={styles.input} placeholder="Date de naissance (JJ/MM/AAAA)" placeholderTextColor="#6A6680" value={dateNaissance} onChangeText={setDateNaissance} />
