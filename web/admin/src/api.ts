@@ -237,4 +237,17 @@ export const getChatMessages = (courseId: number) =>
 export const sendChatMessage = (courseId: number, contenu: string) =>
   api.post(`/chat/${courseId}/messages`, { contenu, role: 'admin' }).then(r => r.data);
 
+export interface FournisseurRow {
+  id: string;
+  nom_societe: string;
+  statut: string;
+  contrat_signe: boolean;
+  bloque: boolean;
+  legal_email: string | null;
+}
+export const getFournisseurs = () =>
+  api.get<FournisseurRow[]>('/admin/fournisseurs').then(r => r.data);
+export const envoyerContratFournisseur = (id: string) =>
+  api.post<{ success: boolean; message?: string }>(`/admin/fournisseurs/${id}/envoyer-contrat`).then(r => r.data);
+
 export default api;

@@ -6,6 +6,7 @@ import { query } from '../db';
 import { sendPushNotification } from '../lib/pushNotifications';
 
 import { JWT_SECRET } from '../config';
+import { isYousignConfigured, envoyerContratFournisseur } from '../lib/yousignClient';
 
 const router = express.Router();
 
@@ -749,6 +750,29 @@ router.put('/fournisseurs/:id', async (req, res) => {
         ]
     );
     res.json({ success: true });
+});
+
+// Envoyer le contrat à signer au fournisseur via Yousign (specs §6).
+// Signataire unique = le responsable légal. La boutique se débloque au webhook « signé ».
+router.post('/fournisseurs/:id/envoyer-contrat', async (req, res) => {
+    const r = await query(
+        'SELECT id, nom_societe, legal_prenom, legal_nom, legal_email, legal_telephone FROM fournisseurs WHERE id = $1',
+        [req.params.id]
+    );
+    const f = r.rows[0];
+    if (!f) return res.status(404).json({ error: 'Fournisseur introuvable' });
+    if (!f.legal_email) {
+        return res.status(400).json({ error: "Renseignez l'email du responsable légal avant d'envoyer le contrat." });
+    }
+    if (!isYousignConfigured()) {
+        return res.status(503).json({ error: 'Signature électronique non configurée (YOUSIGN_API_KEY + contrat PDF). Validez le contrat manuellement en attendant.' });
+    }
+    try {
+        await envoyerContratFournisseur(f);
+        res.json({ success: true, message: `Contrat envoyé à ${f.legal_email}.` });
+    } catch (e: any) {
+        res.status(502).json({ error: `Échec de l'envoi Yousign : ${e.message}` });
+    }
 });
 
 // Régénérer le code secret d'un fournisseur

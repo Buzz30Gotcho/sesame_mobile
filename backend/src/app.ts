@@ -16,6 +16,7 @@ import chatRoutes from './routes/chat';
 import chauffeursRoutes from './routes/chauffeurs';
 import adminRoutes from './routes/admin';
 import stripeWebhookRoutes from './routes/stripeWebhook';
+import yousignWebhookRoutes from './routes/yousignWebhook';
 import { requireAuth } from './middleware/auth';
 import { authLimiter, adminLimiter, inscriptionLimiter } from './middleware/rateLimit';
 
@@ -75,8 +76,9 @@ app.use((req, _res, next) => {
     }
     next();
 });
-// Webhook Stripe doit recevoir le corps brut — enregistré avant express.json()
+// Webhooks (corps brut requis pour vérifier les signatures) — enregistrés avant express.json()
 app.use('/api/stripe', stripeWebhookRoutes);
+app.use('/api/yousign', yousignWebhookRoutes);
 app.use(express.json());
 
 // Anti-brute-force sur les points d'authentification sensibles.
