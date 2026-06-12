@@ -230,20 +230,9 @@ router.get('/:id/dashboard', async (req, res) => {
         `SELECT
             count(*) FILTER (WHERE statut = 'terminee' AND date_fin > now() - interval '7 days') AS courses_semaine,
             count(*) FILTER (WHERE statut = 'terminee' AND date_fin >= date_trunc('month', now())) AS courses_mois,
-            count(*) FILTER (WHERE statut = 'terminee') AS courses_total,
             COALESCE(sum(points_attribues) FILTER (WHERE statut = 'terminee' AND date_fin > now() - interval '7 days'), 0) AS points_semaine
          FROM courses
          WHERE ambassadeur_id = $1`,
-        [req.params.id]
-    );
-
-    // Historique récent : 5 dernières courses terminées (pour la vue employé notamment).
-    const recentCoursesResult = await query(
-        `SELECT id, reference, adresse_depart, adresse_destination, montant, date_fin
-         FROM courses
-         WHERE ambassadeur_id = $1 AND statut = 'terminee'
-         ORDER BY date_fin DESC NULLS LAST
-         LIMIT 5`,
         [req.params.id]
     );
 
@@ -252,7 +241,6 @@ router.get('/:id/dashboard', async (req, res) => {
     const nbAnnulations30j = Number(annulationsResult.rows[0]?.count || 0);
     const coursesSemaine = Number(weeklyStatsResult.rows[0]?.courses_semaine || 0);
     const coursesMois = Number(weeklyStatsResult.rows[0]?.courses_mois || 0);
-    const coursesTotal = Number(weeklyStatsResult.rows[0]?.courses_total || 0);
     const pointsSemaine = Number(weeklyStatsResult.rows[0]?.points_semaine || 0);
 
     res.json({
@@ -268,9 +256,7 @@ router.get('/:id/dashboard', async (req, res) => {
         nb_annulations_30j: nbAnnulations30j,
         courses_semaine: coursesSemaine,
         courses_mois: coursesMois,
-        courses_total: coursesTotal,
         points_semaine: pointsSemaine,
-        recent_courses: recentCoursesResult.rows,
         next_level: nextLevel,
         next_level_target: nextLevelTarget,
         points_to_next_level: pointsToNextLevel,

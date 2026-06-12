@@ -32,7 +32,7 @@ const AMBASSADOR_NAV_MORAL: NavItem[] = [
 
 const AMBASSADOR_NAV_SOUS_COMPTE: NavItem[] = [
     { label: 'Accueil', icon: '🏠', screen: 'AmbassadorAccueil' },
-    { label: 'Commander', icon: '🚗', screen: 'AmbassadorHome' },
+    { label: 'Mes courses', icon: '🚗', screen: 'AmbassadorHome' },
     { label: 'Profil', icon: '👤', screen: 'AmbassadorProfil' },
 ];
 

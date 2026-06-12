@@ -117,15 +117,6 @@ export type ActiveCourse = {
     vehicule_immat?: string;
 };
 
-export type RecentCourse = {
-    id: string;
-    reference: string;
-    adresse_depart?: string;
-    adresse_destination?: string;
-    montant?: number;
-    date_fin?: string;
-};
-
 export type AmbassadorDashboard = {
     ambassadeur_id: string;
     prenom: string;
@@ -139,13 +130,11 @@ export type AmbassadorDashboard = {
     nb_annulations_30j: number;
     courses_semaine: number;
     courses_mois: number;
-    courses_total: number;
     points_semaine: number;
     next_level?: string | null;
     points_to_next_level: number;
     next_level_target?: number | null;
     active_courses: ActiveCourse[];
-    recent_courses?: RecentCourse[];
 };
 
 export type ChauffeurDashboard = {
