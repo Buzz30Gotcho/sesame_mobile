@@ -375,8 +375,7 @@ router.get('/:id/commissions', async (req, res) => {
            AND c.code_valide_at IS NOT NULL
            AND c.date_fin IS NOT NULL
          GROUP BY date_trunc('month', c.date_fin)
-         ORDER BY date_trunc('month', c.date_fin) DESC
-         LIMIT 12`,
+         ORDER BY date_trunc('month', c.date_fin) DESC`,
         [tauxPct, req.params.id]
     );
 
