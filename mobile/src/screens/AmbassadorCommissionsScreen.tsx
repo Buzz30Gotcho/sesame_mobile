@@ -9,11 +9,12 @@ import { useLang } from '../context/LanguageContext';
 import { getCommissions } from '../services/api';
 import { Colors } from '../theme';
 import BottomNav from '../components/BottomNav';
+import AccessDenied from '../components/AccessDenied';
 import type { RootStackParamList, CommissionMois } from '../types';
 
 export default function AmbassadorCommissionsScreen() {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-    const { ambassadorId } = useAuth();
+    const { ambassadorId, typeAmbassadeur, isSousCompte } = useAuth();
     const { colors } = useTheme();
     const { t, locale } = useLang();
     const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -21,8 +22,11 @@ export default function AmbassadorCommissionsScreen() {
     const [tauxPct, setTauxPct] = useState(10);
     const [loading, setLoading] = useState(true);
 
+    // Confidentialité (specs) : commissions réservées au responsable légal (Moral, compte principal).
+    const isAllowed = typeAmbassadeur === 'moral' && !isSousCompte;
+
     useEffect(() => {
-        if (!ambassadorId) return;
+        if (!ambassadorId || !isAllowed) return;
         getCommissions(ambassadorId)
             .then(r => {
                 setMois(r.data.mois);
@@ -39,6 +43,10 @@ export default function AmbassadorCommissionsScreen() {
         const [y, m] = moisStr.split('-');
         return new Date(parseInt(y), parseInt(m) - 1).toLocaleDateString(locale, { month: 'short', year: 'numeric' });
     };
+
+    if (!isAllowed) {
+        return <AccessDenied message="Les commissions ne sont visibles que par le responsable légal de l'entreprise." />;
+    }
 
     return (
         <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>

@@ -13,11 +13,12 @@ import { useLang } from '../context/LanguageContext';
 import { getEquipe, addEquipeEmployee, updateEmployeStatut } from '../services/api';
 import { Colors } from '../theme';
 import BottomNav from '../components/BottomNav';
+import AccessDenied from '../components/AccessDenied';
 import type { RootStackParamList, EquipeEmployee } from '../types';
 
 export default function AmbassadorEquipeScreen() {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-    const { ambassadorId } = useAuth();
+    const { ambassadorId, typeAmbassadeur, isSousCompte } = useAuth();
     const { colors } = useTheme();
     const { t } = useLang();
     const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -34,8 +35,11 @@ export default function AmbassadorEquipeScreen() {
     const [metier, setMetier] = useState('');
     const [mdp, setMdp] = useState('');
 
+    // Gestion d'équipe réservée au responsable légal (Moral, compte principal) — specs.
+    const isAllowed = typeAmbassadeur === 'moral' && !isSousCompte;
+
     const load = () => {
-        if (!ambassadorId) return;
+        if (!ambassadorId || !isAllowed) return;
         getEquipe(ambassadorId)
             .then(r => setEmployes(r.data))
             .finally(() => setLoading(false));
@@ -87,6 +91,10 @@ export default function AmbassadorEquipeScreen() {
             setSaving(false);
         }
     };
+
+    if (!isAllowed) {
+        return <AccessDenied message="La gestion d'équipe est réservée au responsable légal de l'entreprise." />;
+    }
 
     return (
         <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>

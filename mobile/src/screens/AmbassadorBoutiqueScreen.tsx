@@ -10,13 +10,14 @@ import { useTheme } from '../context/ThemeContext';
 import { useLang } from '../context/LanguageContext';
 import { getOffers, createExchange, getAmbassadorDashboard } from '../services/api';
 import BottomNav from '../components/BottomNav';
+import AccessDenied from '../components/AccessDenied';
 import { Colors, Typography } from '../theme';
 import type { BoutiqueOffer, RootStackParamList } from '../types';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 export default function AmbassadorBoutiqueScreen() {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'AmbassadorBoutique'>>();
-    const { ambassadorId } = useAuth();
+    const { ambassadorId, typeAmbassadeur, isSousCompte } = useAuth();
     const { colors } = useTheme();
     const { t } = useLang();
     const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -26,7 +27,12 @@ export default function AmbassadorBoutiqueScreen() {
     const [exchangingId, setExchangingId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
+    // Boutique points/cadeaux : Ambassadeur Physique uniquement.
+    // Specs : Moral = « pas de boutique cadeaux » ; employé = historique de courses seul.
+    const isAllowed = typeAmbassadeur !== 'moral' && !isSousCompte;
+
     useEffect(() => {
+        if (!isAllowed) return;
         async function load() {
             try {
                 const [offersRes, dashRes] = await Promise.all([
@@ -78,6 +84,10 @@ export default function AmbassadorBoutiqueScreen() {
             ]
         );
     };
+
+    if (!isAllowed) {
+        return <AccessDenied message="La boutique cadeaux est réservée aux Ambassadeurs Particuliers." />;
+    }
 
     return (
         <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>

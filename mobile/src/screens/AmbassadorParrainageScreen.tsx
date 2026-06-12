@@ -10,6 +10,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useLang } from '../context/LanguageContext';
 import { getAmbassadorProfile, getFilleuls } from '../services/api';
 import { Colors, Typography } from '../theme';
+import AccessDenied from '../components/AccessDenied';
 import type { AmbassadorProfile, Filleul, RootStackParamList } from '../types';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -45,10 +46,12 @@ function calculerBonusFilleul(filleul: Filleul): { total: number; paliers: { lab
 
 export default function AmbassadorParrainageScreen() {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'AmbassadorParrainage'>>();
-    const { ambassadorId } = useAuth();
+    const { ambassadorId, typeAmbassadeur, isSousCompte } = useAuth();
     const { colors } = useTheme();
     const { t, locale } = useLang();
     const styles = useMemo(() => makeStyles(colors), [colors]);
+    // Parrainage (gains en points) : Ambassadeur Physique indépendant uniquement.
+    const isAllowed = typeAmbassadeur !== 'moral' && !isSousCompte;
     const [profile, setProfile] = useState<AmbassadorProfile | null>(null);
     const [filleuls, setFilleuls] = useState<Filleul[]>([]);
     const [loading, setLoading] = useState(true);
@@ -82,6 +85,10 @@ export default function AmbassadorParrainageScreen() {
 
     // Calcul total des bonus de parrainage (paliers cumulatifs)
     const bonusParrainage = filleuls.reduce((acc, f) => acc + calculerBonusFilleul(f).total, 0);
+
+    if (!isAllowed) {
+        return <AccessDenied message="Le parrainage concerne les Ambassadeurs Particuliers." />;
+    }
 
     if (loading) {
         return (

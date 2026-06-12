@@ -10,6 +10,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useLang } from '../context/LanguageContext';
 import { getBonList } from '../services/api';
 import BottomNav from '../components/BottomNav';
+import AccessDenied from '../components/AccessDenied';
 import { Colors, Typography } from '../theme';
 import type { ExchangeBon, RootStackParamList } from '../types';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -39,10 +40,12 @@ function sortBons(bons: ExchangeBon[]): ExchangeBon[] {
 
 export default function AmbassadorBonsCadeauxScreen() {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'AmbassadorBonsCadeaux'>>();
-    const { ambassadorId } = useAuth();
+    const { ambassadorId, typeAmbassadeur, isSousCompte } = useAuth();
     const { colors } = useTheme();
     const { t, locale } = useLang();
     const styles = useMemo(() => makeStyles(colors), [colors]);
+    // Bons cadeaux (issus d'échanges de points) : Ambassadeur Physique indépendant uniquement.
+    const isAllowed = typeAmbassadeur !== 'moral' && !isSousCompte;
     const [bons, setBons] = useState<ExchangeBon[]>([]);
 
     const formatDateTime = (iso?: string) => {
@@ -74,6 +77,10 @@ export default function AmbassadorBonsCadeauxScreen() {
         const days = daysUntil(b.expire_at);
         return days !== null && days <= 7 && days > 0;
     });
+
+    if (!isAllowed) {
+        return <AccessDenied message="Les bons cadeaux concernent les Ambassadeurs Particuliers." />;
+    }
 
     return (
         <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>

@@ -25,7 +25,7 @@ export function clearDashboardCache() {
 
 export default function AmbassadorAccueilScreen() {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'AmbassadorAccueil'>>();
-    const { ambassadorId, typeAmbassadeur } = useAuth();
+    const { ambassadorId, typeAmbassadeur, isSousCompte } = useAuth();
     const { colors } = useTheme();
     const { t } = useLang();
     const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -111,40 +111,47 @@ export default function AmbassadorAccueilScreen() {
                 {/* Header */}
                 <View style={styles.header}>
                     <Text style={styles.welcomeText}>{t('bonjour')}{dashboard?.prenom ? `, ${dashboard.prenom}` : ''} !</Text>
-                    {!isMoral && (
+                    {!isMoral && !isSousCompte && (
                         <View style={styles.pointsBadge}>
                             <Text style={styles.pointsBadgeText}>{dashboard?.points_solde} pts</Text>
                         </View>
                     )}
-                </View>
-
-                {/* Carte principale */}
-                <View style={[styles.ringCard, isMoral ? styles.ringCardMoral : styles.ringCardPhysique]}>
-                    {isMoral ? (
-                        <>
-                            <Text style={styles.commissionLabel}>{t('commission_du_mois')}</Text>
-                            <Text style={styles.commissionValue}>
-                                {commissionDuMois !== null ? `${commissionDuMois.toFixed(2)} €` : '—'}
-                            </Text>
-                            <Text style={styles.commissionSub}>{t('basee_equipe')}</Text>
-                        </>
-                    ) : (
-                        <>
-                            <PointsRing
-                                points={dashboard?.points_solde || 0}
-                                level={dashboard?.niveau || 'starter'}
-                                nextLevelPoints={dashboard?.next_level_target || 500}
-                                size={130}
-                            />
-                            <Text style={styles.levelLabel}>{t('niveau_label')} {dashboard?.niveau?.toUpperCase()}</Text>
-                            {dashboard?.next_level && dashboard?.points_to_next_level > 0 && (
-                                <Text style={styles.nextLevelHint}>
-                                    {dashboard.points_to_next_level} pts → {dashboard.next_level.toUpperCase()}
-                                </Text>
-                            )}
-                        </>
+                    {isSousCompte && (
+                        <View style={styles.employeBadge}>
+                            <Text style={styles.employeBadgeText}>EMPLOYÉ</Text>
+                        </View>
                     )}
                 </View>
+
+                {/* Carte principale — pas d'anneau de points ni de commission pour un employé (specs : il prescrit seulement) */}
+                {!isSousCompte && (
+                    <View style={[styles.ringCard, isMoral ? styles.ringCardMoral : styles.ringCardPhysique]}>
+                        {isMoral ? (
+                            <>
+                                <Text style={styles.commissionLabel}>{t('commission_du_mois')}</Text>
+                                <Text style={styles.commissionValue}>
+                                    {commissionDuMois !== null ? `${commissionDuMois.toFixed(2)} €` : '—'}
+                                </Text>
+                                <Text style={styles.commissionSub}>{t('basee_equipe')}</Text>
+                            </>
+                        ) : (
+                            <>
+                                <PointsRing
+                                    points={dashboard?.points_solde || 0}
+                                    level={dashboard?.niveau || 'starter'}
+                                    nextLevelPoints={dashboard?.next_level_target || 500}
+                                    size={130}
+                                />
+                                <Text style={styles.levelLabel}>{t('niveau_label')} {dashboard?.niveau?.toUpperCase()}</Text>
+                                {dashboard?.next_level && dashboard?.points_to_next_level > 0 && (
+                                    <Text style={styles.nextLevelHint}>
+                                        {dashboard.points_to_next_level} pts → {dashboard.next_level.toUpperCase()}
+                                    </Text>
+                                )}
+                            </>
+                        )}
+                    </View>
+                )}
 
                 {/* Badge mode */}
                 <View style={isImmediateEnabled ? styles.modeBadgeGreen : styles.modeBadgeBlue}>
@@ -172,7 +179,7 @@ export default function AmbassadorAccueilScreen() {
 
                 {/* Stats */}
                 <View style={styles.statsCard}>
-                    <Text style={styles.statsTitle}>{isMoral ? 'ACTIVITÉ' : t('mon_compte')}</Text>
+                    <Text style={styles.statsTitle}>{isMoral ? 'ACTIVITÉ' : isSousCompte ? 'MON ACTIVITÉ' : t('mon_compte')}</Text>
                     <View style={styles.statsGrid}>
                         <View style={styles.statItem}>
                             <Text style={styles.statValue}>{dashboard?.active_course_count || 0}</Text>
@@ -184,6 +191,11 @@ export default function AmbassadorAccueilScreen() {
                                     {commissionDuMois !== null ? `${commissionDuMois.toFixed(0)} €` : '—'}
                                 </Text>
                                 <Text style={styles.statLabel}>CE MOIS</Text>
+                            </View>
+                        ) : isSousCompte ? (
+                            <View style={styles.statItem}>
+                                <Text style={[styles.statValue, { color: Colors.brand.gold }]}>{dashboard?.courses_semaine || 0}</Text>
+                                <Text style={styles.statLabel}>CETTE SEMAINE</Text>
                             </View>
                         ) : (
                             <>
@@ -204,32 +216,8 @@ export default function AmbassadorAccueilScreen() {
                     </View>
                 </View>
 
-                {/* Liste employés — Moral uniquement (specs §8.2) — aperçu limité, liste complète dans l'écran Équipe */}
-                {isMoral && employes.length > 0 && (
-                    <View style={styles.employesCard}>
-                        <View style={styles.employesHeader}>
-                            <Text style={styles.employesTitle}>MON ÉQUIPE</Text>
-                            <Text style={styles.employesCount}>{employes.length}</Text>
-                        </View>
-                        {employes.slice(0, 3).map(emp => (
-                            <View key={emp.id} style={styles.employeRow}>
-                                <Text style={styles.employeNom} numberOfLines={1}>{emp.prenom} {emp.nom}</Text>
-                                <Text style={styles.employeMetier} numberOfLines={1}>{emp.metier || '—'}</Text>
-                                <View style={[styles.employeStatut, emp.statut === 'actif' ? styles.statutActif : styles.statutSuspendu]}>
-                                    <Text style={styles.employeStatutText}>{emp.statut === 'actif' ? 'Actif' : 'Suspendu'}</Text>
-                                </View>
-                            </View>
-                        ))}
-                        {employes.length > 3 && (
-                            <Text style={styles.employesPlus}>+ {employes.length - 3} autre{employes.length - 3 > 1 ? 's' : ''}</Text>
-                        )}
-                        <TouchableOpacity onPress={() => navigation.navigate('AmbassadorEquipe' as any)} style={styles.voirEquipeBtn}>
-                            <Text style={styles.voirEquipeBtnText}>Gérer l'équipe →</Text>
-                        </TouchableOpacity>
-                    </View>
-                )}
-
-                {/* Liens rapides */}
+                {/* Liens rapides — masqués pour les employés (specs : ni boutique, ni parrainage, ni niveaux) */}
+                {!isSousCompte && (
                 <View style={styles.quickLinks}>
                     {isMoral ? (
                         <>
@@ -237,13 +225,16 @@ export default function AmbassadorAccueilScreen() {
                                 <Text style={styles.linkEmoji}>💶</Text>
                                 <Text style={styles.linkLabel}>Commissions</Text>
                             </TouchableOpacity>
-                            {/* Raccourci équipe : seulement si la carte "MON ÉQUIPE" n'est pas déjà affichée (évite le doublon) */}
-                            {employes.length === 0 && (
-                                <TouchableOpacity style={styles.linkCard} onPress={() => navigation.navigate('AmbassadorEquipe')}>
-                                    <Text style={styles.linkEmoji}>👥</Text>
-                                    <Text style={styles.linkLabel}>Mon équipe</Text>
-                                </TouchableOpacity>
-                            )}
+                            {/* Équipe : aperçu réduit à un compteur — la liste complète vit dans l'écran Équipe */}
+                            <TouchableOpacity style={styles.linkCard} onPress={() => navigation.navigate('AmbassadorEquipe')}>
+                                {employes.length > 0 && (
+                                    <View style={styles.linkBadge}>
+                                        <Text style={styles.linkBadgeText}>{employes.length}</Text>
+                                    </View>
+                                )}
+                                <Text style={styles.linkEmoji}>👥</Text>
+                                <Text style={styles.linkLabel}>Mon équipe</Text>
+                            </TouchableOpacity>
                             <TouchableOpacity style={styles.linkCard} onPress={() => navigation.navigate('AmbassadorProfil')}>
                                 <Text style={styles.linkEmoji}>🏢</Text>
                                 <Text style={styles.linkLabel}>Profil</Text>
@@ -270,6 +261,7 @@ export default function AmbassadorAccueilScreen() {
                         </>
                     )}
                 </View>
+                )}
 
             </ScrollView>
 
@@ -304,6 +296,8 @@ function makeStyles(colors: typeof Colors.nocturne) {
         welcomeText: { color: colors.textPrimary, fontSize: Typography.sizes.header, fontWeight: Typography.weights.bold as any },
         pointsBadge: { backgroundColor: 'rgba(201, 168, 76, 0.15)', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20 },
         pointsBadgeText: { color: Colors.brand.gold, fontWeight: Typography.weights.bold as any, fontSize: Typography.sizes.sub },
+        employeBadge: { backgroundColor: 'rgba(74, 158, 255, 0.15)', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(74,158,255,0.3)' },
+        employeBadgeText: { color: Colors.brand.info, fontWeight: Typography.weights.black as any, fontSize: Typography.sizes.tiny, letterSpacing: 1 },
         ringCard: { backgroundColor: colors.card, borderRadius: 20, alignItems: 'center', paddingVertical: 20, paddingHorizontal: 16, marginBottom: 10 },
         ringCardPhysique: {},
         ringCardMoral: { paddingVertical: 36 },
@@ -332,20 +326,8 @@ function makeStyles(colors: typeof Colors.nocturne) {
         linkEmoji: { fontSize: 22, marginBottom: 5 },
         linkLabel: { color: colors.textPrimary, fontSize: Typography.sizes.small, fontWeight: Typography.weights.bold as any, textAlign: 'center' },
         linkSub: { color: colors.textSecondary, fontSize: Typography.sizes.tiny, marginTop: 1 },
+        linkBadge: { position: 'absolute', top: 8, right: 8, backgroundColor: Colors.brand.gold, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, alignItems: 'center', justifyContent: 'center' },
+        linkBadgeText: { color: '#09090F', fontSize: Typography.sizes.tiny, fontWeight: Typography.weights.black as any },
         errorText: { color: Colors.brand.error, marginTop: 16 },
-        employesCard: { backgroundColor: colors.card, borderRadius: 18, padding: 16, marginTop: 16, borderWidth: 1, borderColor: 'rgba(74,158,255,0.15)' },
-        employesHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-        employesTitle: { color: Colors.brand.info, fontSize: Typography.sizes.tiny, fontWeight: Typography.weights.black as any, letterSpacing: 1 },
-        employesCount: { color: Colors.brand.info, fontSize: Typography.sizes.sub, fontWeight: Typography.weights.black as any, backgroundColor: 'rgba(74,158,255,0.15)', minWidth: 24, textAlign: 'center', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, overflow: 'hidden' },
-        employesPlus: { color: Colors.brand.info, fontSize: Typography.sizes.tiny, fontWeight: Typography.weights.semiBold as any, paddingTop: 10 },
-        employeRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
-        employeNom: { flex: 1, color: colors.textPrimary, fontSize: Typography.sizes.sub, fontWeight: Typography.weights.semiBold as any },
-        employeMetier: { flex: 1, color: colors.textSecondary, fontSize: Typography.sizes.tiny },
-        employeStatut: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
-        statutActif: { backgroundColor: 'rgba(76,175,130,0.15)' },
-        statutSuspendu: { backgroundColor: 'rgba(255,100,100,0.15)' },
-        employeStatutText: { fontSize: 10, fontWeight: Typography.weights.bold as any, color: colors.textPrimary },
-        voirEquipeBtn: { marginTop: 10, alignItems: 'flex-end' },
-        voirEquipeBtnText: { color: Colors.brand.info, fontSize: Typography.sizes.small, fontWeight: Typography.weights.bold as any },
     });
 }

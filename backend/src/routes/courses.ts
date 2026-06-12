@@ -153,9 +153,15 @@ router.put('/:id/annuler', async (req, res) => {
     if (course.code_valide_at && course.ambassadeur_id && course.montant && (annulePar === 'chauffeur' || annulePar === 'admin')) {
         const pts = calculatePoints(Number(course.montant));
         if (pts > 0) {
-            const ambResult = await query('SELECT points_solde, type_ambassadeur, parrain_id, niveau FROM ambassadeurs WHERE id = $1', [course.ambassadeur_id]);
+            const ambResult = await query(
+                `SELECT a.points_solde, a.type_ambassadeur, a.parrain_id, a.niveau,
+                        EXISTS(SELECT 1 FROM sous_comptes_employes s WHERE s.utilisateur_id = a.utilisateur_id) AS est_sous_compte
+                 FROM ambassadeurs a WHERE a.id = $1`,
+                [course.ambassadeur_id]
+            );
             const amb = ambResult.rows[0];
-            if (amb && amb.type_ambassadeur !== 'moral') {
+            // Employé (sous-compte Moral) exclu : aucune compensation en points (specs §1 Moral).
+            if (amb && amb.type_ambassadeur !== 'moral' && !amb.est_sous_compte) {
                 const solde_avant = Number(amb.points_solde || 0);
                 const solde_apres = solde_avant + pts;
                 const newLevel = nextAmbassadorLevel(solde_apres);

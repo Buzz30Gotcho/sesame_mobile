@@ -280,12 +280,19 @@ router.post('/:id/finish-course', async (req, res) => {
 
     await query('UPDATE courses SET statut = $1, date_fin = now() WHERE id = $2', ['terminee', course_id]);
 
-    // Créditer les points UNIQUEMENT si : code pivot validé + ambassadeur physique (specs §1.5 + §1 Moral)
+    // Créditer les points UNIQUEMENT si : code pivot validé + Ambassadeur Physique INDÉPENDANT.
+    // Un employé (sous-compte d'un Moral) est 'physique' mais ne gagne PAS de points : la course
+    // qu'il prescrit génère la commission du Moral, pas de points personnels (specs §1.5 + §1 Moral).
     if (course.code_valide_at && course.ambassadeur_id && course.montant) {
-        const ambResult = await query('SELECT points_solde, type_ambassadeur, parrain_id, niveau, push_token FROM ambassadeurs WHERE id = $1', [course.ambassadeur_id]);
+        const ambResult = await query(
+            `SELECT a.points_solde, a.type_ambassadeur, a.parrain_id, a.niveau, a.push_token,
+                    EXISTS(SELECT 1 FROM sous_comptes_employes s WHERE s.utilisateur_id = a.utilisateur_id) AS est_sous_compte
+             FROM ambassadeurs a WHERE a.id = $1`,
+            [course.ambassadeur_id]
+        );
         const amb = ambResult.rows[0];
 
-        if (amb && amb.type_ambassadeur !== 'moral') {
+        if (amb && amb.type_ambassadeur !== 'moral' && !amb.est_sous_compte) {
             const pts = calculatePoints(Number(course.montant));
             if (pts > 0) {
                 const solde_avant = Number(amb.points_solde || 0);

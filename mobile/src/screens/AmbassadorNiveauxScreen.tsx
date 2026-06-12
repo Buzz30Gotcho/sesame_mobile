@@ -10,6 +10,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useLang } from '../context/LanguageContext';
 import { getAmbassadorDashboard } from '../services/api';
 import BottomNav from '../components/BottomNav';
+import AccessDenied from '../components/AccessDenied';
 import { Colors, Typography } from '../theme';
 import type { AmbassadorDashboard, RootStackParamList } from '../types';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -25,10 +26,12 @@ const LEVELS = [
 
 export default function AmbassadorNiveauxScreen() {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'AmbassadorNiveaux'>>();
-    const { ambassadorId } = useAuth();
+    const { ambassadorId, typeAmbassadeur, isSousCompte } = useAuth();
     const { colors } = useTheme();
     const { t } = useLang();
     const styles = useMemo(() => makeStyles(colors), [colors]);
+    // Niveaux/points : Ambassadeur Physique indépendant uniquement (ni Moral, ni employé).
+    const isAllowed = typeAmbassadeur !== 'moral' && !isSousCompte;
     const [dashboard, setDashboard] = useState<AmbassadorDashboard | null>(_niveauxCache);
     const [loading, setLoading] = useState(_niveauxCache === null);
 
@@ -49,6 +52,10 @@ export default function AmbassadorNiveauxScreen() {
     const currentPoints = dashboard?.points_solde || 0;
     const currentLevel = dashboard?.niveau || 'starter';
     const currentIdx = LEVELS.findIndex(l => l.key === currentLevel);
+
+    if (!isAllowed) {
+        return <AccessDenied message="Les niveaux SESAME concernent les Ambassadeurs Particuliers." />;
+    }
 
     return (
         <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>

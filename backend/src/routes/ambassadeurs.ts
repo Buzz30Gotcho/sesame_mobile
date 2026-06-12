@@ -8,6 +8,20 @@ const router = express.Router();
 // Propriété : :id doit être l'ambassadeur du token (sinon 403).
 router.param('id', ownAmbassadeurParam);
 
+// Confidentialité (specs) : les sections commissions + gestion d'équipe sont réservées
+// au responsable légal (compte principal Moral). Un sous-compte employé est toujours
+// 'physique' ET présent dans sous_comptes_employes — donc exclu, comme l'Ambassadeur Physique.
+async function isMoralPrincipal(ambassadeurId: string): Promise<boolean> {
+    const r = await query(
+        `SELECT a.type_ambassadeur,
+                EXISTS(SELECT 1 FROM sous_comptes_employes s WHERE s.utilisateur_id = a.utilisateur_id) AS is_sous_compte
+         FROM ambassadeurs a WHERE a.id = $1`,
+        [ambassadeurId]
+    );
+    const acc = r.rows[0];
+    return !!acc && acc.type_ambassadeur === 'moral' && !acc.is_sous_compte;
+}
+
 router.get('/:id/profile', async (req, res) => {
     const result = await query(
         `SELECT
@@ -224,6 +238,9 @@ router.get('/:id/dashboard', async (req, res) => {
 
 // Sous-comptes employés (Ambassadeur Moral)
 router.get('/:id/equipe', async (req, res) => {
+    if (!(await isMoralPrincipal(req.params.id))) {
+        return res.status(403).json({ error: 'Accès réservé au responsable légal' });
+    }
     const result = await query(
         `SELECT s.id, u.prenom, u.nom, u.email, u.telephone, s.metier, s.statut, s.created_at,
                 (SELECT count(*) FROM courses c
@@ -239,6 +256,9 @@ router.get('/:id/equipe', async (req, res) => {
 });
 
 router.post('/:id/equipe', async (req, res) => {
+    if (!(await isMoralPrincipal(req.params.id))) {
+        return res.status(403).json({ error: 'Accès réservé au responsable légal' });
+    }
     const { prenom, nom, email, telephone, metier, mot_de_passe } = req.body;
     if (!prenom || !nom || !email || !telephone || !mot_de_passe) {
         return res.status(400).json({ error: 'Champs obligatoires manquants' });
@@ -278,6 +298,9 @@ router.post('/:id/equipe', async (req, res) => {
 });
 
 router.put('/:id/equipe/:employeId/statut', async (req, res) => {
+    if (!(await isMoralPrincipal(req.params.id))) {
+        return res.status(403).json({ error: 'Accès réservé au responsable légal' });
+    }
     const { statut } = req.body;
     if (!['actif', 'suspendu'].includes(statut)) return res.status(400).json({ error: 'statut invalide' });
     const employe = await query(
@@ -292,6 +315,11 @@ router.put('/:id/equipe/:employeId/statut', async (req, res) => {
 
 // Commissions mensuelles (Ambassadeur Moral)
 router.get('/:id/commissions', async (req, res) => {
+    // Confidentialité (specs) : seul le responsable légal voit les montants de commission.
+    if (!(await isMoralPrincipal(req.params.id))) {
+        return res.status(403).json({ error: 'Accès réservé au responsable légal' });
+    }
+
     const rateResult = await query(
         "SELECT valeur FROM parametres_systeme WHERE cle = 'commission_ambassadeur_moral_pct'"
     );
