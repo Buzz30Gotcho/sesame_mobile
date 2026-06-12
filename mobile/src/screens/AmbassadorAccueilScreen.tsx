@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, StatusBar, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
@@ -238,6 +238,29 @@ export default function AmbassadorAccueilScreen() {
                     </View>
                 </View>
 
+                {/* Guide « Comment ça marche » + support — employé (remplit le bas de page) */}
+                {isSousCompte && (
+                    <View style={styles.helpCard}>
+                        <Text style={styles.helpTitle}>COMMENT ÇA MARCHE</Text>
+                        {[
+                            'Réservez une course pour votre client',
+                            'Communiquez-lui le code à 4 chiffres reçu',
+                            "Suivez l'arrivée du véhicule en temps réel",
+                        ].map((step, i) => (
+                            <View key={i} style={styles.helpStep}>
+                                <View style={styles.helpNum}>
+                                    <Text style={styles.helpNumText}>{i + 1}</Text>
+                                </View>
+                                <Text style={styles.helpStepText}>{step}</Text>
+                            </View>
+                        ))}
+                        <TouchableOpacity style={styles.helpContact} onPress={() => Linking.openURL('mailto:support@sesame-pro.com')}>
+                            <Text style={styles.helpContactLabel}>Besoin d'aide ?</Text>
+                            <Text style={styles.helpContactValue}>support@sesame-pro.com</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+
                 {/* Liens rapides — masqués pour les employés (specs : ni boutique, ni parrainage, ni niveaux) */}
                 {!isSousCompte && (
                 <View style={styles.quickLinks}>
@@ -320,12 +343,21 @@ function makeStyles(colors: typeof Colors.nocturne) {
         pointsBadgeText: { color: Colors.brand.gold, fontWeight: Typography.weights.bold as any, fontSize: Typography.sizes.sub },
         employeBadge: { backgroundColor: 'rgba(74, 158, 255, 0.15)', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(74,158,255,0.3)' },
         employeBadgeText: { color: Colors.brand.info, fontWeight: Typography.weights.black as any, fontSize: Typography.sizes.tiny, letterSpacing: 1 },
-        employeCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.card, borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(74,158,255,0.25)' },
-        employeIconWrap: { width: 48, height: 48, borderRadius: 12, backgroundColor: 'rgba(74,158,255,0.12)', alignItems: 'center', justifyContent: 'center' },
-        employeIcon: { fontSize: 24 },
-        employeCardLabel: { color: Colors.brand.info, fontSize: Typography.sizes.tiny, fontWeight: Typography.weights.black as any, letterSpacing: 1, marginBottom: 2 },
-        employeCardValue: { color: colors.textPrimary, fontSize: Typography.sizes.body, fontWeight: Typography.weights.black as any, marginBottom: 3 },
-        employeCardRole: { color: colors.textSecondary, fontSize: Typography.sizes.tiny, lineHeight: 15 },
+        employeCard: { flexDirection: 'row', alignItems: 'center', gap: 18, backgroundColor: colors.card, borderRadius: 20, paddingVertical: 30, paddingHorizontal: 22, marginBottom: 14, borderWidth: 1, borderColor: 'rgba(74,158,255,0.25)' },
+        employeIconWrap: { width: 70, height: 70, borderRadius: 20, backgroundColor: 'rgba(74,158,255,0.12)', alignItems: 'center', justifyContent: 'center' },
+        employeIcon: { fontSize: 38 },
+        employeCardLabel: { color: Colors.brand.info, fontSize: Typography.sizes.small, fontWeight: Typography.weights.black as any, letterSpacing: 1.5, marginBottom: 5 },
+        employeCardValue: { color: colors.textPrimary, fontSize: 22, fontWeight: Typography.weights.black as any, marginBottom: 6 },
+        employeCardRole: { color: colors.textSecondary, fontSize: Typography.sizes.small, lineHeight: 17 },
+        helpCard: { backgroundColor: colors.card, borderRadius: 16, padding: 13, marginTop: 12 },
+        helpTitle: { color: colors.textSecondary, fontSize: Typography.sizes.tiny, fontWeight: Typography.weights.bold as any, letterSpacing: 1, marginBottom: 9 },
+        helpStep: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 7 },
+        helpNum: { width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(201,168,76,0.15)', alignItems: 'center', justifyContent: 'center' },
+        helpNumText: { color: Colors.brand.gold, fontSize: Typography.sizes.tiny, fontWeight: Typography.weights.black as any },
+        helpStepText: { flex: 1, color: colors.textPrimary, fontSize: Typography.sizes.small, lineHeight: 16 },
+        helpContact: { marginTop: 5, paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)', alignItems: 'center' },
+        helpContactLabel: { color: colors.textSecondary, fontSize: Typography.sizes.tiny, marginBottom: 1 },
+        helpContactValue: { color: Colors.brand.gold, fontSize: Typography.sizes.small, fontWeight: Typography.weights.black as any },
         ringCard: { backgroundColor: colors.card, borderRadius: 20, alignItems: 'center', paddingVertical: 20, paddingHorizontal: 16, marginBottom: 10 },
         ringCardPhysique: {},
         ringCardMoral: { paddingVertical: 36 },
