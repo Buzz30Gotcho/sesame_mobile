@@ -167,7 +167,7 @@ export async function updateEmployeStatut(ambassadorId: string, employeId: strin
 }
 
 export async function getCommissions(ambassadorId: string) {
-    return api.get<{ taux_pct: number; mois: CommissionMois[] }>(`/api/ambassadeurs/${ambassadorId}/commissions`);
+    return api.get<{ taux_pct: number; mois: CommissionMois[]; total_commission: number; total_ca_brut_ttc: number; total_courses: number }>(`/api/ambassadeurs/${ambassadorId}/commissions`);
 }
 
 // Boutique & échanges

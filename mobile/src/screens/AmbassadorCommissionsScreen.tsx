@@ -20,6 +20,7 @@ export default function AmbassadorCommissionsScreen() {
     const styles = useMemo(() => makeStyles(colors), [colors]);
     const [mois, setMois] = useState<CommissionMois[]>([]);
     const [tauxPct, setTauxPct] = useState(10);
+    const [totalGlobal, setTotalGlobal] = useState(0);
     const [loading, setLoading] = useState(true);
 
     // Confidentialité (specs) : commissions réservées au responsable légal (Moral, compte principal).
@@ -31,11 +32,11 @@ export default function AmbassadorCommissionsScreen() {
             .then(r => {
                 setMois(r.data.mois);
                 setTauxPct(r.data.taux_pct);
+                setTotalGlobal(Number(r.data.total_commission ?? 0));
             })
             .finally(() => setLoading(false));
     }, [ambassadorId]);
 
-    const totalCommission = mois.reduce((s, m) => s + Number(m.commission ?? 0), 0);
     const moisCourant = new Date().toISOString().slice(0, 7);
     const commissionMoisCourant = mois.find(m => m.mois === moisCourant);
 
@@ -88,7 +89,7 @@ export default function AmbassadorCommissionsScreen() {
                                 ))}
                                 <View style={styles.totalRow}>
                                     <Text style={styles.totalLabel}>{t('total_cumule')}</Text>
-                                    <Text style={styles.totalValue}>{totalCommission.toFixed(2)} €</Text>
+                                    <Text style={styles.totalValue}>{totalGlobal.toFixed(2)} €</Text>
                                 </View>
                             </View>
                         )}

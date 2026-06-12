@@ -380,7 +380,36 @@ router.get('/:id/commissions', async (req, res) => {
         [tauxPct, req.params.id]
     );
 
-    res.json({ taux_pct: tauxPct, mois: result.rows });
+    // Cumul total depuis le début (tous les mois, jamais tronqué) — pour le « Total depuis le début ».
+    const totalResult = await query(
+        `WITH amb_ids AS (
+            SELECT $2::uuid AS ambassadeur_id
+            UNION
+            SELECT ae.id
+            FROM sous_comptes_employes s
+            JOIN ambassadeurs ae ON ae.utilisateur_id = s.utilisateur_id
+            WHERE s.ambassadeur_moral_id = $2
+         )
+         SELECT
+            count(*) AS total_courses,
+            COALESCE(sum(c.montant), 0) AS total_ca_brut_ttc,
+            COALESCE(round(sum(c.montant) * $1 / 100, 2), 0) AS total_commission
+         FROM courses c
+         JOIN amb_ids ON amb_ids.ambassadeur_id = c.ambassadeur_id
+         WHERE c.statut = 'terminee'
+           AND c.code_valide_at IS NOT NULL
+           AND c.date_fin IS NOT NULL`,
+        [tauxPct, req.params.id]
+    );
+    const totals = totalResult.rows[0] || {};
+
+    res.json({
+        taux_pct: tauxPct,
+        mois: result.rows,
+        total_commission: Number(totals.total_commission ?? 0),
+        total_ca_brut_ttc: Number(totals.total_ca_brut_ttc ?? 0),
+        total_courses: Number(totals.total_courses ?? 0),
+    });
 });
 
 export default router;

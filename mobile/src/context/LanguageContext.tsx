@@ -88,7 +88,7 @@ const translations: Record<Lang, Record<string, string>> = {
         // Commissions
         taux_par_course: 'Taux : {taux}% TTC par course', ce_mois: 'Ce mois',
         versement_1er_mois: 'Versement le 1er du mois suivant par virement SEPA',
-        historique_12_mois: 'Historique (12 derniers mois)', total_cumule: 'Total cumulé',
+        historique_12_mois: 'Historique (12 derniers mois)', total_cumule: 'Total depuis le début',
         aucune_commission: "Aucune commission enregistrée pour l'instant.",
         courses_ca: '{nb} courses · {ca} € CA',
         // Profil
@@ -193,7 +193,7 @@ const translations: Record<Lang, Record<string, string>> = {
         // Commissions
         taux_par_course: 'Rate: {taux}% incl. tax per ride', ce_mois: 'This month',
         versement_1er_mois: 'Payment on the 1st of next month by SEPA transfer',
-        historique_12_mois: 'History (last 12 months)', total_cumule: 'Total accumulated',
+        historique_12_mois: 'History (last 12 months)', total_cumule: 'Total since the start',
         aucune_commission: 'No commissions recorded yet.',
         courses_ca: '{nb} rides · {ca} € revenue',
         // Profil
@@ -298,7 +298,7 @@ const translations: Record<Lang, Record<string, string>> = {
         // Commissions
         taux_par_course: 'Tasso: {taux}% IVA inclusa per corsa', ce_mois: 'Questo mese',
         versement_1er_mois: 'Pagamento il 1° del mese successivo tramite bonifico SEPA',
-        historique_12_mois: 'Storico (ultimi 12 mesi)', total_cumule: 'Totale accumulato',
+        historique_12_mois: 'Storico (ultimi 12 mesi)', total_cumule: "Totale dall'inizio",
         aucune_commission: 'Nessuna commissione registrata per ora.',
         courses_ca: '{nb} corse · {ca} € CA',
         // Profil
@@ -403,7 +403,7 @@ const translations: Record<Lang, Record<string, string>> = {
         // Commissions
         taux_par_course: 'Tasa: {taux}% IVA incluido por viaje', ce_mois: 'Este mes',
         versement_1er_mois: 'Pago el 1 del mes siguiente por transferencia SEPA',
-        historique_12_mois: 'Historial (últimos 12 meses)', total_cumule: 'Total acumulado',
+        historique_12_mois: 'Historial (últimos 12 meses)', total_cumule: 'Total desde el inicio',
         aucune_commission: 'Sin comisiones registradas por ahora.',
         courses_ca: '{nb} viajes · {ca} € CA',
         // Profil
