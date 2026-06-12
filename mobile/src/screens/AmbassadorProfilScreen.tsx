@@ -13,7 +13,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 export default function AmbassadorProfilScreen() {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'AmbassadorProfil'>>();
-    const { ambassadorId, logout } = useAuth();
+    const { ambassadorId, logout, isSousCompte } = useAuth();
     const { mode, setMode, colors } = useTheme();
     const styles = useMemo(() => makeStyles(colors), [colors]);
     const { lang, setLang, t } = useLang();
@@ -62,8 +62,8 @@ export default function AmbassadorProfilScreen() {
                 prenom,
                 nom,
                 telephone,
-                metier,
-                etablissement,
+                // Métier/établissement non modifiables par un employé (définis par son Moral).
+                ...(isSousCompte ? {} : { metier, etablissement }),
             });
             setProfile(response.data);
             setMessage(t('profil_maj'));
@@ -114,11 +114,12 @@ export default function AmbassadorProfilScreen() {
                         </View>
                         <View style={styles.fieldGroup}>
                             <Text style={styles.label}>{t('metier_label')}</Text>
-                            <TextInput style={styles.input} value={metier} onChangeText={setMetier} placeholder="Métier" placeholderTextColor={colors.textSecondary} />
+                            <TextInput style={[styles.input, isSousCompte && styles.inputReadonly]} value={metier} onChangeText={setMetier} editable={!isSousCompte} placeholder="Métier" placeholderTextColor={colors.textSecondary} />
                         </View>
                         <View style={styles.fieldGroup}>
                             <Text style={styles.label}>{t('etablissement_label')}</Text>
-                            <TextInput style={styles.input} value={etablissement} onChangeText={setEtablissement} placeholder="Établissement" placeholderTextColor={colors.textSecondary} />
+                            <TextInput style={[styles.input, isSousCompte && styles.inputReadonly]} value={etablissement} onChangeText={setEtablissement} editable={!isSousCompte} placeholder="Établissement" placeholderTextColor={colors.textSecondary} />
+                            {isSousCompte && <Text style={styles.fieldHint}>Rattaché à votre établissement — non modifiable</Text>}
                         </View>
                         
                         {message && (
@@ -239,6 +240,12 @@ function makeStyles(colors: typeof Colors.nocturne) {
         },
         inputReadonly: {
             opacity: 0.5,
+        },
+        fieldHint: {
+            color: colors.textSecondary,
+            fontSize: Typography.sizes.tiny,
+            marginTop: 6,
+            fontStyle: 'italic',
         },
         saveButton: {
             backgroundColor: Colors.brand.gold,

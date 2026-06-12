@@ -32,14 +32,21 @@ router.get('/:id/profile', async (req, res) => {
             u.email,
             u.telephone,
             a.type_ambassadeur,
-            a.etablissement,
+            -- Pour un employé : établissement du Moral parent (il n'a pas le sien). Sinon le sien.
+            COALESCE(
+                (SELECT am.etablissement FROM sous_comptes_employes s
+                 JOIN ambassadeurs am ON am.id = s.ambassadeur_moral_id
+                 WHERE s.utilisateur_id = a.utilisateur_id LIMIT 1),
+                a.etablissement
+            ) AS etablissement,
             a.metier,
             a.siret,
             a.iban,
             a.responsable_legal_nom,
             a.code_parrainage,
             a.points_solde,
-            a.niveau
+            a.niveau,
+            EXISTS(SELECT 1 FROM sous_comptes_employes s WHERE s.utilisateur_id = a.utilisateur_id) AS is_sous_compte
         FROM ambassadeurs a
         JOIN utilisateurs u ON u.id = a.utilisateur_id
         WHERE a.id = $1`,
@@ -89,14 +96,21 @@ router.put('/:id/profile', async (req, res) => {
             u.email,
             u.telephone,
             a.type_ambassadeur,
-            a.etablissement,
+            -- Pour un employé : établissement du Moral parent (il n'a pas le sien). Sinon le sien.
+            COALESCE(
+                (SELECT am.etablissement FROM sous_comptes_employes s
+                 JOIN ambassadeurs am ON am.id = s.ambassadeur_moral_id
+                 WHERE s.utilisateur_id = a.utilisateur_id LIMIT 1),
+                a.etablissement
+            ) AS etablissement,
             a.metier,
             a.siret,
             a.iban,
             a.responsable_legal_nom,
             a.code_parrainage,
             a.points_solde,
-            a.niveau
+            a.niveau,
+            EXISTS(SELECT 1 FROM sous_comptes_employes s WHERE s.utilisateur_id = a.utilisateur_id) AS is_sous_compte
         FROM ambassadeurs a
         JOIN utilisateurs u ON u.id = a.utilisateur_id
         WHERE a.id = $1`,

@@ -24,15 +24,23 @@ function formatDateTime(iso?: string) {
 
 export default function AmbassadorQRCodeScreen({ route }: Props) {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-    const { ambassadorId } = useAuth();
+    const { ambassadorId, typeAmbassadeur, isSousCompte } = useAuth();
     const { bonId } = route.params;
     const [bon, setBon] = useState<ExchangeBon | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    // Bons cadeaux (issus d'échanges de points) : Ambassadeur Physique indépendant uniquement.
+    const isAllowed = typeAmbassadeur !== 'moral' && !isSousCompte;
+
     useEffect(() => {
         async function load() {
             if (!ambassadorId) return;
+            if (!isAllowed) {
+                setError('Réservé aux Ambassadeurs Particuliers.');
+                setLoading(false);
+                return;
+            }
             try {
                 const res = await getBonList(ambassadorId);
                 const found = res.data.find((b: ExchangeBon) => b.id === bonId);
