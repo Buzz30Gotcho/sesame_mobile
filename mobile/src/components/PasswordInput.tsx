@@ -26,7 +26,7 @@ export default function PasswordInput({ style, ...props }: TextInputProps) {
                 accessibilityRole="button"
                 accessibilityLabel={visible ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
             >
-                <Text style={styles.eyeIcon}>{visible ? '🙈' : '👁️'}</Text>
+                <Text style={[styles.eyeIcon, { opacity: visible ? 0.35 : 1 }]}>👁️</Text>
             </TouchableOpacity>
         </View>
     );
