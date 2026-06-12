@@ -67,7 +67,9 @@ function buildSmsBody(course: ActiveCourse, code: string) {
 
 export default function AmbassadorVTCScreen() {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'AmbassadorHome'>>();
-    const { ambassadorId } = useAuth();
+    const { ambassadorId, typeAmbassadeur, isSousCompte } = useAuth();
+    // Points : concept réservé à l'Ambassadeur Physique indépendant (ni Moral, ni employé).
+    const showPoints = typeAmbassadeur !== 'moral' && !isSousCompte;
     const { colors } = useTheme();
     const { t } = useLang();
     const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -308,7 +310,7 @@ export default function AmbassadorVTCScreen() {
                                 </Text>
                                 <View style={styles.historyRight}>
                                     <Text style={styles.historyPrice}>{Number(c.montant || 0).toFixed(2)} €</Text>
-                                    {c.points_attribues && c.points_attribues > 0 ? (
+                                    {showPoints && c.points_attribues && c.points_attribues > 0 ? (
                                         <Text style={styles.historyPoints}>+{c.points_attribues} pts</Text>
                                     ) : null}
                                 </View>
