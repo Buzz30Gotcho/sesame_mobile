@@ -30,7 +30,10 @@
       "infoPlist": {
         "NSCameraUsageDescription": "SÉSAME utilise la caméra pour scanner les QR codes partenaires.",
         "NSPhotoLibraryUsageDescription": "SÉSAME accède à vos photos pour l'envoi de documents KYC.",
-        "NSPhotoLibraryAddUsageDescription": "SÉSAME peut enregistrer des documents dans vos photos."
+        "NSPhotoLibraryAddUsageDescription": "SÉSAME peut enregistrer des documents dans vos photos.",
+        "NSLocationWhenInUseUsageDescription": "SÉSAME utilise votre position pour estimer votre arrivée et valider la fin de course.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "SÉSAME suit votre position pendant une course, même en arrière-plan, pour informer l'Ambassadeur de votre arrivée.",
+        "UIBackgroundModes": ["location"]
       }
     },
     "android": {
@@ -44,12 +47,26 @@
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.RECEIVE_BOOT_COMPLETED",
-        "android.permission.VIBRATE"
+        "android.permission.VIBRATE",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
       ]
     },
     "plugins": [
       "expo-asset",
       "expo-camera",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "SÉSAME suit votre position pendant une course, même en arrière-plan, pour informer l'Ambassadeur de votre arrivée.",
+          "locationWhenInUsePermission": "SÉSAME utilise votre position pour estimer votre arrivée et valider la fin de course.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
       [
         "expo-image-picker",
         {

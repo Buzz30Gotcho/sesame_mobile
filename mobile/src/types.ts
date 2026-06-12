@@ -115,6 +115,7 @@ export type ActiveCourse = {
     vehicule_modele?: string;
     vehicule_couleur?: string;
     vehicule_immat?: string;
+    eta_minutes?: number | null;
 };
 
 export type AmbassadorDashboard = {

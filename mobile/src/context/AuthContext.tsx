@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useMemo, ReactNode } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setAuthToken } from '../services/api';
+import { AUTH_TOKEN_KEY, CHAUFFEUR_ID_KEY } from '../services/locationTask';
 import type { UserRole } from '../types';
 
 export type AuthContextData = {
@@ -64,6 +66,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setTypeAmbassadeur(newTypeAmbassadeur ?? null);
         setIsSousCompte(newIsSousCompte ?? false);
         setAuthToken(newToken);
+        // Persistance pour la tâche de localisation en arrière-plan (tourne hors React).
+        AsyncStorage.setItem(AUTH_TOKEN_KEY, newToken).catch(() => {});
+        if (newChauffeurId) AsyncStorage.setItem(CHAUFFEUR_ID_KEY, newChauffeurId).catch(() => {});
+        else AsyncStorage.removeItem(CHAUFFEUR_ID_KEY).catch(() => {});
     };
 
     const logout = () => {
@@ -76,6 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setTypeAmbassadeur(null);
         setIsSousCompte(false);
         setAuthToken(null);
+        AsyncStorage.multiRemove([AUTH_TOKEN_KEY, CHAUFFEUR_ID_KEY]).catch(() => {});
     };
 
     const value = useMemo(

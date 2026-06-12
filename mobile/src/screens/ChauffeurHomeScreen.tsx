@@ -12,7 +12,9 @@ import {
     validateCourseCode, finishChauffeurCourse,
     getCoursesDisponibles, acceptChauffeurCourse,
     signalerClientAbsent, getChauffeurDocuments,
+    updateChauffeurPosition,
 } from '../services/api';
+import { startBackgroundLocation, stopBackgroundLocation } from '../services/locationTask';
 import { Colors, Typography } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import BottomNav from '../components/BottomNav';
@@ -65,6 +67,10 @@ export default function ChauffeurHomeScreen() {
     const [distanceToDestination, setDistanceToDestination] = useState<number | null>(null);
     const [gpsGranted, setGpsGranted] = useState<boolean | null>(null);
     const destCoordsRef = useRef<{ lat: number; lon: number } | null>(null);
+    const lastPosRef = useRef<{ lat: number; lon: number } | null>(null);
+    const lastPushRef = useRef(0);
+    // true quand la tâche de fond pousse déjà la position → l'écran ne double pas l'envoi
+    const bgActiveRef = useRef(false);
     const locationSubRef = useRef<Location.LocationSubscription | null>(null);
 
     const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -128,10 +134,32 @@ export default function ChauffeurHomeScreen() {
         return () => clearInterval(pollInterval);
     }, [dashboard?.disponible, dashboard?.current_course, pollIncoming]);
 
-    // Géofencing — actif uniquement quand le code est validé
+    // Position temps réel en arrière-plan (specs §7.2 + §9.2) — la tâche de fond pousse la
+    // position même app fermée / chauffeur sur son GPS. Démarrée pendant toute la course.
     useEffect(() => {
         const course = dashboard?.current_course;
-        if (course?.statut !== 'code_valide') {
+        const driving = !!course && ['acceptee', 'en_route', 'code_valide', 'en_cours'].includes(course.statut || '');
+        if (driving) {
+            (async () => {
+                const mode = await startBackgroundLocation();
+                bgActiveRef.current = mode === 'background';
+                setGpsGranted(mode !== 'denied');
+            })();
+        } else {
+            bgActiveRef.current = false;
+            stopBackgroundLocation().catch(() => {});
+        }
+    }, [dashboard?.current_course?.id, dashboard?.current_course?.statut]);
+
+    // Arrêt du suivi de fond au démontage de l'écran
+    useEffect(() => () => { stopBackgroundLocation().catch(() => {}); }, []);
+
+    // Géofencing (specs §7.2) — au premier plan : distance à la destination + position pour
+    // la clôture. Sert AUSSI de repli pour pousser la position si le suivi de fond est refusé.
+    useEffect(() => {
+        const course = dashboard?.current_course;
+        const drivingStates = ['acceptee', 'en_route', 'code_valide', 'en_cours'];
+        if (!course || !drivingStates.includes(course.statut || '')) {
             locationSubRef.current?.remove();
             locationSubRef.current = null;
             setDistanceToDestination(null);
@@ -140,24 +168,34 @@ export default function ChauffeurHomeScreen() {
 
         (async () => {
             const { status } = await Location.requestForegroundPermissionsAsync();
-            setGpsGranted(status === 'granted');
             if (status !== 'granted') return;
 
-            // Géocoder la destination si pas encore fait
-            if (!destCoordsRef.current && course.adresse_destination) {
+            // Géocoder la destination pour le géofencing, une fois le code validé
+            if (course.statut === 'code_valide' && !destCoordsRef.current && course.adresse_destination) {
                 destCoordsRef.current = await geocodeAddress(course.adresse_destination);
             }
 
             locationSubRef.current?.remove();
             locationSubRef.current = await Location.watchPositionAsync(
-                { accuracy: Location.Accuracy.High, distanceInterval: 20 },
+                { accuracy: Location.Accuracy.High, timeInterval: 5000, distanceInterval: 10 },
                 (loc) => {
-                    if (!destCoordsRef.current) return;
-                    const d = haversineMeters(
-                        loc.coords.latitude, loc.coords.longitude,
-                        destCoordsRef.current.lat, destCoordsRef.current.lon
-                    );
-                    setDistanceToDestination(Math.round(d));
+                    lastPosRef.current = { lat: loc.coords.latitude, lon: loc.coords.longitude };
+
+                    // Repli : si la tâche de fond n'est pas active, on pousse depuis l'écran (toutes les 5 s)
+                    const now = Date.now();
+                    if (chauffeurId && !bgActiveRef.current && now - lastPushRef.current >= 5000) {
+                        lastPushRef.current = now;
+                        updateChauffeurPosition(chauffeurId, lastPosRef.current).catch(() => {});
+                    }
+
+                    // Distance à la destination (disponible une fois le code validé)
+                    if (destCoordsRef.current) {
+                        const d = haversineMeters(
+                            loc.coords.latitude, loc.coords.longitude,
+                            destCoordsRef.current.lat, destCoordsRef.current.lon
+                        );
+                        setDistanceToDestination(Math.round(d));
+                    }
                 }
             );
         })();
@@ -166,7 +204,7 @@ export default function ChauffeurHomeScreen() {
             locationSubRef.current?.remove();
             locationSubRef.current = null;
         };
-    }, [dashboard?.current_course?.statut, dashboard?.current_course?.adresse_destination]);
+    }, [dashboard?.current_course?.statut, dashboard?.current_course?.adresse_destination, chauffeurId]);
 
     const toggleAvailability = async (val: boolean) => {
         if (!chauffeurId) return;
@@ -218,8 +256,15 @@ export default function ChauffeurHomeScreen() {
         const acceptedAt = course.date_acceptation ? new Date(course.date_acceptation) : new Date();
         const dureeMin = Math.round((Date.now() - acceptedAt.getTime()) / 60000);
 
-        await finishChauffeurCourse(chauffeurId, course.id).catch(() => {});
+        try {
+            await finishChauffeurCourse(chauffeurId, course.id, lastPosRef.current);
+        } catch (err: any) {
+            // Géofencing serveur : trop loin de la destination (403) → on ne ferme pas la course.
+            Alert.alert('Erreur', err.response?.data?.error || 'Impossible de terminer la course.');
+            return;
+        }
         destCoordsRef.current = null;
+        lastPosRef.current = null;
         setDistanceToDestination(null);
         setCompletedCourse({ montant, dureeMin });
         loadDashboard();

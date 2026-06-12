@@ -17,7 +17,7 @@ import type {
 } from '../types';
 
 const manifest: any = (Constants.expoConfig ?? Constants.manifest) || {};
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL ?? manifest.extra?.BACKEND_URL ?? 'http://localhost:4001';
+export const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL ?? manifest.extra?.BACKEND_URL ?? 'http://localhost:4001';
 
 export const FOURNISSEUR_VALIDER_URL = `${BACKEND_URL}/valider`;
 
@@ -250,8 +250,19 @@ export async function validateCourseCode(chauffeurId: string, courseId: string, 
     return api.post(`/api/chauffeurs/${chauffeurId}/validate-code`, { course_id: courseId, code });
 }
 
-export async function finishChauffeurCourse(chauffeurId: string, courseId: string) {
-    return api.post(`/api/chauffeurs/${chauffeurId}/finish-course`, { course_id: courseId });
+export async function updateChauffeurPosition(chauffeurId: string, coords: { lat: number; lon: number }) {
+    return api.post(`/api/chauffeurs/${chauffeurId}/position`, { lat: coords.lat, lon: coords.lon });
+}
+
+export async function finishChauffeurCourse(
+    chauffeurId: string,
+    courseId: string,
+    coords?: { lat: number; lon: number } | null
+) {
+    return api.post(`/api/chauffeurs/${chauffeurId}/finish-course`, {
+        course_id: courseId,
+        ...(coords ? { lat: coords.lat, lon: coords.lon } : {}),
+    });
 }
 
 export async function getChauffeurDocuments(chauffeurId: string) {

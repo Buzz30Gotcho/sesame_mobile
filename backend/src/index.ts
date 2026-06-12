@@ -391,6 +391,10 @@ async function runMigrations() {
         `ALTER TABLE ambassadeurs ADD COLUMN IF NOT EXISTS contrat_moral_signe_at timestamptz`,
         `ALTER TABLE chauffeurs ADD COLUMN IF NOT EXISTS taux_commission_override numeric`,
         `ALTER TABLE chauffeurs ADD COLUMN IF NOT EXISTS documents_valides boolean DEFAULT false`,
+        // Position temps réel du chauffeur (specs §7.2 + §9.2) — pour l'ETA live côté Ambassadeur
+        `ALTER TABLE chauffeurs ADD COLUMN IF NOT EXISTS derniere_lat double precision`,
+        `ALTER TABLE chauffeurs ADD COLUMN IF NOT EXISTS derniere_lon double precision`,
+        `ALTER TABLE chauffeurs ADD COLUMN IF NOT EXISTS position_maj_at timestamptz`,
         `ALTER TABLE documents_chauffeur ADD COLUMN IF NOT EXISTS motif_refus text`,
         `CREATE TABLE IF NOT EXISTS parrainage_paliers (
             id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

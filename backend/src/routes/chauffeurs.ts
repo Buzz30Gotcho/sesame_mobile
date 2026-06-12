@@ -3,7 +3,7 @@ import multer from 'multer';
 import { randomInt } from 'crypto';
 import { query } from '../db';
 import { calculatePoints, nextAmbassadorLevel } from '../lib/rules';
-import { crediterPaliersParrainage, executerSanctionsEnAttente, checkAndSuspendExpiredDocsChauffeur } from '../lib/courseHelpers';
+import { crediterPaliersParrainage, executerSanctionsEnAttente, checkAndSuspendExpiredDocsChauffeur, verifierGeofenceDestination, GEOFENCE_RADIUS_M, etaChauffeurVersAdresse } from '../lib/courseHelpers';
 import { sendPushNotification } from '../lib/pushNotifications';
 import { stripe } from '../lib/stripeClient';
 import { ownChauffeurParam } from '../middleware/auth';
@@ -213,19 +213,26 @@ router.post('/:id/accept-course', async (req, res) => {
 
     // Notification push à l'ambassadeur
     try {
-        const chauffeurResult = await query('SELECT u.prenom FROM chauffeurs c JOIN utilisateurs u ON u.id = c.utilisateur_id WHERE c.id = $1', [req.params.id]);
-        const chauffeurPrenom = chauffeurResult.rows[0]?.prenom || 'Votre chauffeur';
+        const chauffeurResult = await query('SELECT u.prenom, c.derniere_lat, c.derniere_lon, c.position_maj_at FROM chauffeurs c JOIN utilisateurs u ON u.id = c.utilisateur_id WHERE c.id = $1', [req.params.id]);
+        const ch = chauffeurResult.rows[0] || {};
+        const chauffeurPrenom = ch.prenom || 'Votre chauffeur';
         const ambTokenResult = await query(
             'SELECT a.push_token FROM ambassadeurs a JOIN courses c ON c.ambassadeur_id = a.id WHERE c.id = $1',
             [course_id]
         );
         const ambToken = ambTokenResult.rows[0]?.push_token;
         if (ambToken) {
+            // ETA réel si la position du chauffeur est connue et fraîche (specs §5.1 « arrive dans ~{eta} min »)
+            const fresh = ch.position_maj_at && Date.now() - new Date(ch.position_maj_at).getTime() < 2 * 60 * 1000;
+            const eta = fresh && ch.derniere_lat != null && ch.derniere_lon != null
+                ? await etaChauffeurVersAdresse(Number(ch.derniere_lat), Number(ch.derniere_lon), updated.rows[0]?.adresse_depart)
+                : null;
+            const arrivee = eta != null ? `arrive dans ~${eta} min` : 'arrive dans quelques minutes';
             // Notification persistante — code visible tant que course active (specs §9.0)
             await sendPushNotification(
                 ambToken,
                 'Chauffeur trouvé !',
-                `Code : ${code}. ${chauffeurPrenom} arrive dans quelques minutes.`,
+                `Code : ${code}. ${chauffeurPrenom} ${arrivee}.`,
                 { course_id, code, type: 'CHAUFFEUR_ACCEPTE' },
                 true
             );
@@ -267,8 +274,23 @@ router.post('/:id/validate-code', codeLimiter, async (req, res) => {
     res.json(updated.rows[0]);
 });
 
+// Position temps réel du chauffeur (specs §7.2 + §9.2) — poussée toutes les 5 s pendant une course.
+router.post('/:id/position', async (req, res) => {
+    const { lat, lon } = req.body;
+    const latN = Number(lat);
+    const lonN = Number(lon);
+    if (!Number.isFinite(latN) || !Number.isFinite(lonN)) {
+        return res.status(400).json({ error: 'lat/lon requis' });
+    }
+    await query(
+        'UPDATE chauffeurs SET derniere_lat = $1, derniere_lon = $2, position_maj_at = now() WHERE id = $3',
+        [latN, lonN, req.params.id]
+    );
+    res.json({ success: true });
+});
+
 router.post('/:id/finish-course', async (req, res) => {
-    const { course_id } = req.body;
+    const { course_id, lat, lon } = req.body;
     if (!course_id) return res.status(400).json({ error: 'course_id requis' });
 
     const courseResult = await query('SELECT * FROM courses WHERE id = $1 AND chauffeur_id = $2', [course_id, req.params.id]);
@@ -276,6 +298,14 @@ router.post('/:id/finish-course', async (req, res) => {
     if (!course) return res.status(404).json({ error: 'Course introuvable' });
     if (!['code_valide', 'en_cours'].includes(course.statut)) {
         return res.status(400).json({ error: 'Seules les courses en cours peuvent être terminées' });
+    }
+
+    // Géofencing 300 m côté serveur (specs §7.2 + §4.2) — empêche de terminer loin de la destination.
+    const geo = await verifierGeofenceDestination(course.adresse_destination, lat, lon);
+    if (!geo.ok) {
+        return res.status(403).json({
+            error: `Vous devez être à moins de ${GEOFENCE_RADIUS_M} m de la destination pour terminer la course (actuellement ${geo.distance} m).`,
+        });
     }
 
     await query('UPDATE courses SET statut = $1, date_fin = now() WHERE id = $2', ['terminee', course_id]);

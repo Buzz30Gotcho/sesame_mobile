@@ -2,6 +2,7 @@ import express from 'express';
 import { query } from '../db';
 import { ownAmbassadeurParam } from '../middleware/auth';
 import { IS_PROD } from '../config';
+import { etaChauffeurVersAdresse } from '../lib/courseHelpers';
 
 const router = express.Router();
 
@@ -197,7 +198,8 @@ router.get('/:id/dashboard', async (req, res) => {
         `SELECT c.id, c.reference, c.statut, c.type_course, c.adresse_depart, c.adresse_destination,
                 c.vehicule_type, c.montant, c.points_attribues, c.date_reservation, c.code_validation,
                 u.prenom AS chauffeur_prenom, u.nom AS chauffeur_nom, u.telephone AS chauffeur_telephone,
-                ch.vehicule_marque, ch.vehicule_modele, ch.vehicule_couleur, ch.vehicule_immat
+                ch.vehicule_marque, ch.vehicule_modele, ch.vehicule_couleur, ch.vehicule_immat,
+                ch.derniere_lat, ch.derniere_lon, ch.position_maj_at
          FROM courses c
          LEFT JOIN chauffeurs ch ON ch.id = c.chauffeur_id
          LEFT JOIN utilisateurs u ON u.id = ch.utilisateur_id
@@ -205,6 +207,22 @@ router.get('/:id/dashboard', async (req, res) => {
          ORDER BY c.date_acceptation DESC NULLS LAST
          LIMIT 5`,
         [req.params.id, 'recherche', 'acceptee', 'en_route', 'code_valide', 'en_cours']
+    );
+
+    // ETA live (specs §7.2) : temps d'arrivée du chauffeur au point de prise en charge.
+    // Calculé seulement avant la prise en charge (acceptee/en_route) et si la position est fraîche
+    // (< 2 min). On NE renvoie PAS les coordonnées brutes au client (pas de carte → strict specs).
+    const POSITION_FRESH_MS = 2 * 60 * 1000;
+    await Promise.all(
+        coursesResult.rows.map(async (c: any) => {
+            const fresh = c.position_maj_at && Date.now() - new Date(c.position_maj_at).getTime() < POSITION_FRESH_MS;
+            if (['acceptee', 'en_route'].includes(c.statut) && c.derniere_lat != null && c.derniere_lon != null && fresh) {
+                c.eta_minutes = await etaChauffeurVersAdresse(Number(c.derniere_lat), Number(c.derniere_lon), c.adresse_depart);
+            }
+            delete c.derniere_lat;
+            delete c.derniere_lon;
+            delete c.position_maj_at;
+        })
     );
 
     const activeCountResult = await query(

@@ -2,6 +2,132 @@ import { query } from '../db';
 import { nextAmbassadorLevel } from './rules';
 import { sendPushNotification } from './pushNotifications';
 
+// ─── Géofencing « Terminer course » (specs §7.2 + §4.2) ───────────────────────
+// Le bouton Terminer n'est actif qu'à 300 m de la destination. Vérification CÔTÉ
+// SERVEUR : le chauffeur transmet sa position, le serveur géocode la destination
+// (Base Adresse Nationale, même source que l'app) et compare la distance.
+export const GEOFENCE_RADIUS_M = 300;
+// Marge pour l'imprécision GPS + le géocodage : on ne bloque pas un chauffeur
+// réellement sur place pour quelques mètres d'écart.
+const GEOFENCE_TOLERANCE_M = 100;
+
+export function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371000; // rayon terrestre en mètres
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// Géocodage serveur via la Base Adresse Nationale (même source que l'app mobile).
+// Cache mémoire : une adresse géocode toujours pareil, inutile de rappeler la BAN.
+const geocodeCache = new Map<string, { lat: number; lon: number }>();
+export async function geocodeAddress(address: string): Promise<{ lat: number; lon: number } | null> {
+    const key = address.trim().toLowerCase();
+    const cached = geocodeCache.get(key);
+    if (cached) return cached;
+    try {
+        const url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(address)}&limit=1`;
+        const res = await fetch(url);
+        const data = (await res.json()) as { features?: { geometry: { coordinates: [number, number] } }[] };
+        const feat = data.features?.[0];
+        if (!feat) return null;
+        const [lon, lat] = feat.geometry.coordinates;
+        const coords = { lat, lon };
+        geocodeCache.set(key, coords);
+        return coords;
+    } catch {
+        return null;
+    }
+}
+
+// ─── ETA temps réel (specs §7.2 + §9.2) ───────────────────────────────────────
+// Stratégie : TomTom (trafic temps réel) si une clé est configurée, sinon repli OSRM
+// (gratuit, sans trafic). TomTom n'est utilisé QUE pour l'ETA (petit volume + cache 15 s)
+// → reste très loin du quota gratuit. Le calcul de distance/prix reste sur OSRM côté app.
+const TOMTOM_API_KEY = process.env.TOMTOM_API_KEY || '';
+
+// ETA via TomTom Routing avec trafic. Renvoie null si pas de clé / erreur (→ repli OSRM).
+// NB : TomTom attend les coordonnées en {lat},{lon} (OSRM les attend en {lon},{lat}).
+async function getTomTomDurationMinutes(fromLat: number, fromLon: number, toLat: number, toLon: number): Promise<number | null> {
+    if (!TOMTOM_API_KEY) return null;
+    try {
+        const url = `https://api.tomtom.com/routing/1/calculateRoute/${fromLat},${fromLon}:${toLat},${toLon}/json`
+            + `?key=${TOMTOM_API_KEY}&traffic=true&travelMode=car`;
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        const data = (await res.json()) as { routes?: { summary?: { travelTimeInSeconds?: number } }[] };
+        const sec = data.routes?.[0]?.summary?.travelTimeInSeconds;
+        if (typeof sec !== 'number') return null;
+        return Math.max(1, Math.ceil(sec / 60));
+    } catch {
+        return null;
+    }
+}
+
+// ETA via OSRM (repli gratuit, sans trafic). Renvoie null si indisponible.
+async function getRouteDurationMinutes(fromLat: number, fromLon: number, toLat: number, toLon: number): Promise<number | null> {
+    try {
+        const url = `https://router.project-osrm.org/route/v1/driving/${fromLon},${fromLat};${toLon},${toLat}?overview=false`;
+        const res = await fetch(url);
+        const data = (await res.json()) as { code?: string; routes?: { duration: number }[] };
+        if (data.code !== 'Ok' || !data.routes?.length) return null;
+        return Math.max(1, Math.ceil(data.routes[0].duration / 60));
+    } catch {
+        return null;
+    }
+}
+
+// ETA du chauffeur (position GPS) vers une adresse (ex. point de prise en charge).
+// TomTom (trafic) en priorité, repli OSRM. Cache 15 s pour limiter les appels.
+const etaCache = new Map<string, { eta: number | null; at: number }>();
+const ETA_TTL_MS = 15000;
+export async function etaChauffeurVersAdresse(
+    fromLat: number,
+    fromLon: number,
+    adresse: string | null | undefined
+): Promise<number | null> {
+    if (!adresse || !Number.isFinite(fromLat) || !Number.isFinite(fromLon)) return null;
+    const key = `${fromLat.toFixed(4)},${fromLon.toFixed(4)}|${adresse.trim().toLowerCase()}`;
+    const cached = etaCache.get(key);
+    if (cached && Date.now() - cached.at < ETA_TTL_MS) return cached.eta;
+
+    const dest = await geocodeAddress(adresse);
+    let eta: number | null = null;
+    if (dest) {
+        // TomTom (trafic) d'abord, sinon repli OSRM (sans trafic)
+        eta = await getTomTomDurationMinutes(fromLat, fromLon, dest.lat, dest.lon);
+        if (eta == null) eta = await getRouteDurationMinutes(fromLat, fromLon, dest.lat, dest.lon);
+    }
+    etaCache.set(key, { eta, at: Date.now() });
+    return eta;
+}
+
+// Vérifie que le chauffeur est à <= 300 m de la destination.
+// Mode dégradé (specs §7.2) : si la position n'est pas fournie (GPS refusé) ou si
+// la destination n'est pas géocodable, on ne dispose pas de l'information → on
+// n'empêche pas de terminer (fail-open), cohérent avec le comportement de l'app.
+export async function verifierGeofenceDestination(
+    adresseDestination: string | null | undefined,
+    lat: unknown,
+    lon: unknown
+): Promise<{ ok: true } | { ok: false; distance: number }> {
+    const latN = Number(lat);
+    const lonN = Number(lon);
+    if (!Number.isFinite(latN) || !Number.isFinite(lonN)) return { ok: true };
+    if (!adresseDestination) return { ok: true };
+
+    const dest = await geocodeAddress(adresseDestination);
+    if (!dest) return { ok: true };
+
+    const distance = Math.round(haversineMeters(latN, lonN, dest.lat, dest.lon));
+    if (distance > GEOFENCE_RADIUS_M + GEOFENCE_TOLERANCE_M) return { ok: false, distance };
+    return { ok: true };
+}
+
 // Paliers parrainage (specs §1.4) — uniquement Ambassadeur Physique
 const PALIERS = [
     { key: 'palier1', bonus: 5,  check: async (filleulId: string) => {

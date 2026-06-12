@@ -218,6 +218,13 @@ export default function AmbassadorVTCScreen() {
                             )}
                         </View>
 
+                        {/* ETA temps réel (specs §7.2) — avant la prise en charge uniquement */}
+                        {activeCourse.eta_minutes != null && ['acceptee', 'en_route'].includes(activeCourse.statut || '') && (
+                            <View style={styles.etaBadge}>
+                                <Text style={styles.etaText}>🚗 Arrive dans ~{activeCourse.eta_minutes} min</Text>
+                            </View>
+                        )}
+
                         {/* Code Pivot */}
                         <View style={styles.pivotSection}>
                             <Text style={styles.pivotLabel}>{t('code_client_pivot')}</Text>
@@ -367,6 +374,19 @@ function makeStyles(colors: typeof Colors.nocturne) {
             paddingBottom: 20,
             borderBottomWidth: 1,
             borderBottomColor: 'rgba(255,255,255,0.06)',
+        },
+        etaBadge: {
+            alignSelf: 'center',
+            backgroundColor: 'rgba(76, 175, 130, 0.12)',
+            borderRadius: 999,
+            paddingVertical: 8,
+            paddingHorizontal: 18,
+            marginBottom: 18,
+        },
+        etaText: {
+            color: Colors.brand.success,
+            fontSize: Typography.sizes.small,
+            fontWeight: Typography.weights.bold as any,
         },
         pivotLabel: {
             color: colors.textSecondary,

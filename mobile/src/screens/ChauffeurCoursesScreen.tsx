@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Location from 'expo-location';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useLang } from '../context/LanguageContext';
@@ -50,11 +51,22 @@ export default function ChauffeurCoursesScreen() {
 
     const handleFinish = async (courseId: string) => {
         if (!chauffeurId) return;
+        // Position pour le géofencing serveur (300 m). Mode dégradé si GPS refusé : on envoie sans coords.
+        let coords: { lat: number; lon: number } | null = null;
         try {
-            await finishChauffeurCourse(chauffeurId, courseId);
-            Alert.alert('Terminé', 'Course marquée comme terminée.');
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            if (status === 'granted') {
+                const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+                coords = { lat: loc.coords.latitude, lon: loc.coords.longitude };
+            }
         } catch {
-            Alert.alert(t('erreur'), 'Impossible de terminer la course.');
+            // GPS indisponible → mode dégradé
+        }
+        try {
+            await finishChauffeurCourse(chauffeurId, courseId, coords);
+            Alert.alert('Terminé', 'Course marquée comme terminée.');
+        } catch (err: any) {
+            Alert.alert(t('erreur'), err.response?.data?.error || 'Impossible de terminer la course.');
         }
     };
 
