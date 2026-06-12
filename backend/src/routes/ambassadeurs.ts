@@ -137,7 +137,16 @@ router.get('/:id/dashboard', async (req, res) => {
             u.nom,
             a.code_parrainage,
             a.points_solde,
-            a.niveau
+            a.niveau,
+            a.metier,
+            -- Établissement de rattachement : pour un employé c'est celui du Moral parent,
+            -- sinon son propre établissement.
+            COALESCE(
+                (SELECT am.etablissement FROM sous_comptes_employes s
+                 JOIN ambassadeurs am ON am.id = s.ambassadeur_moral_id
+                 WHERE s.utilisateur_id = a.utilisateur_id LIMIT 1),
+                a.etablissement
+            ) AS etablissement
         FROM ambassadeurs a
         JOIN utilisateurs u ON u.id = a.utilisateur_id
         WHERE a.id = $1`,
@@ -206,9 +215,21 @@ router.get('/:id/dashboard', async (req, res) => {
     const weeklyStatsResult = await query(
         `SELECT
             count(*) FILTER (WHERE statut = 'terminee' AND date_fin > now() - interval '7 days') AS courses_semaine,
+            count(*) FILTER (WHERE statut = 'terminee' AND date_fin >= date_trunc('month', now())) AS courses_mois,
+            count(*) FILTER (WHERE statut = 'terminee') AS courses_total,
             COALESCE(sum(points_attribues) FILTER (WHERE statut = 'terminee' AND date_fin > now() - interval '7 days'), 0) AS points_semaine
          FROM courses
          WHERE ambassadeur_id = $1`,
+        [req.params.id]
+    );
+
+    // Historique récent : 5 dernières courses terminées (pour la vue employé notamment).
+    const recentCoursesResult = await query(
+        `SELECT id, reference, adresse_depart, adresse_destination, montant, date_fin
+         FROM courses
+         WHERE ambassadeur_id = $1 AND statut = 'terminee'
+         ORDER BY date_fin DESC NULLS LAST
+         LIMIT 5`,
         [req.params.id]
     );
 
@@ -216,6 +237,8 @@ router.get('/:id/dashboard', async (req, res) => {
     const pendingBonsCount = Number(pendingBonsResult.rows[0]?.count || 0);
     const nbAnnulations30j = Number(annulationsResult.rows[0]?.count || 0);
     const coursesSemaine = Number(weeklyStatsResult.rows[0]?.courses_semaine || 0);
+    const coursesMois = Number(weeklyStatsResult.rows[0]?.courses_mois || 0);
+    const coursesTotal = Number(weeklyStatsResult.rows[0]?.courses_total || 0);
     const pointsSemaine = Number(weeklyStatsResult.rows[0]?.points_semaine || 0);
 
     res.json({
@@ -224,11 +247,16 @@ router.get('/:id/dashboard', async (req, res) => {
         niveau: profile.niveau,
         points_solde: Number(profile.points_solde || 0),
         code_parrainage: profile.code_parrainage,
+        metier: profile.metier,
+        etablissement: profile.etablissement,
         active_course_count: activeCourseCount,
         pending_bons_count: pendingBonsCount,
         nb_annulations_30j: nbAnnulations30j,
         courses_semaine: coursesSemaine,
+        courses_mois: coursesMois,
+        courses_total: coursesTotal,
         points_semaine: pointsSemaine,
+        recent_courses: recentCoursesResult.rows,
         next_level: nextLevel,
         next_level_target: nextLevelTarget,
         points_to_next_level: pointsToNextLevel,

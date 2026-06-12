@@ -117,21 +117,35 @@ export type ActiveCourse = {
     vehicule_immat?: string;
 };
 
+export type RecentCourse = {
+    id: string;
+    reference: string;
+    adresse_depart?: string;
+    adresse_destination?: string;
+    montant?: number;
+    date_fin?: string;
+};
+
 export type AmbassadorDashboard = {
     ambassadeur_id: string;
     prenom: string;
     niveau: string;
     points_solde: number;
     code_parrainage?: string;
+    metier?: string | null;
+    etablissement?: string | null;
     active_course_count: number;
     pending_bons_count: number;
     nb_annulations_30j: number;
     courses_semaine: number;
+    courses_mois: number;
+    courses_total: number;
     points_semaine: number;
     next_level?: string | null;
     points_to_next_level: number;
     next_level_target?: number | null;
     active_courses: ActiveCourse[];
+    recent_courses?: RecentCourse[];
 };
 
 export type ChauffeurDashboard = {

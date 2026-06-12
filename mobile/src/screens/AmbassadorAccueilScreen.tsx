@@ -153,6 +153,22 @@ export default function AmbassadorAccueilScreen() {
                     </View>
                 )}
 
+                {/* Carte établissement de rattachement — employé (l'info la plus importante) */}
+                {isSousCompte && (
+                    <View style={styles.employeCard}>
+                        <View style={styles.employeIconWrap}>
+                            <Text style={styles.employeIcon}>🏨</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.employeCardLabel}>ÉTABLISSEMENT</Text>
+                            <Text style={styles.employeCardValue} numberOfLines={1}>{dashboard?.etablissement || '—'}</Text>
+                            <Text style={styles.employeCardRole} numberOfLines={2}>
+                                {dashboard?.metier ? `${dashboard.metier} · ` : ''}Vous prescrivez les courses pour votre établissement
+                            </Text>
+                        </View>
+                    </View>
+                )}
+
                 {/* Badge mode */}
                 <View style={isImmediateEnabled ? styles.modeBadgeGreen : styles.modeBadgeBlue}>
                     <Text style={styles.modeBadgeText}>
@@ -193,10 +209,16 @@ export default function AmbassadorAccueilScreen() {
                                 <Text style={styles.statLabel}>CE MOIS</Text>
                             </View>
                         ) : isSousCompte ? (
-                            <View style={styles.statItem}>
-                                <Text style={[styles.statValue, { color: Colors.brand.gold }]}>{dashboard?.courses_semaine || 0}</Text>
-                                <Text style={styles.statLabel}>CETTE SEMAINE</Text>
-                            </View>
+                            <>
+                                <View style={styles.statItem}>
+                                    <Text style={[styles.statValue, { color: Colors.brand.gold }]}>{dashboard?.courses_semaine || 0}</Text>
+                                    <Text style={styles.statLabel}>CETTE SEMAINE</Text>
+                                </View>
+                                <View style={styles.statItem}>
+                                    <Text style={[styles.statValue, { color: Colors.brand.gold }]}>{dashboard?.courses_mois || 0}</Text>
+                                    <Text style={styles.statLabel}>CE MOIS</Text>
+                                </View>
+                            </>
                         ) : (
                             <>
                                 <View style={styles.statItem}>
@@ -215,6 +237,33 @@ export default function AmbassadorAccueilScreen() {
                         )}
                     </View>
                 </View>
+
+                {/* Historique récent — employé (specs : historique de courses personnel) */}
+                {isSousCompte && (
+                    <View style={styles.historyCard}>
+                        <Text style={styles.historyTitle}>MES DERNIÈRES COURSES</Text>
+                        {dashboard?.recent_courses && dashboard.recent_courses.length > 0 ? (
+                            dashboard.recent_courses.map((c) => (
+                                <View key={c.id} style={styles.historyRow}>
+                                    <View style={styles.historyDot} />
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.historyRoute} numberOfLines={1}>
+                                            {c.adresse_depart || '—'} → {c.adresse_destination || '—'}
+                                        </Text>
+                                        <Text style={styles.historyMeta}>
+                                            {c.reference}{c.date_fin ? ` · ${new Date(c.date_fin).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}` : ''}
+                                        </Text>
+                                    </View>
+                                    {c.montant != null && (
+                                        <Text style={styles.historyAmount}>{Number(c.montant).toFixed(2)} €</Text>
+                                    )}
+                                </View>
+                            ))
+                        ) : (
+                            <Text style={styles.historyEmpty}>Aucune course terminée pour le moment.</Text>
+                        )}
+                    </View>
+                )}
 
                 {/* Liens rapides — masqués pour les employés (specs : ni boutique, ni parrainage, ni niveaux) */}
                 {!isSousCompte && (
@@ -298,6 +347,20 @@ function makeStyles(colors: typeof Colors.nocturne) {
         pointsBadgeText: { color: Colors.brand.gold, fontWeight: Typography.weights.bold as any, fontSize: Typography.sizes.sub },
         employeBadge: { backgroundColor: 'rgba(74, 158, 255, 0.15)', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(74,158,255,0.3)' },
         employeBadgeText: { color: Colors.brand.info, fontWeight: Typography.weights.black as any, fontSize: Typography.sizes.tiny, letterSpacing: 1 },
+        employeCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.card, borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(74,158,255,0.25)' },
+        employeIconWrap: { width: 48, height: 48, borderRadius: 12, backgroundColor: 'rgba(74,158,255,0.12)', alignItems: 'center', justifyContent: 'center' },
+        employeIcon: { fontSize: 24 },
+        employeCardLabel: { color: Colors.brand.info, fontSize: Typography.sizes.tiny, fontWeight: Typography.weights.black as any, letterSpacing: 1, marginBottom: 2 },
+        employeCardValue: { color: colors.textPrimary, fontSize: Typography.sizes.body, fontWeight: Typography.weights.black as any, marginBottom: 3 },
+        employeCardRole: { color: colors.textSecondary, fontSize: Typography.sizes.tiny, lineHeight: 15 },
+        historyCard: { backgroundColor: colors.card, borderRadius: 16, padding: 14, marginTop: 14 },
+        historyTitle: { color: colors.textSecondary, fontSize: Typography.sizes.tiny, fontWeight: Typography.weights.bold as any, letterSpacing: 1, marginBottom: 10 },
+        historyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)' },
+        historyDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.brand.success },
+        historyRoute: { color: colors.textPrimary, fontSize: Typography.sizes.small, fontWeight: Typography.weights.bold as any },
+        historyMeta: { color: colors.textSecondary, fontSize: Typography.sizes.tiny, marginTop: 2 },
+        historyAmount: { color: Colors.brand.gold, fontSize: Typography.sizes.sub, fontWeight: Typography.weights.black as any },
+        historyEmpty: { color: colors.textSecondary, fontSize: Typography.sizes.small, textAlign: 'center', paddingVertical: 16 },
         ringCard: { backgroundColor: colors.card, borderRadius: 20, alignItems: 'center', paddingVertical: 20, paddingHorizontal: 16, marginBottom: 10 },
         ringCardPhysique: {},
         ringCardMoral: { paddingVertical: 36 },
