@@ -424,6 +424,10 @@ async function runMigrations() {
             created_at timestamptz NOT NULL DEFAULT now(),
             vire_at timestamptz
         )`,
+        // Suivi du paiement fournisseur (specs §6.1 onglet Historique) — PAS de table dédiée.
+        // 1 bon = 1 échange : on ajoute juste la date de règlement sur `echanges`.
+        // NULL = pas encore réglé. Le « à payer » se déduit de statut/remis_at + option_paiement.
+        `ALTER TABLE echanges ADD COLUMN IF NOT EXISTS paiement_paye_at timestamptz`,
     ];
     for (const sql of migrations) {
         await query(sql).catch(e => console.warn('[migration]', e.message));

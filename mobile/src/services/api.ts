@@ -205,6 +205,11 @@ export async function createCourse(data: {
     return api.post(endpoint, data);
 }
 
+export async function estimerCourse(adresse_depart: string, adresse_destination: string) {
+    const res = await api.post('/api/courses/estimer', { adresse_depart, adresse_destination });
+    return res.data as { kilometrage: number; prix_berline: number; prix_van: number };
+}
+
 export async function cancelCourse(courseId: string) {
     return api.put(`/api/courses/${courseId}/annuler`, { raison: 'ambassadeur' });
 }

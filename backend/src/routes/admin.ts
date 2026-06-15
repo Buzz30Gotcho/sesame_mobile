@@ -7,6 +7,9 @@ import { sendPushNotification } from '../lib/pushNotifications';
 
 import { JWT_SECRET } from '../config';
 import { isYousignConfigured, envoyerContratFournisseur } from '../lib/yousignClient';
+import { generateContractPdf } from '../lib/contractPdf';
+import { genererSepaXml } from '../lib/sepaXml';
+import { sendCodeSecretFournisseur } from '../lib/mailer';
 
 const router = express.Router();
 
@@ -429,7 +432,13 @@ router.get('/sanctions', async (req, res) => {
 });
 
 router.get('/fournisseurs', async (req, res) => {
-    const result = await query('SELECT id, nom_societe, statut, contrat_signe, bloque, legal_email FROM fournisseurs ORDER BY nom_societe ASC');
+    const result = await query(
+        `SELECT id, nom_societe, statut, contrat_signe, contrat_signe_at, bloque, siret, iban,
+                legal_prenom, legal_nom, legal_email, legal_telephone, legal_adresse, legal_cp, legal_ville,
+                prest_prenom, prest_nom, prest_telephone, prest_email, prest_adresse, prest_cp, prest_ville,
+                memes_coordonnees, option_paiement
+         FROM fournisseurs ORDER BY nom_societe ASC`
+    );
     res.json(result.rows);
 });
 
@@ -703,8 +712,20 @@ router.post('/fournisseurs', async (req, res) => {
         ]
     );
 
-    // Retourner le code en clair une seule fois (à envoyer par email au responsable légal)
-    res.status(201).json({ ...result.rows[0], code_secret_temporaire: code });
+    // Envoyer le code secret par email au responsable légal (specs : « envoyé par email »).
+    // Non bloquant : si l'email échoue, l'admin garde le code affiché pour le communiquer.
+    let email_envoye = false;
+    if (legal_email) {
+        try {
+            await sendCodeSecretFournisseur(legal_email, nom_societe, code);
+            email_envoye = true;
+        } catch (e) {
+            console.error('[fournisseur] envoi code secret échoué:', (e as Error).message);
+        }
+    }
+
+    // Retourner le code en clair une seule fois (repli si l'email n'est pas parti)
+    res.status(201).json({ ...result.rows[0], code_secret_temporaire: code, email_envoye });
 });
 
 // Modifier un fournisseur
@@ -752,23 +773,49 @@ router.put('/fournisseurs/:id', async (req, res) => {
     res.json({ success: true });
 });
 
+// Champs du fournisseur nécessaires à la génération du contrat (specs §6.3).
+const CONTRAT_FIELDS = `id, nom_societe, siret, iban,
+    legal_prenom, legal_nom, legal_email, legal_telephone, legal_adresse, legal_cp, legal_ville,
+    option_paiement`;
+
+// Charge le fournisseur + ses offres pour bâtir le contrat dynamique.
+async function chargerContrat(id: string) {
+    const fr = await query(`SELECT ${CONTRAT_FIELDS} FROM fournisseurs WHERE id = $1`, [id]);
+    const f = fr.rows[0];
+    if (!f) return null;
+    const or = await query(
+        `SELECT nom, description, tarif_fournisseur_ht, validite_bon_mois
+         FROM offres_boutique WHERE fournisseur_id = $1 ORDER BY nom ASC`,
+        [id]
+    );
+    return { f, offres: or.rows };
+}
+
+// Prévisualiser / télécharger le contrat généré (specs §6.1 — bouton « Télécharger »).
+router.get('/fournisseurs/:id/contrat-preview', async (req, res) => {
+    const data = await chargerContrat(req.params.id);
+    if (!data) return res.status(404).json({ error: 'Fournisseur introuvable' });
+    const { buffer } = await generateContractPdf(data.f, data.offres);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="contrat-sesame-${data.f.nom_societe.replace(/[^\w-]+/g, '_')}.pdf"`);
+    res.send(buffer);
+});
+
 // Envoyer le contrat à signer au fournisseur via Yousign (specs §6).
 // Signataire unique = le responsable légal. La boutique se débloque au webhook « signé ».
 router.post('/fournisseurs/:id/envoyer-contrat', async (req, res) => {
-    const r = await query(
-        'SELECT id, nom_societe, legal_prenom, legal_nom, legal_email, legal_telephone FROM fournisseurs WHERE id = $1',
-        [req.params.id]
-    );
-    const f = r.rows[0];
-    if (!f) return res.status(404).json({ error: 'Fournisseur introuvable' });
+    const data = await chargerContrat(req.params.id);
+    if (!data) return res.status(404).json({ error: 'Fournisseur introuvable' });
+    const f = data.f;
     if (!f.legal_email) {
         return res.status(400).json({ error: "Renseignez l'email du responsable légal avant d'envoyer le contrat." });
     }
     if (!isYousignConfigured()) {
-        return res.status(503).json({ error: 'Signature électronique non configurée (YOUSIGN_API_KEY + contrat PDF). Validez le contrat manuellement en attendant.' });
+        return res.status(503).json({ error: 'Signature électronique non configurée (YOUSIGN_API_KEY). Validez le contrat manuellement en attendant.' });
     }
     try {
-        await envoyerContratFournisseur(f);
+        const pdf = await generateContractPdf(f, data.offres);
+        await envoyerContratFournisseur(f, { pdf });
         res.json({ success: true, message: `Contrat envoyé à ${f.legal_email}.` });
     } catch (e: any) {
         res.status(502).json({ error: `Échec de l'envoi Yousign : ${e.message}` });
@@ -781,6 +828,233 @@ router.post('/fournisseurs/:id/regenerer-code', async (req, res) => {
     const code_secret_hash = await bcrypt.hash(code, 10);
     await query('UPDATE fournisseurs SET code_secret_hash = $1, bloque = false, nb_tentatives_echouees = 0 WHERE id = $2', [code_secret_hash, req.params.id]);
     res.json({ success: true, code_secret_temporaire: code });
+});
+
+// ─── Offres boutique d'un fournisseur (specs §6.3) ────────────────────────────
+// Règle dure : aucune offre tant que le contrat n'est pas signé (boutique bloquée).
+
+// Génère une référence unique (ex: KRT-30MIN-A1) à partir du nom de l'offre.
+async function genererReferenceOffre(nom: string): Promise<string> {
+    const base = (nom || 'OFFRE')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 14) || 'OFFRE';
+    for (let i = 0; i < 12; i++) {
+        const suffix = randomInt(0, 1296).toString(36).toUpperCase().padStart(2, '0');
+        const ref = `${base}-${suffix}`.slice(0, 20);
+        const exists = await query('SELECT 1 FROM offres_boutique WHERE reference = $1', [ref]);
+        if (exists.rows.length === 0) return ref;
+    }
+    throw new Error('Impossible de générer une référence unique');
+}
+
+// Valide et normalise le corps d'une offre. Renvoie { error } ou les valeurs propres.
+function parseOffre(body: any): { error: string } | {
+    nom: string; description: string | null; stock: number | null;
+    pts_requis: number; tarif_fournisseur_ht: number | null; validite_bon_mois: number;
+    statut: 'en_ligne' | 'hors_ligne';
+} {
+    const nom = typeof body.nom === 'string' ? body.nom.trim() : '';
+    if (!nom) return { error: "Le nom de l'offre est obligatoire." };
+    const pts_requis = Number(body.pts_requis);
+    if (!Number.isInteger(pts_requis) || pts_requis <= 0) return { error: 'Les points requis doivent être un entier positif.' };
+    const validite_bon_mois = Number(body.validite_bon_mois);
+    if (!Number.isInteger(validite_bon_mois) || validite_bon_mois <= 0) return { error: 'La validité (en mois) doit être un entier positif.' };
+    // stock null = illimité
+    let stock: number | null = null;
+    if (body.stock !== null && body.stock !== undefined && body.stock !== '') {
+        stock = Number(body.stock);
+        if (!Number.isInteger(stock) || stock < 0) return { error: 'Le stock doit être un entier positif ou vide (illimité).' };
+    }
+    let tarif_fournisseur_ht: number | null = null;
+    if (body.tarif_fournisseur_ht !== null && body.tarif_fournisseur_ht !== undefined && body.tarif_fournisseur_ht !== '') {
+        tarif_fournisseur_ht = Number(body.tarif_fournisseur_ht);
+        if (!Number.isFinite(tarif_fournisseur_ht) || tarif_fournisseur_ht < 0) return { error: 'Le tarif HT doit être un nombre positif.' };
+    }
+    const statut = body.statut === 'en_ligne' ? 'en_ligne' : 'hors_ligne';
+    const description = typeof body.description === 'string' && body.description.trim() ? body.description.trim() : null;
+    return { nom, description, stock, pts_requis, tarif_fournisseur_ht, validite_bon_mois, statut };
+}
+
+// Lister les offres d'un fournisseur
+router.get('/fournisseurs/:id/offres', async (req, res) => {
+    const r = await query(
+        `SELECT id, reference, nom, description, stock, pts_requis, tarif_fournisseur_ht, validite_bon_mois, statut
+         FROM offres_boutique WHERE fournisseur_id = $1 ORDER BY nom ASC`,
+        [req.params.id]
+    );
+    res.json(r.rows);
+});
+
+// Créer une offre (specs §6.3).
+// Option 1 retenue : on PEUT créer les offres avant signature (pour qu'elles figurent
+// dans le contrat envoyé). Elles ne sont JAMAIS visibles dans la boutique publique tant
+// que le contrat n'est pas signé — verrou appliqué dans boutique.ts (WHERE f.contrat_signe).
+router.post('/fournisseurs/:id/offres', async (req, res) => {
+    const fr = await query('SELECT id FROM fournisseurs WHERE id = $1', [req.params.id]);
+    if (!fr.rows[0]) return res.status(404).json({ error: 'Fournisseur introuvable' });
+    const parsed = parseOffre(req.body);
+    if ('error' in parsed) return res.status(400).json({ error: parsed.error });
+
+    const reference = await genererReferenceOffre(parsed.nom);
+    const r = await query(
+        `INSERT INTO offres_boutique
+            (fournisseur_id, reference, nom, description, stock, pts_requis, tarif_fournisseur_ht, validite_bon_mois, statut)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         RETURNING id, reference, nom, description, stock, pts_requis, tarif_fournisseur_ht, validite_bon_mois, statut`,
+        [req.params.id, reference, parsed.nom, parsed.description, parsed.stock, parsed.pts_requis, parsed.tarif_fournisseur_ht, parsed.validite_bon_mois, parsed.statut]
+    );
+    res.status(201).json(r.rows[0]);
+});
+
+// Modifier une offre
+router.put('/offres/:id', async (req, res) => {
+    const parsed = parseOffre(req.body);
+    if ('error' in parsed) return res.status(400).json({ error: parsed.error });
+    const r = await query(
+        `UPDATE offres_boutique SET
+            nom = $1, description = $2, stock = $3, pts_requis = $4,
+            tarif_fournisseur_ht = $5, validite_bon_mois = $6, statut = $7
+         WHERE id = $8
+         RETURNING id, reference, nom, description, stock, pts_requis, tarif_fournisseur_ht, validite_bon_mois, statut`,
+        [parsed.nom, parsed.description, parsed.stock, parsed.pts_requis, parsed.tarif_fournisseur_ht, parsed.validite_bon_mois, parsed.statut, req.params.id]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Offre introuvable' });
+    res.json(r.rows[0]);
+});
+
+// Supprimer une offre — refusée si des bons (échanges) y font référence (intégrité).
+router.delete('/offres/:id', async (req, res) => {
+    const used = await query('SELECT 1 FROM echanges WHERE offre_id = $1 LIMIT 1', [req.params.id]);
+    if (used.rows.length > 0) {
+        return res.status(409).json({ error: 'Offre déjà échangée : passez-la « hors ligne » plutôt que de la supprimer.' });
+    }
+    const r = await query('DELETE FROM offres_boutique WHERE id = $1 RETURNING id', [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Offre introuvable' });
+    res.json({ success: true });
+});
+
+// ─── Historique des paiements d'un fournisseur (specs §6.1 onglet Historique) ─
+// AUCUNE table dédiée : tout se déduit des tables existantes (echanges + offres +
+// ambassadeurs). « À payer » = un bon dont le fait générateur est atteint selon
+// l'option de paiement ; « payé » = `echanges.paiement_paye_at` renseigné.
+router.get('/fournisseurs/:id/paiements', async (req, res) => {
+    const r = await query(
+        `SELECT e.id, e.reference AS bon_reference, e.utilise_at, e.remis_at, e.paiement_paye_at,
+                o.nom AS offre_nom, o.tarif_fournisseur_ht AS montant_ht,
+                f.option_paiement,
+                u.prenom AS amb_prenom, u.nom AS amb_nom
+         FROM echanges e
+         JOIN fournisseurs f ON f.id = e.fournisseur_id
+         LEFT JOIN offres_boutique o ON o.id = e.offre_id
+         LEFT JOIN ambassadeurs a ON a.id = e.ambassadeur_id
+         LEFT JOIN utilisateurs u ON u.id = a.utilisateur_id
+         WHERE e.fournisseur_id = $1
+           AND (
+                (f.option_paiement = 'c' AND e.statut = 'utilise')   -- payé au scan
+             OR (f.option_paiement IN ('a','b') AND e.remis_at IS NOT NULL)  -- payé à la remise / prépayé
+           )
+         ORDER BY COALESCE(e.utilise_at, e.remis_at) DESC`,
+        [req.params.id]
+    );
+
+    const DELAI_J = Number(process.env.DELAI_REGLEMENT_FOURNISSEUR_JOURS || 30);
+    const montant = (v: any) => Number(v) || 0;
+
+    const transactions = r.rows.map(e => {
+        const opt = (e.option_paiement || 'c').toLowerCase();
+        // Option A = stock prépayé → considéré réglé d'office.
+        const statut: 'paye' | 'en_attente' = e.paiement_paye_at || opt === 'a' ? 'paye' : 'en_attente';
+        const fait = e.utilise_at || e.remis_at;
+        const echeance = fait ? new Date(new Date(fait).getTime() + DELAI_J * 86400000) : null;
+        return {
+            id: e.id,
+            bon_reference: e.bon_reference,
+            offre_nom: e.offre_nom,
+            amb_prenom: e.amb_prenom,
+            amb_nom: e.amb_nom,
+            montant_ht: e.montant_ht,
+            option_paiement: opt,
+            fait_generateur_at: fait,
+            echeance_at: echeance,
+            statut,
+            paye_at: e.paiement_paye_at,
+            utilise_at: e.utilise_at,
+        };
+    });
+
+    const debutMois = new Date(); debutMois.setDate(1); debutMois.setHours(0, 0, 0, 0);
+    const kpis = {
+        paye_ce_mois: transactions
+            .filter(p => p.statut === 'paye' && p.paye_at && new Date(p.paye_at) >= debutMois)
+            .reduce((s, p) => s + montant(p.montant_ht), 0),
+        en_attente: transactions
+            .filter(p => p.statut === 'en_attente')
+            .reduce((s, p) => s + montant(p.montant_ht), 0),
+        bons_valides: transactions.length,
+        prix_moyen: transactions.length ? transactions.reduce((s, p) => s + montant(p.montant_ht), 0) / transactions.length : 0,
+    };
+    res.json({ kpis, transactions });
+});
+
+// Export SEPA : génère un fichier .xml regroupant TOUS les bons fournisseurs en attente
+// (tous fournisseurs), à charger sur la banque Winween. Les bons exportés sont marqués
+// réglés (le fichier = l'ordre de paiement) pour éviter de les ré-exporter / payer 2 fois.
+router.get('/sepa/fournisseurs', async (req, res) => {
+    const debtorIban = process.env.SESAME_IBAN || '';
+    const debtorName = process.env.SESAME_SOCIETE || 'SAS WINWEEN';
+    if (!debtorIban) {
+        return res.status(400).json({ error: "IBAN de Winween non configuré (SESAME_IBAN dans le .env). Renseignez-le pour générer le fichier SEPA." });
+    }
+
+    // Bons dûs (fait générateur atteint selon l'option) et non encore réglés.
+    const r = await query(
+        `SELECT e.id, e.reference, o.tarif_fournisseur_ht AS montant,
+                f.nom_societe, f.iban AS f_iban
+         FROM echanges e
+         JOIN fournisseurs f ON f.id = e.fournisseur_id
+         LEFT JOIN offres_boutique o ON o.id = e.offre_id
+         WHERE e.paiement_paye_at IS NULL
+           AND (
+                (f.option_paiement = 'c' AND e.statut = 'utilise')
+             OR (f.option_paiement = 'b' AND e.remis_at IS NOT NULL)
+           )`
+    );
+
+    const valides = r.rows.filter(x => x.f_iban && Number(x.montant) > 0);
+    if (valides.length === 0) {
+        return res.status(400).json({ error: "Aucun virement à exporter (rien en attente, ou IBAN fournisseur manquant)." });
+    }
+
+    const xml = genererSepaXml({
+        debtorName,
+        debtorIban,
+        transfers: valides.map(x => ({
+            creditorName: x.nom_societe,
+            creditorIban: x.f_iban,
+            amount: Number(x.montant),
+            endToEndId: x.reference || x.id.slice(0, 35),
+            label: `SESAME bon ${x.reference || x.id.slice(0, 8)}`,
+        })),
+    });
+
+    // Marquer les bons exportés comme réglés (ordre de paiement émis).
+    await query('UPDATE echanges SET paiement_paye_at = now() WHERE id = ANY($1)', [valides.map(x => x.id)]);
+
+    const jour = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/xml');
+    res.setHeader('Content-Disposition', `attachment; filename="virements-fournisseurs-${jour}.xml"`);
+    res.send(xml);
+});
+
+// Marquer un bon comme réglé au fournisseur (virement effectué hors app) → date sur l'échange.
+router.put('/echanges/:id/payer-fournisseur', async (req, res) => {
+    const r = await query(
+        `UPDATE echanges SET paiement_paye_at = now()
+         WHERE id = $1 AND paiement_paye_at IS NULL RETURNING id`,
+        [req.params.id]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Bon introuvable ou déjà réglé' });
+    res.json({ success: true });
 });
 
 // Résout un paramètre mois 'YYYY-MM' vers le 1er jour du mois (date). Défaut : mois courant.
@@ -804,6 +1078,79 @@ const AMB_TO_MORAL_CTE = `
 
 // Commissions Ambassadeurs Moraux — pour un mois donné (?mois=YYYY-MM, défaut mois courant).
 // Le CA = courses de l'entreprise + celles de ses sous-comptes employés.
+// Export SEPA des commissions Moraux d'un mois : génère le fichier .xml des virements
+// vers les entreprises (non encore versées) ET les marque versées (anti double-paiement).
+// Même générateur que les fournisseurs (lib/sepaXml).
+router.get('/sepa/commissions', async (req, res) => {
+    const debtorIban = process.env.SESAME_IBAN || '';
+    const debtorName = process.env.SESAME_SOCIETE || 'SAS WINWEEN';
+    if (!debtorIban) {
+        return res.status(400).json({ error: "IBAN de Winween non configuré (SESAME_IBAN dans le .env). Renseignez-le pour générer le fichier SEPA." });
+    }
+
+    const rateResult = await query("SELECT valeur FROM parametres_systeme WHERE cle = 'commission_ambassadeur_moral_pct'");
+    const tauxPct = Number(rateResult.rows[0]?.valeur ?? 10);
+    const mois = resolveMois(req.query.mois);
+
+    const r = await query(
+        `WITH ${AMB_TO_MORAL_CTE},
+         agg AS (
+            SELECT a.id AS ambassadeur_id, a.iban, a.etablissement,
+                   count(c.id) AS nb_courses,
+                   COALESCE(sum(c.montant), 0) AS ca_brut_ttc,
+                   round(COALESCE(sum(c.montant), 0) * $1 / 100, 2) AS commission
+            FROM ambassadeurs a
+            LEFT JOIN amb_to_moral m ON m.moral_id = a.id
+            LEFT JOIN courses c ON c.ambassadeur_id = m.ambassadeur_id
+                AND c.statut = 'terminee' AND c.code_valide_at IS NOT NULL
+                AND date_trunc('month', c.date_fin) = $2::date
+            WHERE a.type_ambassadeur = 'moral'
+              AND NOT EXISTS (
+                  SELECT 1 FROM virements_commissions v WHERE v.ambassadeur_id = a.id AND v.mois = $2::date
+              )
+            GROUP BY a.id, a.iban, a.etablissement
+            HAVING COALESCE(sum(c.montant), 0) > 0
+         )
+         SELECT * FROM agg`,
+        [tauxPct, mois]
+    );
+
+    const valides = r.rows.filter(x => x.iban && Number(x.commission) > 0);
+    if (valides.length === 0) {
+        return res.status(400).json({ error: "Aucune commission à exporter (rien en attente, ou IBAN entreprise manquant)." });
+    }
+
+    const moisLabel = mois.slice(0, 7);
+    const xml = genererSepaXml({
+        debtorName,
+        debtorIban,
+        transfers: valides.map(x => ({
+            creditorName: x.etablissement || 'Entreprise',
+            creditorIban: x.iban,
+            amount: Number(x.commission),
+            endToEndId: `COM-${moisLabel}-${x.ambassadeur_id.slice(0, 8)}`,
+            label: `Commission SESAME ${moisLabel}`,
+        })),
+    });
+
+    // Marque versées UNIQUEMENT les entreprises incluses dans le fichier (celles avec IBAN).
+    await query(
+        `INSERT INTO virements_commissions
+            (ambassadeur_id, mois, nb_courses, ca_brut_ttc, taux_pct, montant_commission, statut, date_versement)
+         SELECT v.ambassadeur_id, $2::date, v.nb_courses, v.ca_brut_ttc, $1, v.commission, 'verse', now()
+         FROM jsonb_to_recordset($3::jsonb)
+              AS v(ambassadeur_id uuid, nb_courses int, ca_brut_ttc numeric, commission numeric)
+         ON CONFLICT (ambassadeur_id, mois) DO NOTHING`,
+        [tauxPct, mois, JSON.stringify(valides.map(x => ({
+            ambassadeur_id: x.ambassadeur_id, nb_courses: x.nb_courses, ca_brut_ttc: x.ca_brut_ttc, commission: x.commission,
+        })))]
+    );
+
+    res.setHeader('Content-Type', 'application/xml');
+    res.setHeader('Content-Disposition', `attachment; filename="commissions-moraux-${moisLabel}.xml"`);
+    res.send(xml);
+});
+
 router.get('/commissions/moraux', async (req, res) => {
     const rateResult = await query("SELECT valeur FROM parametres_systeme WHERE cle = 'commission_ambassadeur_moral_pct'");
     const tauxPct = Number(rateResult.rows[0]?.valeur ?? 10);

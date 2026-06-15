@@ -44,10 +44,49 @@ export async function geocodeAddress(address: string): Promise<{ lat: number; lo
     }
 }
 
+// ─── Distance routière pour la tarification (specs §4.1) ─────────────────────
+// Calculée CÔTÉ SERVEUR à partir des deux adresses : géocodage BAN puis distance
+// routière OSRM. L'app n'appelle plus OSRM elle-même et ne décide plus du
+// kilométrage (donc du prix) → un seul point de calcul, source de confiance.
+//
+// URL de base du service OSRM. Par défaut le serveur de démo public (gratuit mais
+// sans garantie). En production, pointer OSRM_BASE_URL vers une instance
+// auto-hébergée (ex. http://localhost:5000) pour s'affranchir des quotas/coupures.
+const OSRM_BASE_URL = (process.env.OSRM_BASE_URL || 'https://router.project-osrm.org').replace(/\/+$/, '');
+
+const distanceCache = new Map<string, number>();
+export async function distanceRoutiereKm(
+    adresseDepart: string | null | undefined,
+    adresseDestination: string | null | undefined
+): Promise<number | null> {
+    if (!adresseDepart || !adresseDestination) return null;
+    const key = `${adresseDepart.trim().toLowerCase()}|${adresseDestination.trim().toLowerCase()}`;
+    const cached = distanceCache.get(key);
+    if (cached != null) return cached;
+
+    const [from, to] = await Promise.all([
+        geocodeAddress(adresseDepart),
+        geocodeAddress(adresseDestination),
+    ]);
+    if (!from || !to) return null;
+
+    try {
+        const url = `${OSRM_BASE_URL}/route/v1/driving/${from.lon},${from.lat};${to.lon},${to.lat}?overview=false`;
+        const res = await fetch(url);
+        const data = (await res.json()) as { code?: string; routes?: { distance: number }[] };
+        if (data.code !== 'Ok' || !data.routes?.length) return null;
+        const km = Math.max(1, Math.round(data.routes[0].distance / 1000));
+        distanceCache.set(key, km);
+        return km;
+    } catch {
+        return null;
+    }
+}
+
 // ─── ETA temps réel (specs §7.2 + §9.2) ───────────────────────────────────────
 // Stratégie : TomTom (trafic temps réel) si une clé est configurée, sinon repli OSRM
 // (gratuit, sans trafic). TomTom n'est utilisé QUE pour l'ETA (petit volume + cache 15 s)
-// → reste très loin du quota gratuit. Le calcul de distance/prix reste sur OSRM côté app.
+// → reste très loin du quota gratuit.
 const TOMTOM_API_KEY = process.env.TOMTOM_API_KEY || '';
 
 // ETA via TomTom Routing avec trafic. Renvoie null si pas de clé / erreur (→ repli OSRM).
@@ -71,7 +110,7 @@ async function getTomTomDurationMinutes(fromLat: number, fromLon: number, toLat:
 // ETA via OSRM (repli gratuit, sans trafic). Renvoie null si indisponible.
 async function getRouteDurationMinutes(fromLat: number, fromLon: number, toLat: number, toLon: number): Promise<number | null> {
     try {
-        const url = `https://router.project-osrm.org/route/v1/driving/${fromLon},${fromLat};${toLon},${toLat}?overview=false`;
+        const url = `${OSRM_BASE_URL}/route/v1/driving/${fromLon},${fromLat};${toLon},${toLat}?overview=false`;
         const res = await fetch(url);
         const data = (await res.json()) as { code?: string; routes?: { duration: number }[] };
         if (data.code !== 'Ok' || !data.routes?.length) return null;

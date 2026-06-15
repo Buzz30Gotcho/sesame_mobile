@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
-import { createCourse, getAdminParameters, getAmbassadorProfile } from '../services/api';
+import { createCourse, estimerCourse, getAdminParameters, getAmbassadorProfile } from '../services/api';
 import { Colors, Typography } from '../theme';
 import type { RootStackParamList } from '../types';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -69,22 +69,6 @@ async function geocodeAddress(address: string): Promise<Coords | null> {
     }
 }
 
-async function getRouteDistance(from: Coords, to: Coords): Promise<number> {
-    const url = `https://router.project-osrm.org/route/v1/driving/${from.lon},${from.lat};${to.lon},${to.lat}?overview=false`;
-    const res = await fetch(url);
-    const data = await res.json();
-    if (data.code !== 'Ok' || !data.routes?.length) throw new Error('Route introuvable');
-    return Math.max(1, Math.round(data.routes[0].distance / 1000));
-}
-
-function getPrice(type: 'berline' | 'van', km: number, params: any) {
-    const base = type === 'van' ? Number(params.van_forfait || 12) : Number(params.berline_forfait || 12);
-    const threshold = type === 'van' ? Number(params.van_seuil_km || 6) : Number(params.berline_seuil_km || 6);
-    const rate = type === 'van' ? Number(params.van_prix_km || 3) : Number(params.berline_prix_km || 2);
-    if (km <= threshold) return base.toFixed(2);
-    return (base + (km - threshold) * rate).toFixed(2);
-}
-
 function parseDateFR(date: string, time: string): string | undefined {
     if (!date || !time) return undefined;
     const dateParts = date.split('/');
@@ -134,6 +118,9 @@ export default function AmbassadorCommanderScreen() {
     const [error, setError] = useState<string | null>(null);
     const [distanceLoading, setDistanceLoading] = useState(false);
     const [distanceError, setDistanceError] = useState<string | null>(null);
+    // Prix calculés par le backend (un seul point de calcul, source de confiance)
+    const [prixBerline, setPrixBerline] = useState<string | null>(null);
+    const [prixVan, setPrixVan] = useState<string | null>(null);
     const [isImmediateEnabled, setIsImmediateEnabled] = useState(true);
     const [minDelayHours, setMinDelayHours] = useState(1);
     const [dateError, setDateError] = useState<string | null>(null);
@@ -169,27 +156,28 @@ export default function AmbassadorCommanderScreen() {
         return () => { clearTimeout(timer); setDestSearching(false); };
     }, [adresseDestination, destCoords, departCoords]);
 
-    // Calcul de distance dès que les deux adresses sont définies
+    // Distance + prix calculés par le BACKEND dès que les deux adresses sont définies.
+    // L'app n'appelle plus OSRM ni ne décide du kilométrage / du prix.
     useEffect(() => {
         if (!adresseDepart || !adresseDestination) return;
         const timer = setTimeout(async () => {
             setDistanceLoading(true);
             setDistanceError(null);
             try {
-                const from = departCoords ?? await geocodeAddress(adresseDepart);
-                const to = destCoords ?? await geocodeAddress(adresseDestination);
-                if (!from) throw new Error(`Départ introuvable : "${adresseDepart}"`);
-                if (!to) throw new Error(`Destination introuvable : "${adresseDestination}"`);
-                const km = await getRouteDistance(from, to);
+                const { kilometrage: km, prix_berline, prix_van } = await estimerCourse(adresseDepart, adresseDestination);
                 setKilometrage(String(km));
+                setPrixBerline(Number(prix_berline).toFixed(2));
+                setPrixVan(Number(prix_van).toFixed(2));
             } catch (err: any) {
-                setDistanceError(err.message || 'Erreur lors du calcul de distance');
+                setPrixBerline(null);
+                setPrixVan(null);
+                setDistanceError(err.response?.data?.error || 'Erreur lors du calcul de distance');
             } finally {
                 setDistanceLoading(false);
             }
         }, 800);
         return () => clearTimeout(timer);
-    }, [adresseDepart, adresseDestination, departCoords, destCoords]);
+    }, [adresseDepart, adresseDestination]);
 
     const onPickerDateChange = (_: any, selected?: Date) => {
         setShowDatePicker(false);
@@ -313,9 +301,6 @@ export default function AmbassadorCommanderScreen() {
             setLoading(false);
         }
     };
-
-    const currentPrice = getPrice(vehiculeType, Number(kilometrage), params);
-    const otherPrice = getPrice(vehiculeType === 'berline' ? 'van' : 'berline', Number(kilometrage), params);
 
     return (
         <SafeAreaView style={styles.safeArea}>
@@ -447,7 +432,7 @@ export default function AmbassadorCommanderScreen() {
                     >
                         <Text style={styles.vehicleEmoji}>🚗</Text>
                         <Text style={[styles.vehicleLabel, vehiculeType === 'berline' && styles.vehicleLabelSelected]}>Berline</Text>
-                        <Text style={styles.vehiclePrice}>{vehiculeType === 'berline' ? currentPrice : otherPrice} €</Text>
+                        <Text style={styles.vehiclePrice}>{prixBerline ? `${prixBerline} €` : '—'}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                         style={[styles.vehicleCard, vehiculeType === 'van' && styles.vehicleCardSelected]}
@@ -455,7 +440,7 @@ export default function AmbassadorCommanderScreen() {
                     >
                         <Text style={styles.vehicleEmoji}>🚐</Text>
                         <Text style={[styles.vehicleLabel, vehiculeType === 'van' && styles.vehicleLabelSelected]}>Van</Text>
-                        <Text style={styles.vehiclePrice}>{vehiculeType === 'van' ? currentPrice : otherPrice} €</Text>
+                        <Text style={styles.vehiclePrice}>{prixVan ? `${prixVan} €` : '—'}</Text>
                     </TouchableOpacity>
                 </View>
 

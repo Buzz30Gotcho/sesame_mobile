@@ -1,43 +1,13 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import nodemailer from 'nodemailer';
 import { randomInt } from 'crypto';
 import { query } from '../db';
 import { stripe } from '../lib/stripeClient';
+import { sendResetEmail } from '../lib/mailer';
 import { JWT_SECRET, IS_PROD } from '../config';
 
 const router = express.Router();
-
-const mailer = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD,
-    },
-});
-
-async function sendResetEmail(to: string, code: string): Promise<void> {
-    if (process.env.EMAIL_DEV_MODE === 'true') {
-        console.log(`[EMAIL DEV] To: ${to} | Code: ${code}`);
-        return;
-    }
-    await mailer.sendMail({
-        from: `SÉSAME <${process.env.GMAIL_USER}>`,
-        to,
-        subject: 'Réinitialisation de votre mot de passe SÉSAME',
-        html: `
-            <div style="font-family:sans-serif;max-width:480px;margin:auto;">
-                <h2 style="color:#C9A84C;">SÉSAME</h2>
-                <p>Voici votre code de réinitialisation :</p>
-                <div style="font-size:36px;font-weight:bold;letter-spacing:12px;text-align:center;padding:24px;background:#f5f5f5;border-radius:8px;">
-                    ${code}
-                </div>
-                <p style="color:#666;font-size:13px;margin-top:16px;">Ce code est valable 15 minutes. Si vous n'avez pas demandé cette réinitialisation, ignorez cet email.</p>
-            </div>
-        `,
-    });
-}
 
 function luhnCheck(num: string): boolean {
     let sum = 0;

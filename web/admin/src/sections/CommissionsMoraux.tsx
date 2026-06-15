@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
-import { getCommissionsMoraux, declencherVirements } from '../api';
+import { getCommissionsMoraux, exporterSepaCommissions } from '../api';
 import Spinner from '../components/Spinner';
-import Modal from '../components/Modal';
 
 interface AmbassadeurCommission {
   id: string;
@@ -45,8 +44,7 @@ export default function CommissionsMoraux() {
   const [tauxPct, setTauxPct] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [triggering, setTriggering] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [toast, setToast] = useState('');
 
   const load = useCallback(async (m: string) => {
@@ -70,17 +68,22 @@ export default function CommissionsMoraux() {
     setTimeout(() => setToast(''), 4000);
   };
 
-  const handleDeclencher = async () => {
-    setTriggering(true);
+  const handleExportSepa = async () => {
+    if (!confirm(`Générer le fichier SEPA des commissions de ${formatMonth(mois)} ?\n\nLes entreprises incluses seront marquées « versées » (le fichier vaut ordre de paiement). Chargez-le ensuite sur la banque Winween.`)) return;
+    setExporting(true);
     try {
-      const res = await declencherVirements(mois);
-      showToast(`${res.nb_virements ?? 0} virement(s) enregistré(s) — ${Number(res.total ?? 0).toFixed(2)} €`);
-      setShowConfirm(false);
+      await exporterSepaCommissions(mois);
+      showToast('Fichier SEPA téléchargé. Chargez-le sur l\'espace bancaire de Winween.');
       await load(mois);
-    } catch {
-      showToast('Erreur lors du déclenchement des virements');
+    } catch (e: any) {
+      let text = "Échec de l'export SEPA.";
+      try {
+        const blob = e?.response?.data;
+        if (blob && typeof blob.text === 'function') text = JSON.parse(await blob.text()).error || text;
+      } catch { /* message par défaut */ }
+      showToast(text);
     } finally {
-      setTriggering(false);
+      setExporting(false);
     }
   };
 
@@ -90,7 +93,6 @@ export default function CommissionsMoraux() {
   const totalCommissions = ambassadeurs.reduce((acc, a) => acc + a.commission, 0);
   // Lignes avec du CA mais pas encore versées
   const aVerser = ambassadeurs.filter(a => a.ca_brut > 0 && !a.statut_versement);
-  const dejaVerse = ambassadeurs.some(a => a.statut_versement);
 
   return (
     <div className="space-y-6">
@@ -113,13 +115,13 @@ export default function CommissionsMoraux() {
             />
           </label>
           <button
-            onClick={() => setShowConfirm(true)}
-            disabled={aVerser.length === 0}
-            title={aVerser.length === 0 ? 'Rien à verser pour ce mois' : `Verser ${aVerser.length} entreprise(s)`}
+            onClick={handleExportSepa}
+            disabled={exporting || aVerser.length === 0}
+            title={aVerser.length === 0 ? 'Rien à verser pour ce mois' : `Générer le fichier SEPA pour ${aVerser.length} entreprise(s)`}
             className="px-5 py-2 text-sm font-bold rounded-xl text-white transition-opacity hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
             style={{ backgroundColor: '#C9A84C' }}
           >
-            💸 DÉCLENCHER LES VIREMENTS
+            {exporting ? 'Export…' : '💶 Exporter les virements (SEPA)'}
           </button>
         </div>
       </div>
@@ -218,38 +220,6 @@ export default function CommissionsMoraux() {
           </div>
         </div>
       )}
-
-      <Modal open={showConfirm} onClose={() => setShowConfirm(false)} title={`Déclencher les virements — ${moisLabel}`}>
-        <div className="space-y-4">
-          <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
-            <p className="text-sm font-medium text-orange-800">Confirmation</p>
-            <p className="text-sm text-orange-700 mt-1">
-              Vous allez enregistrer le versement des commissions de <strong>{moisLabel}</strong> pour {aVerser.length} entreprise(s).
-              {dejaVerse && ' Les entreprises déjà marquées « Versé » seront réactualisées.'}
-            </p>
-          </div>
-          <p className="text-sm text-gray-600">
-            Montant total à verser : <strong style={{ color: '#4CAF82' }}>{aVerser.reduce((s, a) => s + a.commission, 0).toFixed(2)} €</strong>
-          </p>
-          <p className="text-xs text-gray-400 italic">
-            Note : le statut « Versé » est enregistré en base. Le vrai virement bancaire (Stripe/SEPA) sera branché ultérieurement.
-            {!isCurrentMonth && ' (Vous traitez un mois passé.)'}
-          </p>
-          <div className="flex gap-3 justify-end">
-            <button onClick={() => setShowConfirm(false)} className="px-4 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50">
-              Annuler
-            </button>
-            <button
-              onClick={handleDeclencher}
-              disabled={triggering}
-              className="px-5 py-2 text-sm font-bold rounded-xl text-white disabled:opacity-50"
-              style={{ backgroundColor: '#C9A84C' }}
-            >
-              {triggering ? 'Enregistrement…' : 'Confirmer'}
-            </button>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 }

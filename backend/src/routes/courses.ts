@@ -5,7 +5,7 @@ import { getSystemParameters, getSystemParameter } from '../lib/params';
 import { sendPushNotification } from '../lib/pushNotifications';
 
 import { randomInt } from 'crypto';
-import { crediterPaliersParrainage, executerSanctionsEnAttente } from '../lib/courseHelpers';
+import { crediterPaliersParrainage, executerSanctionsEnAttente, distanceRoutiereKm } from '../lib/courseHelpers';
 import { ownCourseParam, ownActorBodyQuery, resolveIdentity, AuthedRequest } from '../middleware/auth';
 import { codeLimiter } from '../middleware/rateLimit';
 
@@ -32,6 +32,37 @@ function makeReference(prefix: string) {
     const rand = randomInt(10000).toString().padStart(4, '0');
     return `${prefix}-${ts}-${rand}`;
 }
+
+// Paramètres de tarification (forfaits, seuils, prix/km) lus depuis les paramètres système.
+function buildPricingParams(sysParams: Record<string, any>) {
+    return {
+        berline_forfait: Number(sysParams.berline_forfait),
+        berline_seuil_km: Number(sysParams.berline_seuil_km),
+        berline_prix_km: Number(sysParams.berline_prix_km),
+        van_forfait: Number(sysParams.van_forfait),
+        van_seuil_km: Number(sysParams.van_seuil_km),
+        van_prix_km: Number(sysParams.van_prix_km),
+    };
+}
+
+// Estimation distance + prix CÔTÉ SERVEUR (géocodage BAN + distance OSRM).
+// Appelée par l'app pendant la saisie : elle n'appelle plus OSRM directement.
+router.post('/estimer', async (req, res) => {
+    const { adresse_depart, adresse_destination } = req.body;
+    if (!adresse_depart || !adresse_destination) {
+        return res.status(400).json({ error: 'Adresses de départ et de destination requises' });
+    }
+    const kilometrage = await distanceRoutiereKm(adresse_depart, adresse_destination);
+    if (kilometrage == null) {
+        return res.status(422).json({ error: 'Impossible de calculer la distance pour ces adresses' });
+    }
+    const pricingParams = buildPricingParams(await getSystemParameters());
+    res.json({
+        kilometrage,
+        prix_berline: calculateVehiclePrice('berline', kilometrage, pricingParams),
+        prix_van: calculateVehiclePrice('van', kilometrage, pricingParams),
+    });
+});
 
 router.post('/creer', async (req, res) => {
     const { ambassadeur_id, adresse_depart, adresse_destination, vehicule_type, kilometrage, type_course } = req.body;
@@ -71,16 +102,14 @@ router.post('/creer', async (req, res) => {
     }
 
     const sysParams = await getSystemParameters();
-    const pricingParams = {
-        berline_forfait: Number(sysParams.berline_forfait),
-        berline_seuil_km: Number(sysParams.berline_seuil_km),
-        berline_prix_km: Number(sysParams.berline_prix_km),
-        van_forfait: Number(sysParams.van_forfait),
-        van_seuil_km: Number(sysParams.van_seuil_km),
-        van_prix_km: Number(sysParams.van_prix_km),
-    };
+    const pricingParams = buildPricingParams(sysParams);
 
-    const montant = calculateVehiclePrice(vehicule_type, Number(kilometrage), pricingParams);
+    // Kilométrage recalculé côté serveur (anti-fraude) ; repli sur la valeur envoyée
+    // par l'app si OSRM/géocodage est momentanément indisponible.
+    const kmServeur = await distanceRoutiereKm(adresse_depart, adresse_destination);
+    const kmFinal = kmServeur ?? Number(kilometrage);
+
+    const montant = calculateVehiclePrice(vehicule_type, kmFinal, pricingParams);
     const reference = makeReference('CRS');
     const points_attribues = calculatePoints(montant);
 
@@ -273,16 +302,13 @@ router.post('/reserver', async (req, res) => {
     }
 
     const sysParams = await getSystemParameters();
-    const pricingParams = {
-        berline_forfait: Number(sysParams.berline_forfait),
-        berline_seuil_km: Number(sysParams.berline_seuil_km),
-        berline_prix_km: Number(sysParams.berline_prix_km),
-        van_forfait: Number(sysParams.van_forfait),
-        van_seuil_km: Number(sysParams.van_seuil_km),
-        van_prix_km: Number(sysParams.van_prix_km),
-    };
+    const pricingParams = buildPricingParams(sysParams);
 
-    const montant = calculateVehiclePrice(vehicule_type, Number(kilometrage), pricingParams);
+    // Kilométrage recalculé côté serveur (anti-fraude) ; repli sur la valeur client.
+    const kmServeur = await distanceRoutiereKm(adresse_depart, adresse_destination);
+    const kmFinal = kmServeur ?? Number(kilometrage);
+
+    const montant = calculateVehiclePrice(vehicule_type, kmFinal, pricingParams);
     const reference = makeReference('CRS');
     const points_attribues = calculatePoints(montant);
 

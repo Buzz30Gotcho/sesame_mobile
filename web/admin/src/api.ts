@@ -231,6 +231,19 @@ export const getCommissionsMoraux = (mois?: string) =>
 export const declencherVirements = (mois?: string) =>
   api.post('/admin/commissions/declencher', mois ? { mois } : {}).then(r => r.data);
 
+// Export SEPA des commissions Moraux d'un mois → télécharge le .xml + marque versé côté serveur.
+export const exporterSepaCommissions = async (mois?: string): Promise<void> => {
+  const res = await api.get('/admin/sepa/commissions', { params: mois ? { mois } : undefined, responseType: 'blob' });
+  const url = URL.createObjectURL(res.data as Blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `commissions-moraux-${mois || 'mois'}.xml`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+};
+
 // Chat
 export const getChatMessages = (courseId: number) =>
   api.get<ChatMessage[]>(`/chat/${courseId}/messages`).then(r => r.data);
@@ -242,12 +255,118 @@ export interface FournisseurRow {
   nom_societe: string;
   statut: string;
   contrat_signe: boolean;
+  contrat_signe_at?: string | null;
   bloque: boolean;
+  siret: string | null;
+  iban: string | null;
+  legal_prenom: string | null;
+  legal_nom: string | null;
   legal_email: string | null;
+  legal_telephone: string | null;
+  legal_adresse: string | null;
+  legal_cp: string | null;
+  legal_ville: string | null;
+  prest_prenom: string | null;
+  prest_nom: string | null;
+  prest_telephone: string | null;
+  prest_email: string | null;
+  prest_adresse: string | null;
+  prest_cp: string | null;
+  prest_ville: string | null;
+  memes_coordonnees: boolean;
+  option_paiement: string | null;
 }
+
+// Champs modifiables d'un fournisseur (création + édition).
+export type FournisseurInput = Partial<Omit<FournisseurRow, 'id' | 'contrat_signe_at' | 'bloque'>>;
+
 export const getFournisseurs = () =>
   api.get<FournisseurRow[]>('/admin/fournisseurs').then(r => r.data);
+export const createFournisseur = (payload: FournisseurInput) =>
+  api.post<{ id: string; nom_societe: string; statut: string; code_secret_temporaire: string; email_envoye: boolean }>('/admin/fournisseurs', payload).then(r => r.data);
+export const updateFournisseur = (id: string, payload: FournisseurInput) =>
+  api.put<{ success: boolean }>(`/admin/fournisseurs/${id}`, payload).then(r => r.data);
 export const envoyerContratFournisseur = (id: string) =>
   api.post<{ success: boolean; message?: string }>(`/admin/fournisseurs/${id}/envoyer-contrat`).then(r => r.data);
+
+// Télécharge le contrat généré (PDF) → renvoie une URL blob à ouvrir / révoquer.
+export const getContratPreviewUrl = (id: string) =>
+  api.get(`/admin/fournisseurs/${id}/contrat-preview`, { responseType: 'blob' })
+    .then(r => URL.createObjectURL(r.data as Blob));
+
+// ─── Offres boutique d'un fournisseur (specs §6.3) ────────────────────────────
+export interface OffreRow {
+  id: string;
+  reference: string;
+  nom: string;
+  description: string | null;
+  stock: number | null;          // null = illimité
+  pts_requis: number;
+  tarif_fournisseur_ht: number | string | null;
+  validite_bon_mois: number;
+  statut: 'en_ligne' | 'hors_ligne';
+}
+
+export type OffreInput = {
+  nom: string;
+  description?: string | null;
+  stock?: number | null;
+  pts_requis: number;
+  tarif_fournisseur_ht?: number | null;
+  validite_bon_mois: number;
+  statut: 'en_ligne' | 'hors_ligne';
+};
+
+export const getOffres = (fournisseurId: string) =>
+  api.get<OffreRow[]>(`/admin/fournisseurs/${fournisseurId}/offres`).then(r => r.data);
+export const createOffre = (fournisseurId: string, payload: OffreInput) =>
+  api.post<OffreRow>(`/admin/fournisseurs/${fournisseurId}/offres`, payload).then(r => r.data);
+export const updateOffre = (id: string, payload: OffreInput) =>
+  api.put<OffreRow>(`/admin/offres/${id}`, payload).then(r => r.data);
+export const deleteOffre = (id: string) =>
+  api.delete<{ success: boolean }>(`/admin/offres/${id}`).then(r => r.data);
+
+// ─── Historique des paiements fournisseur (specs §6.1) ────────────────────────
+export interface PaiementRow {
+  id: string;
+  montant_ht: number | string | null;
+  option_paiement: string | null;
+  fait_generateur_at: string;
+  echeance_at: string | null;
+  statut: 'en_attente' | 'paye';
+  paye_at: string | null;
+  bon_reference: string | null;
+  utilise_at: string | null;
+  offre_nom: string | null;
+  amb_prenom: string | null;
+  amb_nom: string | null;
+}
+
+export interface PaiementsKpis {
+  paye_ce_mois: number;
+  en_attente: number;
+  bons_valides: number;
+  prix_moyen: number;
+}
+
+export const getPaiementsFournisseur = (fournisseurId: string) =>
+  api.get<{ kpis: PaiementsKpis; transactions: PaiementRow[] }>(`/admin/fournisseurs/${fournisseurId}/paiements`).then(r => r.data);
+// id = identifiant du bon (échange) ; le règlement est porté par echanges.paiement_paye_at.
+export const marquerPaiementPaye = (id: string) =>
+  api.put<{ success: boolean }>(`/admin/echanges/${id}/payer-fournisseur`).then(r => r.data);
+
+// Export SEPA de tous les virements fournisseurs en attente → déclenche le téléchargement
+// du fichier .xml. Les bons exportés sont marqués réglés côté serveur.
+export const exporterSepaFournisseurs = async (): Promise<void> => {
+  const res = await api.get('/admin/sepa/fournisseurs', { responseType: 'blob' });
+  const url = URL.createObjectURL(res.data as Blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `virements-fournisseurs-${new Date().toISOString().slice(0, 10)}.xml`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+};
 
 export default api;
