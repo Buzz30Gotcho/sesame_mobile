@@ -9,7 +9,7 @@ import { stripe } from './lib/stripeClient';
 
 import { JWT_SECRET } from './config';
 
-const port = process.env.PORT || 4000;
+const port = process.env.PORT || 4001;
 
 const server = http.createServer(app);
 
@@ -265,7 +265,11 @@ async function generateWeeklyInvoices() {
             }, { idempotencyKey: `sesame-inv-${ch.id}-${weekLabel}` });
 
             await stripe.invoices.finalizeInvoice(invoice.id);
-        } catch { /* Non bloquant — sera relancé */ }
+        } catch (err) {
+            // Non bloquant — sera relancé au prochain cycle. On loggue pour pouvoir diagnostiquer
+            // (carte refusée, customer supprimé, clé Stripe invalide…).
+            console.error(`[billing] Échec génération facture chauffeur ${ch.id}:`, (err as Error).message);
+        }
     }
 }
 
@@ -304,9 +308,13 @@ async function suspendUnpaidChauffeurs() {
             const invoices = await stripe.invoices.list({
                 customer: ch.stripe_customer_id,
                 status: 'open',
-                limit: 1,
+                limit: 10,
             });
-            if (invoices.data.length === 0) continue;
+            // Anti-race : ne suspendre que si le prélèvement automatique a réellement été
+            // tenté au moins une fois et a échoué (attempt_count >= 1). Une facture juste
+            // finalisée dont la charge est encore en cours a attempt_count = 0 → on attend.
+            const impayee = invoices.data.some(inv => (inv.attempt_count ?? 0) >= 1);
+            if (!impayee) continue;
 
             await query(
                 `UPDATE utilisateurs SET statut = 'suspendu'
@@ -323,7 +331,9 @@ async function suspendUnpaidChauffeurs() {
                     { type: 'account_suspended' }
                 ).catch(() => {});
             }
-        } catch { /* Non bloquant */ }
+        } catch (err) {
+            console.error(`[billing] Échec contrôle/suspension chauffeur ${ch.id}:`, (err as Error).message);
+        }
     }
 }
 
@@ -428,6 +438,12 @@ async function runMigrations() {
         // 1 bon = 1 échange : on ajoute juste la date de règlement sur `echanges`.
         // NULL = pas encore réglé. Le « à payer » se déduit de statut/remis_at + option_paiement.
         `ALTER TABLE echanges ADD COLUMN IF NOT EXISTS paiement_paye_at timestamptz`,
+        // Date de demande de l'échange (≠ remis_at qui est la validation admin) — pour afficher
+        // « demandé le X / validé le Y » côté admin. now() pour les bons déjà créés.
+        `ALTER TABLE echanges ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now()`,
+        // Carte bancaire enregistrée (prélèvement auto des frais SÉSAME — specs §7.1).
+        // Flag de confort pour l'UI ; le verrou « passage en ligne » revérifie en direct chez Stripe.
+        `ALTER TABLE chauffeurs ADD COLUMN IF NOT EXISTS carte_enregistree boolean DEFAULT false`,
     ];
     for (const sql of migrations) {
         await query(sql).catch(e => console.warn('[migration]', e.message));

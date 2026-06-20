@@ -10,6 +10,7 @@ import { isYousignConfigured, envoyerContratFournisseur } from '../lib/yousignCl
 import { generateContractPdf } from '../lib/contractPdf';
 import { genererSepaXml } from '../lib/sepaXml';
 import { sendCodeSecretFournisseur } from '../lib/mailer';
+import { siretValide, ibanValide, telephoneValide, emailValide } from '../lib/validation';
 
 const router = express.Router();
 
@@ -85,7 +86,19 @@ router.get('/dashboard', async (req, res) => {
 });
 
 router.get('/echanges/en-attente', async (req, res) => {
-    const result = await query('SELECT * FROM echanges WHERE statut = $1 ORDER BY remis_at DESC NULLS LAST', ['en_attente_admin']);
+    const result = await query(
+        `SELECT e.*,
+                u.prenom AS ambassadeur_prenom,
+                u.nom    AS ambassadeur_nom,
+                o.nom    AS offre_nom
+         FROM echanges e
+         LEFT JOIN ambassadeurs a ON a.id = e.ambassadeur_id
+         LEFT JOIN utilisateurs u ON u.id = a.utilisateur_id
+         LEFT JOIN offres_boutique o ON o.id = e.offre_id
+         WHERE e.statut = $1
+         ORDER BY e.reference DESC`,
+        ['en_attente_admin']
+    );
     res.json(result.rows);
 });
 
@@ -688,7 +701,46 @@ router.post('/fournisseurs', async (req, res) => {
         prest_prenom, prest_nom, prest_telephone, prest_email, prest_adresse, prest_cp, prest_ville,
         memes_coordonnees, option_paiement
     } = req.body;
-    if (!nom_societe) return res.status(400).json({ error: 'nom_societe requis' });
+
+    // « Mêmes coordonnées » : le contact prestation reprend le contact légal.
+    const p = memes_coordonnees
+        ? { prenom: legal_prenom, nom: legal_nom, telephone: legal_telephone, email: legal_email, adresse: legal_adresse, cp: legal_cp, ville: legal_ville }
+        : { prenom: prest_prenom, nom: prest_nom, telephone: prest_telephone, email: prest_email, adresse: prest_adresse, cp: prest_cp, ville: prest_ville };
+
+    // Champs obligatoires (specs §6.2). SIRET, IBAN et email de prestation restent optionnels.
+    const requis: [unknown, string][] = [
+        [nom_societe, 'Raison sociale'],
+        [legal_prenom, 'Prénom du responsable légal'], [legal_nom, 'Nom du responsable légal'],
+        [legal_email, 'Email du responsable légal'], [legal_telephone, 'Téléphone du responsable légal'],
+        [legal_adresse, 'Adresse du siège social'], [legal_cp, 'Code postal du siège social'], [legal_ville, 'Ville du siège social'],
+        [p.prenom, 'Prénom du contact prestation'], [p.nom, 'Nom du contact prestation'],
+        [p.telephone, 'Téléphone du contact prestation'],
+        [p.adresse, 'Adresse du lieu de prestation'], [p.cp, 'Code postal du lieu de prestation'], [p.ville, 'Ville du lieu de prestation'],
+    ];
+    const manquant = requis.find(([v]) => !String(v ?? '').trim());
+    if (manquant) return res.status(400).json({ error: `Champ obligatoire manquant : ${manquant[1]}.` });
+
+    // Email légal (obligatoire) : format. Email prestation : seulement s'il est renseigné.
+    if (!emailValide(legal_email)) {
+        return res.status(400).json({ error: 'Email du responsable légal invalide.' });
+    }
+    if (String(p.email ?? '').trim() && !emailValide(p.email)) {
+        return res.status(400).json({ error: 'Email du contact prestation invalide.' });
+    }
+    // Téléphones (obligatoires) : format FR.
+    if (!telephoneValide(legal_telephone)) {
+        return res.status(400).json({ error: 'Téléphone du responsable légal invalide (format FR attendu, ex. 06 12 34 56 78).' });
+    }
+    if (!telephoneValide(p.telephone)) {
+        return res.status(400).json({ error: 'Téléphone du contact prestation invalide (format FR attendu, ex. 06 12 34 56 78).' });
+    }
+    // Format des numéros optionnels (uniquement s'ils sont renseignés).
+    if (String(siret ?? '').trim() && !siretValide(siret)) {
+        return res.status(400).json({ error: 'SIRET invalide (14 chiffres).' });
+    }
+    if (String(iban ?? '').trim() && !ibanValide(iban)) {
+        return res.status(400).json({ error: 'IBAN invalide (vérifiez le format).' });
+    }
 
     // Générer un code secret à 4 chiffres
     const code = randomInt(1000, 10000).toString();
@@ -706,8 +758,8 @@ router.post('/fournisseurs', async (req, res) => {
             nom_societe, siret || null, iban || null,
             legal_prenom || null, legal_nom || null, legal_email || null, legal_telephone || null,
             legal_adresse || null, legal_cp || null, legal_ville || null,
-            prest_prenom || null, prest_nom || null, prest_telephone || null,
-            prest_email || null, prest_adresse || null, prest_cp || null, prest_ville || null,
+            p.prenom || null, p.nom || null, p.telephone || null,
+            p.email || null, p.adresse || null, p.cp || null, p.ville || null,
             memes_coordonnees ?? false, code_secret_hash, option_paiement || 'c'
         ]
     );
@@ -736,6 +788,26 @@ router.put('/fournisseurs/:id', async (req, res) => {
         prest_prenom, prest_nom, prest_telephone, prest_email, prest_adresse, prest_cp, prest_ville,
         memes_coordonnees, option_paiement, statut, contrat_signe
     } = req.body;
+
+    // Formats (uniquement si fournis dans la modification).
+    if (String(legal_email ?? '').trim() && !emailValide(legal_email)) {
+        return res.status(400).json({ error: 'Email du responsable légal invalide.' });
+    }
+    if (String(prest_email ?? '').trim() && !emailValide(prest_email)) {
+        return res.status(400).json({ error: 'Email du contact prestation invalide.' });
+    }
+    if (String(legal_telephone ?? '').trim() && !telephoneValide(legal_telephone)) {
+        return res.status(400).json({ error: 'Téléphone du responsable légal invalide (format FR attendu).' });
+    }
+    if (String(prest_telephone ?? '').trim() && !telephoneValide(prest_telephone)) {
+        return res.status(400).json({ error: 'Téléphone du contact prestation invalide (format FR attendu).' });
+    }
+    if (String(siret ?? '').trim() && !siretValide(siret)) {
+        return res.status(400).json({ error: 'SIRET invalide (14 chiffres).' });
+    }
+    if (String(iban ?? '').trim() && !ibanValide(iban)) {
+        return res.status(400).json({ error: 'IBAN invalide (vérifiez le format).' });
+    }
 
     await query(
         `UPDATE fournisseurs SET
@@ -810,6 +882,10 @@ router.post('/fournisseurs/:id/envoyer-contrat', async (req, res) => {
     if (!f.legal_email) {
         return res.status(400).json({ error: "Renseignez l'email du responsable légal avant d'envoyer le contrat." });
     }
+    // L'IBAN figure dans les conditions financières du contrat (specs §6.3) et sert à payer le fournisseur.
+    if (!String(f.iban ?? '').trim()) {
+        return res.status(400).json({ error: "Renseignez l'IBAN du fournisseur avant d'envoyer le contrat (il figure dans les conditions financières)." });
+    }
     if (!isYousignConfigured()) {
         return res.status(503).json({ error: 'Signature électronique non configurée (YOUSIGN_API_KEY). Validez le contrat manuellement en attendant.' });
     }
@@ -820,6 +896,20 @@ router.post('/fournisseurs/:id/envoyer-contrat', async (req, res) => {
     } catch (e: any) {
         res.status(502).json({ error: `Échec de l'envoi Yousign : ${e.message}` });
     }
+});
+
+// Annuler le contrat (specs §6.1 — bouton « Annuler » de l'onglet Contrat).
+// Repasse le fournisseur à « non signé » → la boutique se rebloque automatiquement
+// (le verrou boutique.ts lit contrat_signe). Pour réactiver : renvoyer/re-signer un contrat.
+router.post('/fournisseurs/:id/annuler-contrat', async (req, res) => {
+    const r = await query(
+        `UPDATE fournisseurs
+         SET contrat_signe = false, contrat_signe_at = NULL, statut = 'en_configuration'
+         WHERE id = $1 RETURNING id`,
+        [req.params.id]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Fournisseur introuvable' });
+    res.json({ success: true });
 });
 
 // Régénérer le code secret d'un fournisseur
@@ -1020,9 +1110,15 @@ router.get('/sepa/fournisseurs', async (req, res) => {
            )`
     );
 
-    const valides = r.rows.filter(x => x.f_iban && Number(x.montant) > 0);
+    const aPayer = r.rows.filter(x => Number(x.montant) > 0);
+    // Garde-fou : ne pas retirer en silence un fournisseur dû mais sans IBAN → on bloque en le nommant.
+    const sansIban = [...new Set(aPayer.filter(x => !String(x.f_iban ?? '').trim()).map(x => x.nom_societe))];
+    if (sansIban.length > 0) {
+        return res.status(400).json({ error: `IBAN manquant pour : ${sansIban.join(', ')}. Renseignez-le avant d'exporter (sinon ces fournisseurs ne seraient pas payés).` });
+    }
+    const valides = aPayer.filter(x => x.f_iban);
     if (valides.length === 0) {
-        return res.status(400).json({ error: "Aucun virement à exporter (rien en attente, ou IBAN fournisseur manquant)." });
+        return res.status(400).json({ error: "Aucun virement à exporter (rien en attente)." });
     }
 
     const xml = genererSepaXml({

@@ -13,6 +13,9 @@ yarn-error.log*
 */.expo-shared
 *.log
 
+# Fichiers de verrou temporaires LibreOffice/OpenOffice (.~lock.*.docx#)
+.~lock.*#
+
 # Ignore env files in subfolders
 backend/.env
 mobile/.env

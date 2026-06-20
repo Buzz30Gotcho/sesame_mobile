@@ -117,6 +117,25 @@ app.get('/valider', (req, res) => {
     res.sendFile(path.join(__dirname, '../../web/fournisseur/index.html'));
 });
 
+// Page de retour après une action Stripe (portail de facturation, enregistrement
+// de carte via Checkout). Le chauffeur ferme l'onglet et revient à l'app SÉSAME.
+app.get('/retour-stripe', (req, res) => {
+    const annule = req.query.carte === 'annule';
+    const titre = annule ? 'Enregistrement annulé' : 'C\'est bon !';
+    const message = annule
+        ? 'Aucune carte n\'a été enregistrée. Vous pouvez recommencer depuis l\'application.'
+        : 'Votre carte est enregistrée. Vous pouvez revenir à l\'application SÉSAME.';
+    res.set('Content-Type', 'text/html; charset=utf-8').send(`<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SÉSAME</title></head>
+<body style="margin:0;font-family:system-ui,-apple-system,sans-serif;background:#101018;color:#E0DBD2;display:flex;min-height:100vh;align-items:center;justify-content:center;text-align:center">
+<div style="padding:32px;max-width:420px">
+<div style="font-size:48px;margin-bottom:16px">${annule ? '↩️' : '✅'}</div>
+<h1 style="color:#C9A84C;font-size:22px;margin:0 0 12px">${titre}</h1>
+<p style="color:#6A6680;line-height:1.5;margin:0">${message}</p>
+</div></body></html>`);
+});
+
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     console.error(err);
     const status = err.status || 500;

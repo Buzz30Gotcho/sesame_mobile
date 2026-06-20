@@ -6,18 +6,9 @@ import { query } from '../db';
 import { stripe } from '../lib/stripeClient';
 import { sendResetEmail } from '../lib/mailer';
 import { JWT_SECRET, IS_PROD } from '../config';
+import { siretValide } from '../lib/validation';
 
 const router = express.Router();
-
-function luhnCheck(num: string): boolean {
-    let sum = 0;
-    for (let i = 0; i < num.length; i++) {
-        let d = parseInt(num[num.length - 1 - i]);
-        if (i % 2 === 1) { d *= 2; if (d > 9) d -= 9; }
-        sum += d;
-    }
-    return sum % 10 === 0;
-}
 
 
 function signToken(userId: string) {
@@ -86,11 +77,8 @@ router.post('/inscription', async (req, res) => {
             return res.status(400).json({ error: 'Numéro de téléphone invalide.' });
         }
 
-        if (siret) {
-            const s = siret.replace(/\s/g, '');
-            if (!/^\d{14}$/.test(s) || !luhnCheck(s)) {
-                return res.status(400).json({ error: 'SIRET invalide (14 chiffres).' });
-            }
+        if (siret && !siretValide(siret)) {
+            return res.status(400).json({ error: 'SIRET invalide (14 chiffres).' });
         }
         if (iban) {
             const i = iban.replace(/\s/g, '').toUpperCase();

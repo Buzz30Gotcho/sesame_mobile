@@ -209,7 +209,8 @@ CREATE TABLE IF NOT EXISTS echanges (
     remis_at            timestamptz,
     expire_at           timestamptz,
     utilise_at          timestamptz,
-    valide_par_admin_id uuid
+    valide_par_admin_id uuid,
+    created_at          timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS blacklist (

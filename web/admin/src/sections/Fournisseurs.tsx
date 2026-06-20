@@ -5,7 +5,7 @@ import OffresModal from './OffresModal';
 import HistoriqueModal from './HistoriqueModal';
 import {
   getFournisseurs, createFournisseur, updateFournisseur, envoyerContratFournisseur,
-  getContratPreviewUrl, exporterSepaFournisseurs,
+  annulerContratFournisseur, getContratPreviewUrl, exporterSepaFournisseurs,
   type FournisseurRow, type FournisseurInput,
 } from '../api';
 
@@ -19,6 +19,63 @@ const emptyForm: FournisseurInput = {
   prest_prenom: '', prest_nom: '', prest_telephone: '', prest_email: '',
   prest_adresse: '', prest_cp: '', prest_ville: '',
   memes_coordonnees: false, option_paiement: 'c',
+};
+
+// Champs obligatoires selon les specs §6.2 (SIRET, IBAN et email de prestation = optionnels).
+// Retourne le libellé du premier champ manquant, ou null si tout est rempli.
+const CHAMPS_REQUIS: [keyof FournisseurInput, string][] = [
+  ['nom_societe', 'Raison sociale'],
+  ['legal_prenom', 'Prénom du responsable légal'],
+  ['legal_nom', 'Nom du responsable légal'],
+  ['legal_email', 'Email du responsable légal'],
+  ['legal_telephone', 'Téléphone du responsable légal'],
+  ['legal_adresse', 'Adresse du siège social'],
+  ['legal_cp', 'Code postal du siège social'],
+  ['legal_ville', 'Ville du siège social'],
+  ['prest_prenom', 'Prénom du contact prestation'],
+  ['prest_nom', 'Nom du contact prestation'],
+  ['prest_telephone', 'Téléphone du contact prestation'],
+  ['prest_adresse', 'Adresse du lieu de prestation'],
+  ['prest_cp', 'Code postal du lieu de prestation'],
+  ['prest_ville', 'Ville du lieu de prestation'],
+];
+const champManquant = (f: FournisseurInput): string | null => {
+  for (const [key, label] of CHAMPS_REQUIS) {
+    if (!String(f[key] ?? '').trim()) return label;
+  }
+  return null;
+};
+
+// Email : un seul @, partie locale et domaine non vides, TLD ≥ 2.
+const emailValide = (email: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
+// Téléphone FR : 10 chiffres (0X…) ou +33 / 0033. Tolère espaces/points/tirets.
+const telephoneValide = (tel: string): boolean => {
+  const s = tel.replace(/[\s.\-()]/g, '');
+  return /^(?:(?:\+33|0033)[1-9]\d{8}|0[1-9]\d{8})$/.test(s);
+};
+// Clé de Luhn (checksum SIRET).
+const luhn = (s: string): boolean => {
+  let sum = 0;
+  for (let i = 0; i < s.length; i++) {
+    let d = parseInt(s[s.length - 1 - i]);
+    if (i % 2 === 1) { d *= 2; if (d > 9) d -= 9; }
+    sum += d;
+  }
+  return sum % 10 === 0;
+};
+// SIRET = 14 chiffres + Luhn.
+const siretValide = (siret: string): boolean => {
+  const s = siret.replace(/\s/g, '');
+  return /^\d{14}$/.test(s) && luhn(s);
+};
+// IBAN = format + clé mod 97 (ISO 13616).
+const ibanValide = (iban: string): boolean => {
+  const s = iban.replace(/\s+/g, '').toUpperCase();
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{1,30}$/.test(s)) return false;
+  const numeric = (s.slice(4) + s.slice(0, 4)).replace(/[A-Z]/g, ch => String(ch.charCodeAt(0) - 55));
+  let r = 0;
+  for (const d of numeric) r = (r * 10 + Number(d)) % 97;
+  return r === 1;
 };
 
 export default function Fournisseurs() {
@@ -40,6 +97,10 @@ export default function Fournisseurs() {
   const [form, setForm] = useState<FournisseurInput>(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
+  // Vrai si la fiche en cours d'édition a déjà un contrat signé (→ bandeau d'avertissement).
+  const [editContratSigne, setEditContratSigne] = useState(false);
+  const [annulId, setAnnulId] = useState<string | null>(null);
+  const [suspendId, setSuspendId] = useState<string | null>(null);
   // Code secret généré à la création (à communiquer au responsable légal)
   const [codeSecret, setCodeSecret] = useState<{ societe: string; code: string; emailEnvoye: boolean } | null>(null);
 
@@ -59,6 +120,7 @@ export default function Fournisseurs() {
 
   const openCreate = () => {
     setEditId(null);
+    setEditContratSigne(false);
     setForm(emptyForm);
     setFormError('');
     setFormOpen(true);
@@ -66,6 +128,7 @@ export default function Fournisseurs() {
 
   const openEdit = (f: FournisseurRow) => {
     setEditId(f.id);
+    setEditContratSigne(!!f.contrat_signe);
     setForm({
       nom_societe: f.nom_societe, siret: f.siret ?? '', iban: f.iban ?? '',
       legal_prenom: f.legal_prenom ?? '', legal_nom: f.legal_nom ?? '',
@@ -90,13 +153,21 @@ export default function Fournisseurs() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.nom_societe?.trim()) { setFormError('La raison sociale est obligatoire.'); return; }
+    const payload = form.memes_coordonnees
+      ? { ...form, prest_prenom: form.legal_prenom, prest_nom: form.legal_nom, prest_telephone: form.legal_telephone, prest_email: form.legal_email, prest_adresse: form.legal_adresse, prest_cp: form.legal_cp, prest_ville: form.legal_ville }
+      : form;
+    // Champs obligatoires (specs §6.2). SIRET, IBAN et email de prestation restent optionnels.
+    const manquant = champManquant(payload);
+    if (manquant) { setFormError(`Champ obligatoire manquant : ${manquant}.`); return; }
+    if (!emailValide(payload.legal_email ?? '')) { setFormError('Email du responsable légal invalide.'); return; }
+    if (String(payload.prest_email ?? '').trim() && !emailValide(payload.prest_email!)) { setFormError('Email du contact prestation invalide.'); return; }
+    if (!telephoneValide(payload.legal_telephone ?? '')) { setFormError('Téléphone du responsable légal invalide (ex. 06 12 34 56 78).'); return; }
+    if (!telephoneValide(payload.prest_telephone ?? '')) { setFormError('Téléphone du contact prestation invalide (ex. 06 12 34 56 78).'); return; }
+    if (String(payload.siret ?? '').trim() && !siretValide(payload.siret!)) { setFormError('SIRET invalide (14 chiffres).'); return; }
+    if (String(payload.iban ?? '').trim() && !ibanValide(payload.iban!)) { setFormError('IBAN invalide (vérifiez le format).'); return; }
     setSubmitting(true);
     setFormError('');
     try {
-      const payload = form.memes_coordonnees
-        ? { ...form, prest_prenom: form.legal_prenom, prest_nom: form.legal_nom, prest_telephone: form.legal_telephone, prest_email: form.legal_email, prest_adresse: form.legal_adresse, prest_cp: form.legal_cp, prest_ville: form.legal_ville }
-        : form;
       if (editId) {
         await updateFournisseur(editId, payload);
         setMsg({ type: 'ok', text: 'Fournisseur mis à jour.' });
@@ -179,6 +250,41 @@ export default function Fournisseurs() {
       setMsg({ type: 'err', text: e?.response?.data?.error || 'Échec de la mise à jour.' });
     } finally {
       setSigningId(null);
+    }
+  };
+
+  // Suspendre / réactiver un fournisseur (specs §6.1 — statut « Suspendu »).
+  // Suspendu = boutique coupée (plus de nouveaux bons) ; historique et bons émis conservés.
+  const handleToggleSuspension = async (f: FournisseurRow) => {
+    const suspendre = f.statut !== 'suspendu';
+    const next = suspendre ? 'suspendu' : 'actif';
+    if (suspendre && !confirm(`Suspendre « ${f.nom_societe} » ?\n\nSa boutique sera coupée (plus de nouveaux bons). L'historique et les bons déjà émis sont conservés. Réversible.`)) return;
+    setSuspendId(f.id);
+    setMsg(null);
+    try {
+      await updateFournisseur(f.id, { statut: next });
+      setMsg({ type: 'ok', text: suspendre ? `${f.nom_societe} suspendu.` : `${f.nom_societe} réactivé.` });
+      await load();
+    } catch (e: any) {
+      setMsg({ type: 'err', text: e?.response?.data?.error || 'Échec de la mise à jour du statut.' });
+    } finally {
+      setSuspendId(null);
+    }
+  };
+
+  // Annuler le contrat (specs §6.1) → repasse à non signé, la boutique se rebloque.
+  const handleAnnulerContrat = async (f: FournisseurRow) => {
+    if (!confirm(`Annuler le contrat de « ${f.nom_societe} » ?\n\nLe fournisseur repassera « non signé » et sa boutique sera de nouveau bloquée. Il faudra renvoyer / re-signer un contrat pour la rouvrir.`)) return;
+    setAnnulId(f.id);
+    setMsg(null);
+    try {
+      await annulerContratFournisseur(f.id);
+      setMsg({ type: 'ok', text: `Contrat de ${f.nom_societe} annulé. Boutique rebloquée.` });
+      await load();
+    } catch (e: any) {
+      setMsg({ type: 'err', text: e?.response?.data?.error || "Échec de l'annulation du contrat." });
+    } finally {
+      setAnnulId(null);
     }
   };
 
@@ -297,6 +403,24 @@ export default function Fournisseurs() {
                           </button>
                         </>
                       )}
+                      {f.contrat_signe && (
+                        <button
+                          onClick={() => handleAnnulerContrat(f)}
+                          disabled={annulId === f.id}
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-50"
+                          title="Annuler le contrat → repasse non signé, reblocage de la boutique"
+                        >
+                          {annulId === f.id ? '…' : 'Annuler le contrat'}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleToggleSuspension(f)}
+                        disabled={suspendId === f.id}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-lg border disabled:opacity-50 ${f.statut === 'suspendu' ? 'border-green-300 text-green-700 hover:bg-green-50' : 'border-orange-300 text-orange-700 hover:bg-orange-50'}`}
+                        title={f.statut === 'suspendu' ? 'Réactiver le fournisseur' : 'Suspendre le fournisseur (boutique coupée, historique conservé)'}
+                      >
+                        {suspendId === f.id ? '…' : f.statut === 'suspendu' ? 'Réactiver' : 'Suspendre'}
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -310,6 +434,11 @@ export default function Fournisseurs() {
       <Modal open={formOpen} onClose={() => setFormOpen(false)} title={editId ? 'Modifier le fournisseur' : 'Ajouter un fournisseur'} maxWidth="max-w-2xl">
         <form onSubmit={handleSubmit} className="space-y-5">
           {formError && <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{formError}</p>}
+          {editContratSigne && (
+            <p className="text-sm text-orange-800 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+              ⚠️ <strong>Contrat déjà signé.</strong> Modifier l'identité légale, le SIRET, l'IBAN ou l'option de paiement crée un écart avec le document signé. Pour changer un terme engageant, renvoyez un nouveau contrat.
+            </p>
+          )}
 
           <fieldset>
             <legend className="text-sm font-semibold text-gray-800 mb-2">Société</legend>
@@ -348,31 +477,31 @@ export default function Fournisseurs() {
             <legend className="text-sm font-semibold text-gray-800 mb-2">Responsable légal <span className="font-normal text-gray-400">(signataire du contrat)</span></legend>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className={labelCls}>Prénom</label>
+                <label className={labelCls}>Prénom *</label>
                 <input className={inputCls} value={form.legal_prenom ?? ''} onChange={e => set('legal_prenom', e.target.value)} />
               </div>
               <div>
-                <label className={labelCls}>Nom</label>
+                <label className={labelCls}>Nom *</label>
                 <input className={inputCls} value={form.legal_nom ?? ''} onChange={e => set('legal_nom', e.target.value)} />
               </div>
               <div>
-                <label className={labelCls}>Email <span className="text-gray-400">(pour la signature)</span></label>
+                <label className={labelCls}>Email * <span className="text-gray-400">(pour la signature)</span></label>
                 <input type="email" className={inputCls} value={form.legal_email ?? ''} onChange={e => set('legal_email', e.target.value)} />
               </div>
               <div>
-                <label className={labelCls}>Téléphone</label>
+                <label className={labelCls}>Téléphone *</label>
                 <input className={inputCls} value={form.legal_telephone ?? ''} onChange={e => set('legal_telephone', e.target.value)} />
               </div>
               <div className="sm:col-span-2">
-                <label className={labelCls}>Adresse (siège social)</label>
+                <label className={labelCls}>Adresse (siège social) *</label>
                 <input className={inputCls} value={form.legal_adresse ?? ''} onChange={e => set('legal_adresse', e.target.value)} />
               </div>
               <div>
-                <label className={labelCls}>Code postal</label>
+                <label className={labelCls}>Code postal *</label>
                 <input className={inputCls} value={form.legal_cp ?? ''} onChange={e => set('legal_cp', e.target.value)} />
               </div>
               <div>
-                <label className={labelCls}>Ville</label>
+                <label className={labelCls}>Ville *</label>
                 <input className={inputCls} value={form.legal_ville ?? ''} onChange={e => set('legal_ville', e.target.value)} />
               </div>
             </div>
@@ -388,31 +517,31 @@ export default function Fournisseurs() {
             </div>
             <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${form.memes_coordonnees ? 'opacity-50 pointer-events-none' : ''}`}>
               <div>
-                <label className={labelCls}>Prénom</label>
+                <label className={labelCls}>Prénom *</label>
                 <input className={inputCls} value={form.prest_prenom ?? ''} onChange={e => set('prest_prenom', e.target.value)} />
               </div>
               <div>
-                <label className={labelCls}>Nom</label>
+                <label className={labelCls}>Nom *</label>
                 <input className={inputCls} value={form.prest_nom ?? ''} onChange={e => set('prest_nom', e.target.value)} />
               </div>
               <div>
-                <label className={labelCls}>Email</label>
+                <label className={labelCls}>Email <span className="text-gray-400">(optionnel)</span></label>
                 <input type="email" className={inputCls} value={form.prest_email ?? ''} onChange={e => set('prest_email', e.target.value)} />
               </div>
               <div>
-                <label className={labelCls}>Téléphone</label>
+                <label className={labelCls}>Téléphone *</label>
                 <input className={inputCls} value={form.prest_telephone ?? ''} onChange={e => set('prest_telephone', e.target.value)} />
               </div>
               <div className="sm:col-span-2">
-                <label className={labelCls}>Adresse (lieu de prestation)</label>
+                <label className={labelCls}>Adresse (lieu de prestation) *</label>
                 <input className={inputCls} value={form.prest_adresse ?? ''} onChange={e => set('prest_adresse', e.target.value)} />
               </div>
               <div>
-                <label className={labelCls}>Code postal</label>
+                <label className={labelCls}>Code postal *</label>
                 <input className={inputCls} value={form.prest_cp ?? ''} onChange={e => set('prest_cp', e.target.value)} />
               </div>
               <div>
-                <label className={labelCls}>Ville</label>
+                <label className={labelCls}>Ville *</label>
                 <input className={inputCls} value={form.prest_ville ?? ''} onChange={e => set('prest_ville', e.target.value)} />
               </div>
             </div>
@@ -455,7 +584,7 @@ export default function Fournisseurs() {
             </div>
             <div className="flex justify-end">
               <button onClick={() => setCodeSecret(null)} className="px-4 py-2 text-sm font-medium rounded-lg text-white hover:opacity-80" style={{ backgroundColor: '#C9A84C' }}>
-                J'ai noté le code
+                {codeSecret.emailEnvoye ? 'Fermer' : "J'ai noté le code"}
               </button>
             </div>
           </div>

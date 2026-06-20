@@ -14,6 +14,42 @@ const router = express.Router();
 // Propriété : :id doit être le chauffeur du token (sinon 403).
 router.param('id', ownChauffeurParam);
 
+// Vérifie EN DIRECT chez Stripe si le chauffeur a une carte par défaut (prélevable).
+// Source de vérité du verrou « passage en ligne » (specs §7.1) : robuste même si le
+// chauffeur retire sa carte après l'avoir ajoutée. Synchronise le flag DB au passage.
+async function customerHasDefaultCard(customerId: string | null): Promise<boolean> {
+    if (!customerId) return false;
+    try {
+        const cust = await stripe.customers.retrieve(customerId);
+        if ((cust as any).deleted) return false;
+        const hasCard = !!(cust as any).invoice_settings?.default_payment_method;
+        await query('UPDATE chauffeurs SET carte_enregistree = $1 WHERE stripe_customer_id = $2', [hasCard, customerId]).catch(() => {});
+        return hasCard;
+    } catch {
+        return false;
+    }
+}
+
+// Récupère (ou crée à la volée) le customer Stripe d'un chauffeur. Retourne null si chauffeur introuvable.
+async function ensureStripeCustomer(chauffeurId: string): Promise<string | null> {
+    const result = await query(
+        'SELECT c.stripe_customer_id, u.email, u.prenom, u.nom FROM chauffeurs c JOIN utilisateurs u ON u.id = c.utilisateur_id WHERE c.id = $1',
+        [chauffeurId]
+    );
+    if (!result.rows.length) return null;
+    let customerId = result.rows[0].stripe_customer_id;
+    if (!customerId) {
+        const u = result.rows[0];
+        const customer = await stripe.customers.create({
+            email: u.email,
+            name: `${u.prenom || ''} ${u.nom || ''}`.trim(),
+        });
+        customerId = customer.id;
+        await query('UPDATE chauffeurs SET stripe_customer_id = $1 WHERE id = $2', [customerId, chauffeurId]);
+    }
+    return customerId;
+}
+
 router.get('/:id/profile', async (req, res) => {
     const result = await query(
         `SELECT
@@ -60,7 +96,8 @@ router.get('/:id/dashboard', async (req, res) => {
             c.vehicule_couleur,
             c.vehicule_immat,
             c.taux_commission_override,
-            c.documents_valides
+            c.documents_valides,
+            c.carte_enregistree
          FROM chauffeurs c
          JOIN utilisateurs u ON u.id = c.utilisateur_id
          WHERE c.id = $1`,
@@ -170,12 +207,18 @@ router.put('/:id/availability', async (req, res) => {
     if (disponible == null) return res.status(400).json({ error: 'disponible requis' });
 
     if (disponible) {
-        const check = await query('SELECT documents_valides, iban FROM chauffeurs WHERE id = $1', [req.params.id]);
+        const check = await query('SELECT documents_valides, iban, stripe_customer_id FROM chauffeurs WHERE id = $1', [req.params.id]);
         if (!check.rows[0]?.documents_valides) {
             return res.status(403).json({ error: 'Vos documents doivent être validés par SÉSAME avant de vous mettre en ligne.' });
         }
         if (!check.rows[0]?.iban) {
             return res.status(403).json({ error: 'Veuillez renseigner votre IBAN dans votre profil avant de vous mettre en ligne.' });
+        }
+        // Verrou paiement : pas de carte prélevable = pas de mise en ligne (specs §7.1).
+        // Évite qu'un chauffeur génère du CA sans moyen de prélever les frais SÉSAME.
+        const hasCard = await customerHasDefaultCard(check.rows[0].stripe_customer_id);
+        if (!hasCard) {
+            return res.status(403).json({ code: 'NO_CARD', error: 'Enregistrez une carte bancaire avant de vous mettre en ligne. Les frais SÉSAME seront prélevés automatiquement chaque semaine.' });
         }
     }
 
@@ -560,32 +603,32 @@ router.post('/:id/client-absent', async (req, res) => {
 
 // Portail de facturation Stripe
 router.get('/:id/billing-portal', async (req, res) => {
-    const result = await query(
-        'SELECT stripe_customer_id FROM chauffeurs WHERE id = $1',
-        [req.params.id]
-    );
-    if (!result.rows.length) return res.status(404).json({ error: 'Chauffeur introuvable' });
-
-    let customerId = result.rows[0].stripe_customer_id;
-
-    // Créer le customer Stripe si inexistant (chauffeurs inscrits avant l'intégration)
-    if (!customerId) {
-        const profile = await query(
-            'SELECT u.email, u.prenom, u.nom FROM chauffeurs c JOIN utilisateurs u ON u.id = c.utilisateur_id WHERE c.id = $1',
-            [req.params.id]
-        );
-        const u = profile.rows[0];
-        const customer = await stripe.customers.create({
-            email: u.email,
-            name: `${u.prenom} ${u.nom}`.trim(),
-        });
-        customerId = customer.id;
-        await query('UPDATE chauffeurs SET stripe_customer_id = $1 WHERE id = $2', [customerId, req.params.id]);
-    }
+    const customerId = await ensureStripeCustomer(req.params.id);
+    if (!customerId) return res.status(404).json({ error: 'Chauffeur introuvable' });
 
     const session = await stripe.billingPortal.sessions.create({
         customer: customerId,
         return_url: `${process.env.BACKEND_URL || 'http://localhost:4001'}/retour-stripe`,
+    });
+
+    res.json({ url: session.url });
+});
+
+// Enregistrement d'une carte par défaut via Stripe Checkout (mode setup).
+// L'app mobile (Expo, sans SDK natif Stripe) ouvre l'URL via Linking — même
+// principe que le billing portal. La carte devient le moyen de paiement par
+// défaut côté webhook `checkout.session.completed` (cf. stripeWebhook.ts).
+router.post('/:id/setup-card', async (req, res) => {
+    const customerId = await ensureStripeCustomer(req.params.id);
+    if (!customerId) return res.status(404).json({ error: 'Chauffeur introuvable' });
+
+    const base = process.env.BACKEND_URL || 'http://localhost:4001';
+    const session = await stripe.checkout.sessions.create({
+        mode: 'setup',
+        customer: customerId,
+        payment_method_types: ['card'],
+        success_url: `${base}/retour-stripe?carte=ok`,
+        cancel_url: `${base}/retour-stripe?carte=annule`,
     });
 
     res.json({ url: session.url });

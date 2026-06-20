@@ -344,7 +344,8 @@ CREATE TABLE echanges (
     remis_at timestamptz,
     expire_at timestamptz,
     utilise_at timestamptz,
-    valide_par_admin_id uuid
+    valide_par_admin_id uuid,
+    created_at timestamptz NOT NULL DEFAULT now()
 );
 
 -- 3.12 blacklist

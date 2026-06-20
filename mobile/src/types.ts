@@ -17,7 +17,6 @@ export type RootStackParamList = {
     ChauffeurCourses: undefined;
     ChauffeurProfile: undefined;
     ChauffeurRevenus: undefined;
-    FournisseurValidation: undefined;
     Chat: { courseId: string; senderRole: 'ambassadeur' | 'chauffeur' | 'admin'; senderId: string; courseRef?: string; };
 };
 
@@ -150,6 +149,7 @@ export type ChauffeurDashboard = {
     vehicule_immat?: string;
     taux_commission_override?: number | null;
     documents_valides?: boolean;
+    carte_enregistree?: boolean;
     active_courses_count: number;
     current_course?: ActiveCourse | null;
     courses_jour?: number;
@@ -176,6 +176,11 @@ export type ExchangeBon = {
     remis_at?: string;
     expire_at?: string;
     nom_offre?: string;
+    // Coordonnées du lieu de prestation (specs §6.1 — affichées sur l'écran QR)
+    prest_telephone?: string;
+    prest_adresse?: string;
+    prest_cp?: string;
+    prest_ville?: string;
 };
 
 export type CourseRow = ActiveCourse & {

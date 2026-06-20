@@ -11,6 +11,7 @@ router.get('/offres', async (req, res) => {
          WHERE o.statut = 'en_ligne'
            AND (o.stock IS NULL OR o.stock > 0)
            AND f.contrat_signe = true
+           AND f.statut <> 'suspendu'
          ORDER BY o.nom ASC`
     );
     res.json(result.rows);

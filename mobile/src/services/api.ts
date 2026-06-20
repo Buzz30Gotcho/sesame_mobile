@@ -52,6 +52,10 @@ export async function getChauffeurBillingPortal(chauffeurId: string) {
     return api.get<{ url: string }>(`/api/chauffeurs/${chauffeurId}/billing-portal`);
 }
 
+export async function getChauffeurSetupCard(chauffeurId: string) {
+    return api.post<{ url: string }>(`/api/chauffeurs/${chauffeurId}/setup-card`, {});
+}
+
 export async function demanderResetMotDePasse(email: string) {
     return api.post('/api/auth/mot-de-passe-oublie', { email });
 }
@@ -315,9 +319,4 @@ export async function sendChatMessage(courseId: string, data: {
     expediteur_type: string; expediteur_id: string; contenu: string;
 }) {
     return api.post<ChatMessage>(`/api/chat/${courseId}/messages`, data);
-}
-
-// Fournisseur
-export async function validateFournisseurBon(data: { token_qr: string; code_secret: string; }) {
-    return api.post('/api/fournisseurs/valider-bon', data);
 }

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity, ScrollView,
-    ActivityIndicator, StatusBar,
+    ActivityIndicator, StatusBar, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -14,12 +14,18 @@ import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-n
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AmbassadorQRCode'>;
 
+// Specs §6.1 : date ET heure EXACTES (à la minute), pour la remise et l'expiration.
 function formatDateTime(iso?: string) {
     if (!iso) return '—';
     return new Date(iso).toLocaleString('fr-FR', {
         day: '2-digit', month: '2-digit', year: 'numeric',
         hour: '2-digit', minute: '2-digit',
     });
+}
+
+function prestationAdresse(bon: ExchangeBon): string {
+    return [bon.prest_adresse, [bon.prest_cp, bon.prest_ville].filter(Boolean).join(' ')]
+        .filter(Boolean).join(', ');
 }
 
 export default function AmbassadorQRCodeScreen({ route }: Props) {
@@ -60,6 +66,8 @@ export default function AmbassadorQRCodeScreen({ route }: Props) {
         load();
     }, [ambassadorId, bonId]);
 
+    const adresse = bon ? prestationAdresse(bon) : '';
+
     return (
         <SafeAreaView style={styles.safeArea}>
             <StatusBar barStyle="light-content" />
@@ -86,50 +94,46 @@ export default function AmbassadorQRCodeScreen({ route }: Props) {
                     <View style={styles.content}>
                         <Text style={styles.offerName}>{bon.nom_offre || 'Bon cadeau'}</Text>
 
-                        {/* QR Code */}
+                        {/* QR Code avec logo SÉSAME au centre (ecl=H pour rester scannable) */}
                         <View style={styles.qrContainer}>
                             <QRCode
                                 value={bon.token_qr ? `${FOURNISSEUR_VALIDER_URL}?token=${bon.token_qr}` : 'INVALID'}
-                                size={220}
+                                size={200}
+                                ecl="H"
                                 color="#1A1A2A"
                                 backgroundColor="#FFFFFF"
                             />
-                        </View>
-
-                        <Text style={styles.usageWarning}>⚡ Usage unique — non partageable</Text>
-
-                        {/* Détails */}
-                        <View style={styles.detailsCard}>
-                            <View style={styles.row}>
-                                <Text style={styles.label}>RÉFÉRENCE</Text>
-                                <Text style={styles.valueBlue}>{bon.reference}</Text>
-                            </View>
-                            <View style={styles.divider} />
-                            <View style={styles.row}>
-                                <Text style={styles.label}>REMIS LE</Text>
-                                <Text style={styles.valueBlue}>{formatDateTime(bon.remis_at)}</Text>
-                            </View>
-                            <View style={styles.divider} />
-                            <View style={styles.row}>
-                                <Text style={styles.label}>EXPIRE LE</Text>
-                                <Text style={styles.valueGold}>{formatDateTime(bon.expire_at)}</Text>
-                            </View>
-                            <View style={styles.divider} />
-                            <View style={styles.row}>
-                                <Text style={styles.label}>POINTS DÉDUITS</Text>
-                                <Text style={styles.valueGold}>{bon.points_deduits} pts</Text>
+                            <View style={styles.logoBadge}>
+                                <Text style={styles.logoBadgeText}>S</Text>
                             </View>
                         </View>
 
-                        {/* Instructions */}
-                        <View style={styles.instructionBox}>
-                            <Text style={styles.instructionTitle}>COMMENT UTILISER</Text>
-                            <Text style={styles.instructionText}>
-                                Présentez ce QR code au prestataire SÉSAME.
-                                Il scannera le code depuis son interface de validation.
-                                Le bon sera marqué utilisé à la seconde du scan.
-                            </Text>
+                        <Text style={styles.usageLine}>⚡ Usage unique — non partageable</Text>
+
+                        {/* Remise + expiration : date ET heure exactes (specs §6.1) */}
+                        <View style={styles.datesRow}>
+                            <View style={styles.dateBox}>
+                                <Text style={styles.dateLabel}>REMIS LE</Text>
+                                <Text style={styles.dateValue}>{formatDateTime(bon.remis_at)}</Text>
+                            </View>
+                            <View style={styles.dateBox}>
+                                <Text style={styles.dateLabel}>EXPIRE LE</Text>
+                                <Text style={[styles.dateValue, styles.dateValueGold]}>{formatDateTime(bon.expire_at)}</Text>
+                            </View>
                         </View>
+
+                        {/* Coordonnées du lieu de prestation (specs §6.1) */}
+                        {(adresse || bon.prest_telephone) ? (
+                            <View style={styles.prestaCard}>
+                                <Text style={styles.prestaTitle}>LIEU DE PRESTATION</Text>
+                                {!!adresse && <Text style={styles.prestaText}>{adresse}</Text>}
+                                {!!bon.prest_telephone && (
+                                    <TouchableOpacity onPress={() => Linking.openURL(`tel:${bon.prest_telephone}`)}>
+                                        <Text style={styles.prestaPhone}>📞 {bon.prest_telephone}</Text>
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+                        ) : null}
                     </View>
                 ) : null}
             </ScrollView>
@@ -139,12 +143,12 @@ export default function AmbassadorQRCodeScreen({ route }: Props) {
 
 const styles = StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: Colors.nocturne.background },
-    container: { padding: 24, paddingBottom: 40 },
+    container: { padding: 24, paddingBottom: 24 },
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 24,
+        marginBottom: 16,
     },
     backButton: { width: 40, height: 40, justifyContent: 'center' },
     backText: { color: Colors.brand.gold, fontSize: 24, fontWeight: '700' },
@@ -174,79 +178,99 @@ const styles = StyleSheet.create({
         fontSize: Typography.sizes.header,
         fontWeight: Typography.weights.black as any,
         textAlign: 'center',
-        marginBottom: 24,
+        marginBottom: 16,
     },
     qrContainer: {
         backgroundColor: '#FFFFFF',
-        padding: 20,
+        padding: 18,
         borderRadius: 24,
-        marginBottom: 16,
+        marginBottom: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
         shadowColor: Colors.brand.gold,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.2,
         shadowRadius: 12,
         elevation: 8,
     },
-    usageWarning: {
-        color: Colors.brand.error,
-        fontSize: Typography.sizes.tiny,
-        fontWeight: Typography.weights.black as any,
-        marginBottom: 24,
-        letterSpacing: 0.5,
+    logoBadge: {
+        position: 'absolute',
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: '#FFFFFF',
+        borderWidth: 2,
+        borderColor: Colors.brand.gold,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
-    detailsCard: {
-        backgroundColor: Colors.nocturne.card,
-        borderRadius: 18,
-        padding: 18,
-        width: '100%',
+    logoBadgeText: {
+        color: Colors.brand.gold,
+        fontSize: 22,
+        fontWeight: Typography.weights.black as any,
+    },
+    usageLine: {
+        color: Colors.brand.error,
+        fontSize: Typography.sizes.small,
+        fontWeight: Typography.weights.black as any,
+        letterSpacing: 0.3,
+        textAlign: 'center',
         marginBottom: 16,
     },
-    row: {
+    datesRow: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
+        gap: 12,
+        width: '100%',
+        marginBottom: 12,
+    },
+    dateBox: {
+        flex: 1,
+        backgroundColor: Colors.nocturne.card,
+        borderRadius: 14,
+        paddingVertical: 12,
+        paddingHorizontal: 12,
         alignItems: 'center',
-        paddingVertical: 10,
     },
-    divider: {
-        height: 1,
-        backgroundColor: 'rgba(255,255,255,0.05)',
-    },
-    label: {
+    dateLabel: {
         color: Colors.nocturne.textSecondary,
         fontSize: Typography.sizes.tiny,
         fontWeight: Typography.weights.black as any,
         letterSpacing: 1,
+        marginBottom: 4,
     },
-    valueBlue: {
-        color: Colors.brand.info,
-        fontSize: Typography.sizes.tiny,
+    dateValue: {
+        color: Colors.nocturne.textPrimary,
+        fontSize: Typography.sizes.small,
         fontWeight: Typography.weights.bold as any,
         fontFamily: 'monospace',
+        textAlign: 'center',
     },
-    valueGold: {
-        color: Colors.brand.gold,
-        fontSize: Typography.sizes.tiny,
-        fontWeight: Typography.weights.bold as any,
-        fontFamily: 'monospace',
-    },
-    instructionBox: {
+    dateValueGold: { color: Colors.brand.gold },
+    prestaCard: {
         backgroundColor: 'rgba(201,168,76,0.06)',
         borderRadius: 14,
-        padding: 16,
+        padding: 14,
         width: '100%',
         borderWidth: 1,
         borderColor: 'rgba(201,168,76,0.15)',
+        alignItems: 'center',
     },
-    instructionTitle: {
+    prestaTitle: {
         color: Colors.brand.gold,
         fontSize: Typography.sizes.tiny,
         fontWeight: Typography.weights.black as any,
         letterSpacing: 1,
-        marginBottom: 8,
+        marginBottom: 6,
     },
-    instructionText: {
-        color: Colors.nocturne.textSecondary,
+    prestaText: {
+        color: Colors.nocturne.textPrimary,
         fontSize: Typography.sizes.small,
-        lineHeight: 18,
+        textAlign: 'center',
+    },
+    prestaPhone: {
+        color: Colors.brand.info,
+        fontSize: Typography.sizes.small,
+        fontWeight: Typography.weights.bold as any,
+        marginTop: 6,
     },
 });

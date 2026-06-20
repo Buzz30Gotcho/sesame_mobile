@@ -111,6 +111,7 @@ export interface Echange {
   statut?: string;
   created_at?: string;
   date_demande?: string;
+  remis_at?: string;
 }
 
 export interface BlacklistEntry {
@@ -288,6 +289,9 @@ export const updateFournisseur = (id: string, payload: FournisseurInput) =>
   api.put<{ success: boolean }>(`/admin/fournisseurs/${id}`, payload).then(r => r.data);
 export const envoyerContratFournisseur = (id: string) =>
   api.post<{ success: boolean; message?: string }>(`/admin/fournisseurs/${id}/envoyer-contrat`).then(r => r.data);
+// Annule le contrat (specs §6.1) → repasse à non signé, reblocage de la boutique.
+export const annulerContratFournisseur = (id: string) =>
+  api.post<{ success: boolean }>(`/admin/fournisseurs/${id}/annuler-contrat`).then(r => r.data);
 
 // Télécharge le contrat généré (PDF) → renvoie une URL blob à ouvrir / révoquer.
 export const getContratPreviewUrl = (id: string) =>

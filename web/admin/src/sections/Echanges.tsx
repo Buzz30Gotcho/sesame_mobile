@@ -4,6 +4,13 @@ import type { Echange } from '../api';
 import Spinner from '../components/Spinner';
 import Badge, { getStatusVariant } from '../components/Badge';
 
+function formatDateTime(value?: string) {
+  if (!value) return '—';
+  return new Date(value).toLocaleString('fr-FR', {
+    day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
+
 export default function Echanges() {
   const [enAttente, setEnAttente] = useState<Echange[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,7 +65,8 @@ export default function Echanges() {
     }
   };
 
-  const displayed = onglet === 'attente' ? enAttente.filter(e => e.statut === 'en_attente' || !e.statut) : enAttente;
+  const estEnAttente = (e: Echange) => e.statut === 'en_attente_admin' || e.statut === 'en_attente' || !e.statut;
+  const displayed = onglet === 'attente' ? enAttente.filter(estEnAttente) : enAttente;
 
   return (
     <div className="space-y-6">
@@ -85,9 +93,9 @@ export default function Echanges() {
           }`}
         >
           En attente
-          {enAttente.filter(e => e.statut === 'en_attente' || !e.statut).length > 0 && (
+          {enAttente.filter(estEnAttente).length > 0 && (
             <span className="bg-red-500 text-white text-xs font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
-              {enAttente.filter(e => e.statut === 'en_attente' || !e.statut).length}
+              {enAttente.filter(estEnAttente).length}
             </span>
           )}
         </button>
@@ -115,7 +123,7 @@ export default function Echanges() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {displayed.map(echange => {
-            const enAttenteItem = echange.statut === 'en_attente' || !echange.statut;
+            const enAttenteItem = estEnAttente(echange);
             return (
               <div
                 key={echange.id}
@@ -142,12 +150,13 @@ export default function Echanges() {
                     </span>
                     {' '}déduits
                   </div>
-                  <div className="text-xs text-gray-400">
-                    {echange.date_demande || echange.created_at
-                      ? new Date(echange.date_demande || echange.created_at!).toLocaleDateString('fr-FR', {
-                          day: 'numeric', month: 'long', year: 'numeric'
-                        })
-                      : '—'}
+                  <div className="text-xs text-gray-400 text-right">
+                    {(echange.date_demande || echange.created_at) && (
+                      <div>Demandé le {formatDateTime(echange.date_demande || echange.created_at)}</div>
+                    )}
+                    {echange.remis_at && (
+                      <div className="text-green-600">Validé le {formatDateTime(echange.remis_at)}</div>
+                    )}
                   </div>
                 </div>
 

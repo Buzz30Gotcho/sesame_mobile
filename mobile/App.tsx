@@ -32,7 +32,6 @@ import ChauffeurCoursesScreen from './src/screens/ChauffeurCoursesScreen';
 import ChauffeurProfileScreen from './src/screens/ChauffeurProfileScreen';
 import ChauffeurRevenusScreen from './src/screens/ChauffeurRevenusScreen';
 
-import FournisseurScreen from './src/screens/FournisseurScreen';
 import ChatScreen from './src/screens/ChatScreen';
 
 import type { RootStackParamList } from './src/types';
@@ -106,8 +105,7 @@ export default function App() {
                                 <Stack.Screen name="ChauffeurProfile" component={ChauffeurProfileScreen} />
                                 <Stack.Screen name="ChauffeurRevenus" component={ChauffeurRevenusScreen} />
 
-                                {/* Fournisseur & Chat */}
-                                <Stack.Screen name="FournisseurValidation" component={FournisseurScreen} />
+                                {/* Chat */}
                                 <Stack.Screen name="Chat" component={ChatScreen} />
                             </Stack.Navigator>
                         </View>

@@ -12,7 +12,7 @@ import {
     validateCourseCode, finishChauffeurCourse,
     getCoursesDisponibles, acceptChauffeurCourse,
     signalerClientAbsent, getChauffeurDocuments,
-    updateChauffeurPosition,
+    updateChauffeurPosition, getChauffeurSetupCard,
 } from '../services/api';
 import { startBackgroundLocation, stopBackgroundLocation } from '../services/locationTask';
 import { Colors, Typography } from '../theme';
@@ -206,13 +206,49 @@ export default function ChauffeurHomeScreen() {
         };
     }, [dashboard?.current_course?.statut, dashboard?.current_course?.adresse_destination, chauffeurId]);
 
+    const promptAddCard = () => {
+        if (!chauffeurId) return;
+        Alert.alert(
+            'Carte bancaire requise',
+            'Pour passer en ligne, enregistrez une carte bancaire. Les frais SÉSAME (commission sur vos courses) seront prélevés automatiquement chaque semaine.',
+            [
+                { text: 'Plus tard', style: 'cancel' },
+                {
+                    text: 'Ajouter ma carte',
+                    onPress: async () => {
+                        try {
+                            const r = await getChauffeurSetupCard(chauffeurId);
+                            await Linking.openURL(r.data.url);
+                        } catch {
+                            Alert.alert('Erreur', "Impossible d'ouvrir la page d'enregistrement de carte.");
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
     const toggleAvailability = async (val: boolean) => {
         if (!chauffeurId) return;
         if (val && !dashboard?.documents_valides) {
             Alert.alert('Dossier incomplet', 'Vos documents doivent être validés par SÉSAME avant de vous mettre en ligne.');
             return;
         }
-        await setChauffeurAvailability(chauffeurId, val).catch(() => {});
+        // Pré-filtre côté app (le backend reste la source de vérité, cf. 403 NO_CARD ci-dessous).
+        if (val && !dashboard?.carte_enregistree) {
+            promptAddCard();
+            return;
+        }
+        try {
+            await setChauffeurAvailability(chauffeurId, val);
+        } catch (err: any) {
+            if (err?.response?.data?.code === 'NO_CARD') {
+                promptAddCard();
+                return;
+            }
+            Alert.alert('Erreur', err?.response?.data?.error || 'Impossible de changer votre disponibilité.');
+            return;
+        }
         loadDashboard();
     };
 

@@ -55,6 +55,13 @@ const PAIEMENT_LABEL: Record<string, string> = {
     c: 'Option C — Paiement au scan du QR code (paiement = prestation effectuée).',
 };
 
+// Fait générateur = l'événement qui déclenche le paiement (point de départ du délai de règlement).
+const FAIT_GENERATEUR_LABEL: Record<string, string> = {
+    a: "l'ajout de la prestation en boutique",
+    b: "la récupération du bon (QR code) par l'Ambassadeur",
+    c: 'le scan du QR code chez le Partenaire (prestation effectuée)',
+};
+
 const euros = (v: number | string | null): string =>
     v === null || v === undefined || v === '' ? '—' : `${Number(v).toFixed(2)} € HT`;
 
@@ -148,9 +155,10 @@ export function generateContractPdf(f: ContratFournisseur, offres: ContratOffre[
             item('Tarifs unitaires HT : définis lors de l\'ajout des prestations en boutique.');
         }
         doc.moveDown(0.2);
-        item(`Mode de paiement : ${PAIEMENT_LABEL[(f.option_paiement || 'c').toLowerCase()] || PAIEMENT_LABEL.c}`);
+        const opt = (f.option_paiement || 'c').toLowerCase();
+        item(`Mode de paiement : ${PAIEMENT_LABEL[opt] || PAIEMENT_LABEL.c}`);
         item(ligne('IBAN de règlement', f.iban));
-        item('Délai de règlement : 30 jours à compter du fait générateur du paiement.');
+        item(`Délai de règlement : 30 jours à compter du fait générateur, c'est-à-dire ${FAIT_GENERATEUR_LABEL[opt] || FAIT_GENERATEUR_LABEL.c}.`);
 
         // ── 4. Durée & Résiliation ──────────────────────────────────────────────
         titre('4. Durée & Résiliation');

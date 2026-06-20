@@ -1,6 +1,6 @@
 import express from 'express';
 import { randomBytes } from 'crypto';
-import { query } from '../db';
+import { query, withTransaction } from '../db';
 import { calculatePoints } from '../lib/rules';
 import { requireAuth, ownActorBodyQuery, ownEchangeParam } from '../middleware/auth';
 
@@ -26,9 +26,17 @@ router.post('/creer', requireAuth, ownActorBodyQuery, async (req, res) => {
         return res.status(403).json({ error: 'La boutique n\'est pas disponible pour les Ambassadeurs Moraux.' });
     }
 
-    const offreResult = await query('SELECT * FROM offres_boutique WHERE id = $1 AND statut = $2', [offre_id, 'en_ligne']);
+    // L'offre doit être en ligne ET son fournisseur signé et non suspendu
+    // (mêmes conditions que la boutique — anti-contournement par appel direct).
+    const offreResult = await query(
+        `SELECT o.* FROM offres_boutique o
+         JOIN fournisseurs f ON f.id = o.fournisseur_id
+         WHERE o.id = $1 AND o.statut = 'en_ligne'
+           AND f.contrat_signe = true AND f.statut <> 'suspendu'`,
+        [offre_id]
+    );
     const offre = offreResult.rows[0];
-    if (!offre) return res.status(404).json({ error: 'Offre introuvable ou hors ligne' });
+    if (!offre) return res.status(404).json({ error: 'Offre indisponible (hors ligne, ou fournisseur non signé / suspendu).' });
 
     const pointsNeeded = Number(offre.pts_requis);
     const solde = Number(ambassadeur.points_solde || 0);
@@ -37,27 +45,50 @@ router.post('/creer', requireAuth, ownActorBodyQuery, async (req, res) => {
         return res.status(400).json({ error: `Points insuffisants. Solde : ${solde} pts. Requis : ${pointsNeeded} pts.` });
     }
 
-    // Déduire les points immédiatement
-    await query('UPDATE ambassadeurs SET points_solde = points_solde - $1 WHERE id = $2', [pointsNeeded, ambassadeur_id]);
-
-    // Enregistrer dans l'historique
-    await query(
-        'INSERT INTO points_historique(ambassadeur_id, type, montant, solde_avant, solde_apres, description) VALUES ($1,$2,$3,$4,$5,$6)',
-        [ambassadeur_id, 'depense', pointsNeeded, solde, solde - pointsNeeded, `Échange boutique : ${offre.nom}`]
-    );
-
     const exchangeReference = makeReference('BON');
     // Token imprévisible (crypto) — il sert à valider/remettre le bon, ne doit pas être devinable.
     const tokenQr = `${exchangeReference}-${randomBytes(6).toString('hex').toUpperCase()}`;
 
-    await query(
-        'INSERT INTO echanges(reference, ambassadeur_id, offre_id, fournisseur_id, points_deduits, token_qr, statut, remis_at, expire_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
-        [exchangeReference, ambassadeur_id, offre.id, offre.fournisseur_id, pointsNeeded, tokenQr, 'en_attente_admin', null, null]
-    );
+    try {
+        await withTransaction(async (q) => {
+            // Décrément atomique du stock AVANT tout : si limité, on ne décrémente que si stock > 0.
+            // 0 ligne renvoyée = plus de stock (ou offre passée hors ligne) → on annule l'échange.
+            // (stock NULL = illimité : NULL - 1 reste NULL, l'offre n'est jamais épuisée.)
+            const dec = await q(
+                `UPDATE offres_boutique SET stock = stock - 1
+                 WHERE id = $1 AND statut = 'en_ligne' AND (stock IS NULL OR stock > 0)
+                 RETURNING id`,
+                [offre.id]
+            );
+            if (dec.rows.length === 0) {
+                const err: any = new Error('Offre épuisée ou hors ligne.');
+                err.statusCode = 409;
+                throw err;
+            }
 
-    // Décrémenter le stock si limité (specs §3.3 — masqué automatiquement quand stock = 0)
-    if (offre.stock !== null) {
-        await query('UPDATE offres_boutique SET stock = GREATEST(stock - 1, 0) WHERE id = $1', [offre.id]);
+            // Déduire les points (garde anti-solde négatif sous concurrence).
+            const ded = await q(
+                'UPDATE ambassadeurs SET points_solde = points_solde - $1 WHERE id = $2 AND points_solde >= $1 RETURNING points_solde',
+                [pointsNeeded, ambassadeur_id]
+            );
+            if (ded.rows.length === 0) {
+                const err: any = new Error('Points insuffisants.');
+                err.statusCode = 400;
+                throw err;
+            }
+
+            await q(
+                'INSERT INTO points_historique(ambassadeur_id, type, montant, solde_avant, solde_apres, description) VALUES ($1,$2,$3,$4,$5,$6)',
+                [ambassadeur_id, 'depense', pointsNeeded, solde, solde - pointsNeeded, `Échange boutique : ${offre.nom}`]
+            );
+
+            await q(
+                'INSERT INTO echanges(reference, ambassadeur_id, offre_id, fournisseur_id, points_deduits, token_qr, statut, remis_at, expire_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+                [exchangeReference, ambassadeur_id, offre.id, offre.fournisseur_id, pointsNeeded, tokenQr, 'en_attente_admin', null, null]
+            );
+        });
+    } catch (e: any) {
+        return res.status(e.statusCode || 500).json({ error: e.message || "Échec de l'échange." });
     }
 
     res.status(201).json({ reference: exchangeReference, points_deduits: pointsNeeded, statut: 'en_attente_admin' });
@@ -66,9 +97,11 @@ router.post('/creer', requireAuth, ownActorBodyQuery, async (req, res) => {
 router.get('/mes-bons', requireAuth, ownActorBodyQuery, async (req, res) => {
     const { ambassadeur_id } = req.query;
     const result = await query(
-        `SELECT e.*, o.nom AS nom_offre
+        `SELECT e.*, o.nom AS nom_offre,
+                f.prest_telephone, f.prest_adresse, f.prest_cp, f.prest_ville
          FROM echanges e
          LEFT JOIN offres_boutique o ON o.id = e.offre_id
+         LEFT JOIN fournisseurs f ON f.id = e.fournisseur_id
          WHERE e.ambassadeur_id = $1
          ORDER BY e.remis_at DESC NULLS LAST`,
         [ambassadeur_id]
