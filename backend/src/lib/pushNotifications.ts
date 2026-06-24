@@ -1,6 +1,7 @@
 import https from 'https';
 import admin from 'firebase-admin';
 import path from 'path';
+import { getSystemParameter } from './params';
 
 // Initialisation Firebase Admin SDK
 const serviceAccountPath = path.join(__dirname, '../../sesame-708a3-firebase-adminsdk-fbsvc-038ce93144.json');
@@ -24,6 +25,13 @@ export async function sendPushNotification(
     persistent = false
 ): Promise<void> {
     if (!token) return;
+
+    // Master switch admin (Paramètres > Notifications). Si le push est désactivé, on n'envoie rien.
+    // Best-effort : en cas d'erreur de lecture, on laisse passer (défaut = activé).
+    try {
+        const pushActif = await getSystemParameter('notif_push_active', true);
+        if (!pushActif) return;
+    } catch { /* défaut activé */ }
 
     // Expo Push Token
     if (token.startsWith('ExponentPushToken')) {

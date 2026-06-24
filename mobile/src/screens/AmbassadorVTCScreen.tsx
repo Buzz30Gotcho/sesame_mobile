@@ -54,15 +54,20 @@ function buildSmsBody(course: ActiveCourse, code: string) {
         ? `Chauffeur : ${course.chauffeur_prenom} ${course.chauffeur_nom || ''}.`
         : '';
     const montant = course.montant ? `Montant : ${Number(course.montant).toFixed(2)} €.` : '';
-    return (
-        `Votre véhicule SÉSAME est confirmé.\n` +
-        `${chauffeur}\n` +
-        `${vehicule} ${immat}.\n` +
-        `${montant}\n` +
-        `Votre code : ${code}\n\n` +
-        `Communiquez ce code à votre chauffeur à sa prise en charge.\n` +
-        `Bonne route. — SÉSAME`
-    ).trim();
+    // ETA dans le message client (specs §6.1) — seulement si connu (chauffeur en route, position fraîche).
+    const eta = course.eta_minutes != null ? `Arrivée estimée : ~${course.eta_minutes} min.` : '';
+    const lines = [
+        'Votre véhicule SÉSAME est confirmé.',
+        chauffeur,
+        `${vehicule} ${immat}.`.trim(),
+        eta,
+        montant,
+        `Votre code : ${code}`,
+        '',
+        'Communiquez ce code à votre chauffeur à sa prise en charge.',
+        'Bonne route. — SÉSAME',
+    ];
+    return lines.filter((l, i) => l !== '' || i === 6).join('\n');
 }
 
 export default function AmbassadorVTCScreen() {

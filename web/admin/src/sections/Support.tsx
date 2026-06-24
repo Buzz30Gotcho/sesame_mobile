@@ -3,10 +3,13 @@ import { getCourses, getChatMessages, sendChatMessage } from '../api';
 import type { Course, ChatMessage } from '../api';
 import Spinner from '../components/Spinner';
 import Badge, { getStatusVariant } from '../components/Badge';
+import { usePrefs } from '../prefs';
 
 const ACTIVE_STATUTS = ['recherche', 'acceptee', 'en_route', 'code_valide'];
+const LOCALES: Record<string, string> = { fr: 'fr-FR', en: 'en-US', it: 'it-IT', es: 'es-ES' };
 
 export default function Support() {
+  const { t, lang } = usePrefs();
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -23,11 +26,11 @@ export default function Support() {
       const data = await getCourses();
       setCourses(data.filter(c => ACTIVE_STATUTS.includes(c.statut)));
     } catch {
-      setError('Impossible de charger les courses actives.');
+      setError(t('sup.loadError'));
     } finally {
       setLoadingCourses(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => { loadCourses(); }, [loadCourses]);
 
@@ -79,34 +82,34 @@ export default function Support() {
   const getRoleStyle = (role: string) => {
     switch (role) {
       case 'admin':
-        return { bg: '#C9A84C', text: 'white', align: 'end' as const, label: 'SESAME Admin' };
+        return { bg: '#C9A84C', text: 'white', align: 'end' as const, label: t('sup.roleAdmin') };
       case 'chauffeur':
-        return { bg: '#4A9EFF', text: 'white', align: 'start' as const, label: 'Chauffeur' };
+        return { bg: '#4A9EFF', text: 'white', align: 'start' as const, label: t('sup.roleChauffeur') };
       default:
-        return { bg: '#F2F2F7', text: '#1C1C2E', align: 'start' as const, label: 'Ambassadeur' };
+        return { bg: '#F2F2F7', text: '#1C1C2E', align: 'start' as const, label: t('sup.roleAmbassadeur') };
     }
   };
 
   return (
     <div className="space-y-0">
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Support / Chat</h2>
+      <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6">{t('sup.title')}</h2>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm mb-4">{error}</div>
+        <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 text-red-700 dark:text-red-300 rounded-xl p-4 text-sm mb-4">{error}</div>
       )}
 
       <div className="flex gap-4 h-[calc(100vh-220px)] min-h-[500px]">
         {/* Liste courses */}
-        <div className="w-72 shrink-0 bg-white rounded-xl shadow-sm overflow-y-auto">
-          <div className="p-4 border-b border-gray-100">
-            <p className="text-sm font-semibold text-gray-700">Courses actives</p>
+        <div className="w-72 shrink-0 bg-white dark:bg-[#161624] rounded-xl shadow-sm overflow-y-auto">
+          <div className="p-4 border-b border-gray-100 dark:border-white/10">
+            <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">{t('sup.activeCourses')}</p>
           </div>
           {loadingCourses ? (
             <Spinner size="sm" />
           ) : courses.length === 0 ? (
             <div className="p-6 text-center text-gray-400 text-sm">
               <p className="text-2xl mb-2">🚗</p>
-              Aucune course active en ce moment
+              {t('sup.noActiveCourse')}
             </div>
           ) : (
             <div>
@@ -114,19 +117,19 @@ export default function Support() {
                 <button
                   key={course.id}
                   onClick={() => handleSelectCourse(course)}
-                  className={`w-full text-left p-4 border-b border-gray-50 hover:bg-gray-50 transition-colors ${
-                    selectedCourse?.id === course.id ? 'bg-yellow-50 border-l-2' : ''
+                  className={`w-full text-left p-4 border-b border-gray-50 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors ${
+                    selectedCourse?.id === course.id ? 'bg-yellow-50 dark:bg-yellow-500/10 border-l-2' : ''
                   }`}
                   style={selectedCourse?.id === course.id ? { borderLeftColor: '#C9A84C' } : {}}
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <p className="text-xs font-mono font-medium text-gray-700 truncate">
+                    <p className="text-xs font-mono font-medium text-gray-700 dark:text-gray-200 truncate">
                       {course.reference ?? `#${course.id}`}
                     </p>
                     <Badge label={course.statut} variant={getStatusVariant(course.statut)} />
                   </div>
-                  <p className="text-xs text-gray-500 truncate">
-                    {[course.ambassadeur_prenom, course.ambassadeur_nom].filter(Boolean).join(' ') || 'Ambassadeur'}
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                    {[course.ambassadeur_prenom, course.ambassadeur_nom].filter(Boolean).join(' ') || t('sup.roleAmbassadeur')}
                   </p>
                 </button>
               ))}
@@ -135,24 +138,24 @@ export default function Support() {
         </div>
 
         {/* Zone chat */}
-        <div className="flex-1 bg-white rounded-xl shadow-sm flex flex-col overflow-hidden">
+        <div className="flex-1 bg-white dark:bg-[#161624] rounded-xl shadow-sm flex flex-col overflow-hidden">
           {!selectedCourse ? (
             <div className="flex-1 flex items-center justify-center text-gray-400">
               <div className="text-center">
                 <p className="text-4xl mb-3">💬</p>
-                <p className="font-medium">Sélectionnez une course</p>
-                <p className="text-sm mt-1">pour afficher la conversation</p>
+                <p className="font-medium">{t('sup.selectCourse')}</p>
+                <p className="text-sm mt-1">{t('sup.selectCourseSub')}</p>
               </div>
             </div>
           ) : (
             <>
               {/* Header */}
-              <div className="p-4 border-b border-gray-100 flex items-center gap-3">
+              <div className="p-4 border-b border-gray-100 dark:border-white/10 flex items-center gap-3">
                 <div>
-                  <p className="font-semibold text-gray-900 text-sm">
-                    Course {selectedCourse.reference ?? `#${selectedCourse.id}`}
+                  <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                    {t('sup.course')} {selectedCourse.reference ?? `#${selectedCourse.id}`}
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
                     {[selectedCourse.ambassadeur_prenom, selectedCourse.ambassadeur_nom].filter(Boolean).join(' ')}
                     {selectedCourse.adresse_depart && ` · ${selectedCourse.adresse_depart}`}
                   </p>
@@ -166,7 +169,7 @@ export default function Support() {
                   <Spinner size="sm" />
                 ) : messages.length === 0 ? (
                   <div className="text-center text-gray-400 text-sm py-8">
-                    Aucun message dans cette conversation
+                    {t('sup.noMessages')}
                   </div>
                 ) : (
                   messages.map((msg, i) => {
@@ -174,7 +177,7 @@ export default function Support() {
                     return (
                       <div key={msg.id ?? i} className={`flex flex-col ${style.align === 'end' ? 'items-end' : 'items-start'}`}>
                         <div className="flex items-center gap-1 mb-1">
-                          <span className="text-xs font-medium text-gray-500">{msg.auteur_nom ?? style.label}</span>
+                          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{msg.auteur_nom ?? style.label}</span>
                           {msg.role === 'admin' && (
                             <span className="text-xs font-bold px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: '#C9A84C' }}>
                               SESAME
@@ -189,7 +192,7 @@ export default function Support() {
                         </div>
                         {msg.created_at && (
                           <span className="text-xs text-gray-400 mt-1">
-                            {new Date(msg.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                            {new Date(msg.created_at).toLocaleTimeString(LOCALES[lang], { hour: '2-digit', minute: '2-digit' })}
                           </span>
                         )}
                       </div>
@@ -200,14 +203,14 @@ export default function Support() {
               </div>
 
               {/* Input */}
-              <div className="p-4 border-t border-gray-100 flex gap-3">
+              <div className="p-4 border-t border-gray-100 dark:border-white/10 flex gap-3">
                 <input
                   type="text"
-                  placeholder="Message de l'équipe SESAME…"
+                  placeholder={t('sup.inputPlaceholder')}
                   value={newMessage}
                   onChange={e => setNewMessage(e.target.value)}
                   onKeyDown={handleKey}
-                  className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm outline-none focus:border-yellow-400"
+                  className="flex-1 border border-gray-200 dark:border-white/10 dark:bg-[#101018] dark:text-gray-100 rounded-xl px-4 py-2 text-sm outline-none focus:border-yellow-400"
                 />
                 <button
                   onClick={handleSend}
@@ -217,7 +220,7 @@ export default function Support() {
                 >
                   {sending ? '…' : (
                     <>
-                      Envoyer
+                      {t('common.send')}
                       <span className="text-xs bg-white bg-opacity-30 px-1.5 py-0.5 rounded-full font-bold">SESAME</span>
                     </>
                   )}

@@ -80,6 +80,12 @@ export default function IncomingCourseModal({ course, onAccept, onRefuse, accept
                                 {course.adresse_destination}
                             </Text>
                         </View>
+
+                        {typeof course.eta_minutes === 'number' && (
+                            <Text style={styles.etaText}>
+                                🕒 À ~{course.eta_minutes} min du client
+                            </Text>
+                        )}
                     </View>
 
                     {/* Montant */}
@@ -193,6 +199,12 @@ const styles = StyleSheet.create({
         fontSize: Typography.sizes.sub,
         flex: 1,
         lineHeight: 18,
+    },
+    etaText: {
+        color: Colors.brand.info,
+        fontSize: Typography.sizes.small,
+        fontWeight: Typography.weights.bold as any,
+        marginTop: 12,
     },
     montant: {
         color: Colors.brand.gold,

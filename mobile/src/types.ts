@@ -18,6 +18,30 @@ export type RootStackParamList = {
     ChauffeurProfile: undefined;
     ChauffeurRevenus: undefined;
     Chat: { courseId: string; senderRole: 'ambassadeur' | 'chauffeur' | 'admin'; senderId: string; courseRef?: string; };
+    Tickets: undefined;
+    TicketDetail: { ticketId: string; titre?: string };
+};
+
+export type TicketCategorie = 'probleme_course' | 'paiement_points' | 'document_refuse' | 'question_compte' | 'autre';
+export type TicketStatut = 'ouvert' | 'en_cours' | 'resolu';
+
+export type Ticket = {
+    id: string;
+    categorie: TicketCategorie;
+    sujet?: string | null;
+    statut: TicketStatut;
+    course_id?: string | null;
+    course_reference?: string | null;
+    created_at: string;
+    updated_at: string;
+    dernier_message?: string | null;
+};
+
+export type TicketMessage = {
+    id: string;
+    role: 'utilisateur' | 'admin';
+    contenu: string;
+    created_at: string;
 };
 
 export type ChatMessage = {
@@ -103,6 +127,7 @@ export type ActiveCourse = {
     code_valide_at?: string;
     date_reservation?: string;
     date_acceptation?: string;
+    date_arrivee?: string;
     date_fin?: string;
     date_annulation?: string;
     annule_par?: string;
@@ -115,6 +140,8 @@ export type ActiveCourse = {
     vehicule_couleur?: string;
     vehicule_immat?: string;
     eta_minutes?: number | null;
+    distance_km?: number | null;
+    ambassadeur_telephone?: string;
 };
 
 export type AmbassadorDashboard = {

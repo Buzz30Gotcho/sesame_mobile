@@ -95,7 +95,6 @@ router.get('/:id/dashboard', async (req, res) => {
             c.vehicule_modele,
             c.vehicule_couleur,
             c.vehicule_immat,
-            c.taux_commission_override,
             c.documents_valides,
             c.carte_enregistree
          FROM chauffeurs c
@@ -110,7 +109,7 @@ router.get('/:id/dashboard', async (req, res) => {
 
     const profile = profileResult.rows[0];
     const assignedCourses = await query(
-        `SELECT c.id, c.reference, c.statut, c.type_course, c.adresse_depart, c.adresse_destination, c.montant, c.date_reservation, c.date_acceptation,
+        `SELECT c.id, c.reference, c.statut, c.type_course, c.adresse_depart, c.adresse_destination, c.montant, c.distance_km, c.date_reservation, c.date_acceptation, c.date_arrivee,
                 u.telephone AS ambassadeur_telephone, u.prenom AS ambassadeur_prenom
          FROM courses c
          LEFT JOIN ambassadeurs a ON a.id = c.ambassadeur_id
@@ -182,7 +181,7 @@ router.get('/:id/courses', async (req, res) => {
 
 router.get('/:id/courses-disponibles', async (req, res) => {
     const chauffeurResult = await query(
-        'SELECT vehicule_type, disponible FROM chauffeurs WHERE id = $1',
+        'SELECT vehicule_type, disponible, derniere_lat, derniere_lon, position_maj_at FROM chauffeurs WHERE id = $1',
         [req.params.id]
     );
     const chauffeur = chauffeurResult.rows[0];
@@ -190,7 +189,7 @@ router.get('/:id/courses-disponibles', async (req, res) => {
     if (!chauffeur.disponible) return res.json([]);
 
     const result = await query(
-        `SELECT id, reference, adresse_depart, adresse_destination, vehicule_type, montant, type_course, date_reservation
+        `SELECT id, reference, adresse_depart, adresse_destination, vehicule_type, montant, distance_km, type_course, date_reservation
          FROM courses
          WHERE statut = 'recherche'
            AND vehicule_type = $1
@@ -199,6 +198,15 @@ router.get('/:id/courses-disponibles', async (req, res) => {
          LIMIT 1`,
         [chauffeur.vehicule_type]
     );
+
+    // ETA jusqu'au point de prise en charge (specs §6.2) — si la position du chauffeur est fraîche (< 2 min).
+    const POSITION_FRESH_MS = 2 * 60 * 1000;
+    const fresh = chauffeur.position_maj_at && Date.now() - new Date(chauffeur.position_maj_at).getTime() < POSITION_FRESH_MS;
+    if (fresh && chauffeur.derniere_lat != null && chauffeur.derniere_lon != null) {
+        await Promise.all(result.rows.map(async (c: any) => {
+            c.eta_minutes = await etaChauffeurVersAdresse(Number(chauffeur.derniere_lat), Number(chauffeur.derniere_lon), c.adresse_depart);
+        }));
+    }
     res.json(result.rows);
 });
 
@@ -215,10 +223,10 @@ router.put('/:id/availability', async (req, res) => {
             return res.status(403).json({ error: 'Veuillez renseigner votre IBAN dans votre profil avant de vous mettre en ligne.' });
         }
         // Verrou paiement : pas de carte prélevable = pas de mise en ligne (specs §7.1).
-        // Évite qu'un chauffeur génère du CA sans moyen de prélever les frais SÉSAME.
+        // NB : on ne mentionne JAMAIS les frais/commission côté chauffeur (specs §3.9/§7.1).
         const hasCard = await customerHasDefaultCard(check.rows[0].stripe_customer_id);
         if (!hasCard) {
-            return res.status(403).json({ code: 'NO_CARD', error: 'Enregistrez une carte bancaire avant de vous mettre en ligne. Les frais SÉSAME seront prélevés automatiquement chaque semaine.' });
+            return res.status(403).json({ code: 'NO_CARD', error: 'Enregistrez une carte bancaire pour pouvoir vous mettre en ligne.' });
         }
     }
 
@@ -285,6 +293,21 @@ router.post('/:id/accept-course', async (req, res) => {
     }
 
     res.json(updated.rows[0]);
+});
+
+// Chauffeur arrivé au point de prise en charge (specs §8.1) — démarre le temps d'attente client.
+router.post('/:id/arrived', async (req, res) => {
+    const { course_id } = req.body;
+    if (!course_id) return res.status(400).json({ error: 'course_id requis' });
+
+    const result = await query(
+        "UPDATE courses SET statut = 'en_route', date_arrivee = now() WHERE id = $1 AND chauffeur_id = $2 AND statut = 'acceptee' RETURNING *",
+        [course_id, req.params.id]
+    );
+    if (!result.rows.length) {
+        return res.status(400).json({ error: 'Course introuvable ou déjà en cours.' });
+    }
+    res.json(result.rows[0]);
 });
 
 router.post('/:id/validate-code', codeLimiter, async (req, res) => {
@@ -583,18 +606,26 @@ router.post('/:id/client-absent', async (req, res) => {
     const course = courseResult.rows[0];
     if (!course) return res.status(404).json({ error: 'Course introuvable' });
 
+    // Minutes d'attente : valeur remontée par l'app (timer affiché), sinon calculée depuis l'arrivée
+    // (specs §8.1 : le temps d'attente démarre quand le chauffeur arrive), repli sur l'acceptation.
+    let minutes = Math.max(0, Math.floor(Number(req.body.minutes)));
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+        const ref = course.date_arrivee || course.date_acceptation;
+        minutes = ref ? Math.max(1, Math.round((Date.now() - new Date(ref).getTime()) / 60000)) : 1;
+    }
+
     // Créer une sanction en attente pour alerte admin — pas d'annulation automatique
     await query(
         "INSERT INTO sanctions_en_attente(ambassadeur_id, points, motif, course_id) VALUES ($1, 0, 'Client absent signalé par chauffeur', $2)",
         [course.ambassadeur_id, course_id]
     );
 
-    // Notification CHAUFFEUR_ATTEND à l'ambassadeur
+    // Notification CHAUFFEUR_ATTEND à l'ambassadeur (specs §5.1 — « Il attend depuis {minutes} min »)
     try {
         const ambTokenResult = await query('SELECT push_token FROM ambassadeurs WHERE id = $1', [course.ambassadeur_id]);
         const ambToken = ambTokenResult.rows[0]?.push_token;
         if (ambToken) {
-            await sendPushNotification(ambToken, 'Votre chauffeur vous attend !', 'Il attend depuis quelques minutes. Contactez-le.', { course_id });
+            await sendPushNotification(ambToken, 'Votre chauffeur vous attend !', `Il attend depuis ${minutes} min. Contactez-le.`, { course_id });
         }
     } catch { /* Non bloquant */ }
 

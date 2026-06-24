@@ -26,19 +26,51 @@ api.interceptors.response.use(
   }
 );
 
-export async function adminLogin(email: string, password: string): Promise<string> {
-  const res = await axios.post(`${BASE_URL}/admin/login`, { email, password });
+export async function adminLogin(email: string, password: string, code?: string): Promise<string> {
+  const res = await axios.post(`${BASE_URL}/admin/login`, { email, password, code });
+  if (res.data.adminRole) localStorage.setItem('admin_role', res.data.adminRole);
   return res.data.token;
 }
+
+// Rôle de l'admin connecté (pour adapter l'UI ; le backend reste l'autorité).
+export const getAdminRole = (): string => localStorage.getItem('admin_role') || 'super_admin';
+
+// Comptes admin & rôles (specs §5.4) — réservé au Super admin
+export type AdminRole = 'super_admin' | 'operateur' | 'lecteur';
+export interface AdminAccount {
+  id: string;
+  email: string;
+  nom?: string | null;
+  role: AdminRole;
+  actif: boolean;
+  created_at: string;
+}
+export const getAdmins = () =>
+  api.get<{ fondateur: string | null; comptes: AdminAccount[] }>('/admin/admins').then(r => r.data);
+export const createAdmin = (payload: { email: string; password: string; nom?: string; role: AdminRole }) =>
+  api.post<AdminAccount>('/admin/admins', payload).then(r => r.data);
+export const updateAdmin = (id: string, payload: { role?: AdminRole; actif?: boolean; password?: string }) =>
+  api.put<{ success: boolean }>(`/admin/admins/${id}`, payload).then(r => r.data);
+export const deleteAdmin = (id: string) =>
+  api.delete<{ success: boolean }>(`/admin/admins/${id}`).then(r => r.data);
+
+// 2FA admin (specs §5.4)
+export const get2faStatus = () => api.get<{ enabled: boolean }>('/admin/2fa/status').then(r => r.data);
+export const setup2fa = () => api.post<{ qr: string; secret: string }>('/admin/2fa/setup').then(r => r.data);
+export const activate2fa = (code: string) => api.post<{ success: boolean }>('/admin/2fa/activate', { code }).then(r => r.data);
+export const disable2fa = (code: string) => api.post<{ success: boolean }>('/admin/2fa/disable', { code }).then(r => r.data);
 
 // Types
 export interface DashboardStats {
   totalCourses: number;
   totalAmbassadeurs: number;
   totalChauffeurs: number;
+  chauffeursActifs?: number;
   pendingExchanges: number;
   ambassadeursSuspendus?: number;
   kbis_expiring_soon?: number;
+  litigesOuverts?: number;
+  ticketsOuverts?: number;
   coursesEnCours?: number;
   coursesTerminees?: number;
   coursesAnnulees?: number;
@@ -58,6 +90,7 @@ export interface Ambassadeur {
   points?: number;
   commission?: number;
   telephone?: string;
+  email?: string;
   statut?: string;
   compte_statut?: 'actif' | 'suspendu' | 'blackliste';
   societe?: string;
@@ -177,6 +210,26 @@ export const updateChauffeurStatut = (utilisateur_id: string, statut: 'actif' | 
   api.put(`/admin/utilisateurs/${utilisateur_id}/statut`, { statut }).then(r => r.data);
 export const updateChauffeurNote = (id: number, note: string) =>
   api.put(`/admin/chauffeurs/${id}/note`, { note }).then(r => r.data);
+
+// Contrôle d'identité chauffeur (specs §5.1 / §9.1)
+export interface ControleIdentite {
+  id: string;
+  prenom: string;
+  nom: string;
+  telephone?: string;
+  compte_statut?: string;
+  vehicule_type?: string;
+  vehicule_marque?: string;
+  vehicule_modele?: string;
+  vehicule_couleur?: string;
+  vehicule_immat?: string;
+  photo_profil_url: string | null;
+  historique: { id: string; resultat: string; note?: string; created_at: string }[];
+}
+export const getControleIdentite = (id: string) =>
+  api.get<ControleIdentite>(`/admin/chauffeurs/${id}/controle-identite`).then(r => r.data);
+export const enregistrerControleIdentite = (id: string, resultat: 'conforme' | 'non_conforme', note?: string) =>
+  api.post<{ success: boolean; suspendu: boolean }>(`/admin/chauffeurs/${id}/controle-identite`, { resultat, note }).then(r => r.data);
 export const deleteAmbassadeur = (id: number) =>
   api.delete(`/admin/ambassadeurs/${id}`);
 
@@ -203,10 +256,86 @@ export const getBlacklist = () => api.get<BlacklistEntry[]>('/admin/blacklist').
 export const addBlacklist = (entry: BlacklistEntry) => api.post('/admin/blacklist', entry).then(r => r.data);
 export const deleteBlacklist = (id: number) => api.delete(`/admin/blacklist/${id}`).then(r => r.data);
 
+// Propositions blacklist automatiques (5 annulations) — à confirmer manuellement (specs §9.0)
+export interface BlacklistProposition {
+  id: string;
+  motif: string;
+  nb_annulations: number;
+  created_at?: string;
+  prenom: string;
+  nom: string;
+  email?: string;
+  telephone?: string;
+}
+export const getBlacklistPropositions = () =>
+  api.get<BlacklistProposition[]>('/admin/blacklist/propositions').then(r => r.data);
+export const confirmerBlacklistProposition = (id: string, motif?: string) =>
+  api.put(`/admin/blacklist/propositions/${id}/confirmer`, { motif }).then(r => r.data);
+export const rejeterBlacklistProposition = (id: string) =>
+  api.put(`/admin/blacklist/propositions/${id}/rejeter`).then(r => r.data);
+
 // Alertes / Sanctions
 export const getSanctionsEnAttente = () => api.get<Sanction[]>('/admin/sanctions').then(r => r.data);
 export const arbitrerAlerte = (id: number, payload: { action: string; points_sanction?: number; montant_indemnisation?: number }) =>
   api.post(`/admin/alertes/${id}/arbitrer`, payload).then(r => r.data);
+
+// Litiges (specs §9.2)
+export type LitigeType = 'code_invalide' | 'course_non_effectuee' | 'comportement' | 'paiement_conteste' | 'annulation_litigieuse';
+export type LitigeStatut = 'ouvert' | 'en_analyse' | 'clos';
+export interface Litige {
+  id: string;
+  type: LitigeType;
+  statut: LitigeStatut;
+  origine: 'manuel' | 'auto';
+  description?: string | null;
+  decision?: string | null;
+  created_at: string;
+  closed_at?: string | null;
+  course_reference?: string | null;
+  ambassadeur_prenom?: string | null;
+  ambassadeur_nom?: string | null;
+  chauffeur_prenom?: string | null;
+  chauffeur_nom?: string | null;
+}
+export const getLitiges = (statut?: LitigeStatut) =>
+  api.get<Litige[]>('/admin/litiges', { params: statut ? { statut } : undefined }).then(r => r.data);
+export const creerLitige = (payload: { type: LitigeType; description?: string }) =>
+  api.post<{ success: boolean }>('/admin/litiges', payload).then(r => r.data);
+export const updateLitige = (id: string, statut: LitigeStatut, decision?: string) =>
+  api.put<{ success: boolean }>(`/admin/litiges/${id}`, { statut, decision }).then(r => r.data);
+
+// Tickets support (specs §3.6 / §10)
+export type TicketCategorie = 'probleme_course' | 'paiement_points' | 'document_refuse' | 'question_compte' | 'autre';
+export type TicketStatut = 'ouvert' | 'en_cours' | 'resolu';
+export interface Ticket {
+  id: string;
+  categorie: TicketCategorie;
+  sujet?: string | null;
+  statut: TicketStatut;
+  course_id?: string | null;
+  course_reference?: string | null;
+  created_at: string;
+  updated_at: string;
+  prenom: string;
+  nom: string;
+  email?: string;
+  utilisateur_type?: 'ambassadeur' | 'chauffeur' | 'admin';
+  dernier_message?: string | null;
+}
+export interface TicketMessage {
+  id: string;
+  role: 'utilisateur' | 'admin';
+  contenu: string;
+  created_at: string;
+}
+export const getTickets = (statut?: TicketStatut) =>
+  api.get<Ticket[]>('/admin/support/tickets', { params: statut ? { statut } : undefined }).then(r => r.data);
+export const getTicketMessages = (id: string) =>
+  api.get<TicketMessage[]>(`/admin/support/tickets/${id}/messages`).then(r => r.data);
+export const repondreTicket = (id: string, contenu: string) =>
+  api.post<{ success: boolean }>(`/admin/support/tickets/${id}/messages`, { contenu }).then(r => r.data);
+export const updateTicketStatut = (id: string, statut: TicketStatut) =>
+  api.put<{ success: boolean }>(`/admin/support/tickets/${id}`, { statut }).then(r => r.data);
 
 // Paramètres
 export const getParametres = () => api.get<Parametre[]>('/admin/parametres').then(r => r.data);
@@ -292,6 +421,9 @@ export const envoyerContratFournisseur = (id: string) =>
 // Annule le contrat (specs §6.1) → repasse à non signé, reblocage de la boutique.
 export const annulerContratFournisseur = (id: string) =>
   api.post<{ success: boolean }>(`/admin/fournisseurs/${id}/annuler-contrat`).then(r => r.data);
+// Régénère le code secret 4 chiffres du fournisseur (specs §5.4 — fournisseur qui perd son code).
+export const regenererCodeFournisseur = (id: string) =>
+  api.post<{ success: boolean; code_secret_temporaire: string }>(`/admin/fournisseurs/${id}/regenerer-code`).then(r => r.data);
 
 // Télécharge le contrat généré (PDF) → renvoie une URL blob à ouvrir / révoquer.
 export const getContratPreviewUrl = (id: string) =>

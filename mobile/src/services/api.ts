@@ -14,6 +14,9 @@ import type {
     Filleul,
     EquipeEmployee,
     CommissionMois,
+    Ticket,
+    TicketMessage,
+    TicketCategorie,
 } from '../types';
 
 const manifest: any = (Constants.expoConfig ?? Constants.manifest) || {};
@@ -174,6 +177,20 @@ export async function getCommissions(ambassadorId: string) {
     return api.get<{ taux_pct: number; mois: CommissionMois[]; total_commission: number; total_ca_brut_ttc: number; total_courses: number }>(`/api/ambassadeurs/${ambassadorId}/commissions`);
 }
 
+// Tickets support (specs §3.6 / §10) — l'utilisateur est identifié par son token.
+export async function getMyTickets() {
+    return api.get<Ticket[]>('/api/tickets');
+}
+export async function createTicket(data: { categorie: TicketCategorie; sujet?: string; course_id?: string; message: string }) {
+    return api.post<{ id: string }>('/api/tickets', data);
+}
+export async function getTicketMessages(ticketId: string) {
+    return api.get<TicketMessage[]>(`/api/tickets/${ticketId}/messages`);
+}
+export async function sendTicketMessage(ticketId: string, contenu: string) {
+    return api.post<{ success: boolean }>(`/api/tickets/${ticketId}/messages`, { contenu });
+}
+
 // Boutique & échanges
 export async function getAdminParameters() {
     return api.get<Record<string, string>>('/api/app/parametres');
@@ -251,8 +268,12 @@ export async function acceptChauffeurCourse(chauffeurId: string, courseId: strin
     return api.post(`/api/chauffeurs/${chauffeurId}/accept-course`, { course_id: courseId });
 }
 
-export async function signalerClientAbsent(chauffeurId: string, courseId: string) {
-    return api.post(`/api/chauffeurs/${chauffeurId}/client-absent`, { course_id: courseId });
+export async function markChauffeurArrived(chauffeurId: string, courseId: string) {
+    return api.post(`/api/chauffeurs/${chauffeurId}/arrived`, { course_id: courseId });
+}
+
+export async function signalerClientAbsent(chauffeurId: string, courseId: string, minutes?: number) {
+    return api.post(`/api/chauffeurs/${chauffeurId}/client-absent`, { course_id: courseId, minutes });
 }
 
 export async function validateCourseCode(chauffeurId: string, courseId: string, code: string) {

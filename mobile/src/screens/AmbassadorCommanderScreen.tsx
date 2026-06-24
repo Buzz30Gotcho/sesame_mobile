@@ -97,6 +97,8 @@ export default function AmbassadorCommanderScreen() {
     const { ambassadorId } = useAuth();
 
     const [adresseDepart, setAdresseDepart] = useState('');
+    // Adresse de l'établissement (pré-remplie) — sert à distinguer « Par défaut » vs « Modifié » (specs §3.2).
+    const [etablissementDefault, setEtablissementDefault] = useState('');
     const [adresseDestination, setAdresseDestination] = useState('');
     const [departCoords, setDepartCoords] = useState<Coords | null>(null);
     const [destCoords, setDestCoords] = useState<Coords | null>(null);
@@ -121,6 +123,8 @@ export default function AmbassadorCommanderScreen() {
     // Prix calculés par le backend (un seul point de calcul, source de confiance)
     const [prixBerline, setPrixBerline] = useState<string | null>(null);
     const [prixVan, setPrixVan] = useState<string | null>(null);
+    // Vrai indicateur « distance calculée » — évite de détourner la valeur '12' comme sentinelle.
+    const [distanceCalculee, setDistanceCalculee] = useState(false);
     const [isImmediateEnabled, setIsImmediateEnabled] = useState(true);
     const [minDelayHours, setMinDelayHours] = useState(1);
     const [dateError, setDateError] = useState<string | null>(null);
@@ -168,9 +172,11 @@ export default function AmbassadorCommanderScreen() {
                 setKilometrage(String(km));
                 setPrixBerline(Number(prix_berline).toFixed(2));
                 setPrixVan(Number(prix_van).toFixed(2));
+                setDistanceCalculee(true);
             } catch (err: any) {
                 setPrixBerline(null);
                 setPrixVan(null);
+                setDistanceCalculee(false);
                 setDistanceError(err.response?.data?.error || 'Erreur lors du calcul de distance');
             } finally {
                 setDistanceLoading(false);
@@ -215,6 +221,7 @@ export default function AmbassadorCommanderScreen() {
                 if (profileRes && profileRes.data.etablissement) {
                     const etab = profileRes.data.etablissement;
                     setAdresseDepart(etab);
+                    setEtablissementDefault(etab);
                     geocodeAddress(etab).then(coords => {
                         if (coords) setDepartCoords(coords);
                     }).catch(() => {});
@@ -339,6 +346,7 @@ export default function AmbassadorCommanderScreen() {
                                 setAdresseDepart(v);
                                 setDepartCoords(null);
                                 setDistanceError(null);
+                                setDistanceCalculee(false);
                             }}
                             placeholder="Point de départ"
                             placeholderTextColor="#6A6680"
@@ -348,10 +356,17 @@ export default function AmbassadorCommanderScreen() {
                             {departCoords && !departSearching && (
                                 <Text style={styles.validIcon}>✓</Text>
                             )}
-                            {adresseDepart.length > 0 && !departCoords && (
-                                <View style={styles.badgeDefault}>
-                                    <Text style={styles.badgeDefaultText}>Par défaut</Text>
-                                </View>
+                            {/* Étiquette Par défaut (établissement) / Modifié (adresse changée) — specs §3.2 */}
+                            {etablissementDefault.length > 0 && adresseDepart.length > 0 && (
+                                adresseDepart.trim() === etablissementDefault.trim() ? (
+                                    <View style={styles.badgeDefault}>
+                                        <Text style={styles.badgeDefaultText}>Par défaut</Text>
+                                    </View>
+                                ) : (
+                                    <View style={styles.badgeModified}>
+                                        <Text style={styles.badgeModifiedText}>Modifié</Text>
+                                    </View>
+                                )
                             )}
                         </View>
                     </View>
@@ -380,6 +395,7 @@ export default function AmbassadorCommanderScreen() {
                                 setAdresseDestination(v);
                                 setDestCoords(null);
                                 setDistanceError(null);
+                                setDistanceCalculee(false);
                             }}
                             placeholder="Où allez-vous ?"
                             placeholderTextColor="#6A6680"
@@ -412,8 +428,8 @@ export default function AmbassadorCommanderScreen() {
                         <View style={[styles.input, { flex: 1, justifyContent: 'center' }]}>
                             {distanceLoading
                                 ? <ActivityIndicator size="small" color={Colors.brand.gold} />
-                                : <Text style={{ color: kilometrage && kilometrage !== '12' ? '#E0DBD2' : '#6A6680' }}>
-                                    {kilometrage && kilometrage !== '12' ? `${kilometrage} km` : '—'}
+                                : <Text style={{ color: distanceCalculee ? '#E0DBD2' : '#6A6680' }}>
+                                    {distanceCalculee ? `${kilometrage} km` : '—'}
                                   </Text>
                             }
                         </View>
@@ -578,6 +594,11 @@ const styles = StyleSheet.create({
         paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6,
     },
     badgeDefaultText: { color: Colors.brand.success, fontSize: 9, fontWeight: '700' },
+    badgeModified: {
+        backgroundColor: 'rgba(255, 154, 60, 0.15)',
+        paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6,
+    },
+    badgeModifiedText: { color: Colors.brand.warning, fontSize: 9, fontWeight: '700' },
     suggestionList: {
         backgroundColor: '#1E1E30',
         borderRadius: 12,

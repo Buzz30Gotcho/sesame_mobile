@@ -2,8 +2,12 @@ import { useEffect, useState, useCallback } from 'react';
 import { getSanctionsEnAttente, arbitrerAlerte } from '../api';
 import type { Sanction } from '../api';
 import Spinner from '../components/Spinner';
+import { usePrefs } from '../prefs';
+
+const LOCALES: Record<string, string> = { fr: 'fr-FR', en: 'en-US', it: 'it-IT', es: 'es-ES' };
 
 export default function Alertes() {
+  const { t, lang } = usePrefs();
   const [alertes, setAlertes] = useState<Sanction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -18,11 +22,11 @@ export default function Alertes() {
       const data = await getSanctionsEnAttente();
       setAlertes(data);
     } catch {
-      setError('Impossible de charger les alertes. Le backend est peut-être hors ligne.');
+      setError(t('alr.loadError'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -35,10 +39,10 @@ export default function Alertes() {
     setProcessing(id);
     try {
       await arbitrerAlerte(id, { action, ...extra });
-      showToast(`Action "${action}" appliquée avec succès`);
+      showToast(t('alr.actionApplied'));
       load();
     } catch {
-      showToast('Erreur lors de l\'arbitrage');
+      showToast(t('alr.arbitrageError'));
     } finally {
       setProcessing(null);
     }
@@ -51,8 +55,8 @@ export default function Alertes() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-gray-900">
-        Alertes
+      <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+        {t('alr.title')}
         {alertes.length > 0 && (
           <span className="ml-2 bg-red-500 text-white text-base font-bold rounded-full px-2.5 py-0.5">
             {alertes.length}
@@ -61,11 +65,11 @@ export default function Alertes() {
       </h2>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm">{error}</div>
+        <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 text-red-700 dark:text-red-300 rounded-xl p-4 text-sm">{error}</div>
       )}
 
       {toast && (
-        <div className="fixed bottom-6 right-6 bg-gray-900 text-white px-5 py-3 rounded-xl shadow-lg z-50 text-sm">
+        <div className="fixed bottom-6 right-6 bg-gray-900 dark:bg-[#161624] text-white px-5 py-3 rounded-xl shadow-lg z-50 text-sm">
           {toast}
         </div>
       )}
@@ -73,10 +77,10 @@ export default function Alertes() {
       {loading ? (
         <Spinner />
       ) : alertes.length === 0 ? (
-        <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+        <div className="bg-white dark:bg-[#161624] rounded-xl shadow-sm p-12 text-center">
           <p className="text-4xl mb-3">✅</p>
-          <p className="text-gray-500 font-medium">Aucune alerte en attente</p>
-          <p className="text-sm text-gray-400 mt-1">Toutes les situations ont été traitées</p>
+          <p className="text-gray-500 dark:text-gray-300 font-medium">{t('alr.emptyTitle')}</p>
+          <p className="text-sm text-gray-400 mt-1">{t('alr.emptySub')}</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -87,22 +91,22 @@ export default function Alertes() {
             return (
               <div
                 key={alerte.id}
-                className="bg-white rounded-xl shadow-sm p-5 border-l-4"
+                className="bg-white dark:bg-[#161624] rounded-xl shadow-sm p-5 border-l-4"
                 style={{ borderLeftColor: '#FF9A3C' }}
               >
                 {/* Header */}
                 <div className="flex items-start justify-between mb-4">
                   <div>
-                    <p className="font-semibold text-gray-900 flex items-center gap-2">
+                    <p className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
                       <span className="text-orange-500">⚠️</span>
-                      Course {alerte.course_reference ?? `#${alerte.course_id ?? alerte.id}`}
+                      {t('alr.course')} {alerte.course_reference ?? `#${alerte.course_id ?? alerte.id}`}
                     </p>
-                    <div className="text-sm text-gray-500 mt-1 space-x-3">
+                    <div className="text-sm text-gray-500 dark:text-gray-400 mt-1 space-x-3">
                       {alerte.ambassadeur_nom && (
-                        <span>👤 Amb. <strong>{alerte.ambassadeur_nom}</strong></span>
+                        <span>👤 {t('alr.amb')} <strong>{alerte.ambassadeur_nom}</strong></span>
                       )}
                       {alerte.chauffeur_nom && (
-                        <span>🚗 Chauf. <strong>{alerte.chauffeur_nom}</strong></span>
+                        <span>🚗 {t('alr.chauf')} <strong>{alerte.chauffeur_nom}</strong></span>
                       )}
                     </div>
                     {alerte.type && (
@@ -110,7 +114,7 @@ export default function Alertes() {
                     )}
                   </div>
                   <div className="text-xs text-gray-400">
-                    {alerte.created_at ? new Date(alerte.created_at).toLocaleString('fr-FR') : ''}
+                    {alerte.created_at ? new Date(alerte.created_at).toLocaleString(LOCALES[lang]) : ''}
                   </div>
                 </div>
 
@@ -120,12 +124,12 @@ export default function Alertes() {
                   <button
                     onClick={() => handleArbitrage(alerte.id, 'delai')}
                     disabled={isPending}
-                    className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium border-2 border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors disabled:opacity-50"
+                    className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium border-2 border-blue-200 dark:border-blue-500/30 text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors disabled:opacity-50"
                   >
                     <span className="text-lg">⏱️</span>
                     <div className="text-left">
-                      <div className="font-semibold">Accorder un délai</div>
-                      <div className="text-xs opacity-70">Laisser plus de temps au client</div>
+                      <div className="font-semibold">{t('alr.delaiTitle')}</div>
+                      <div className="text-xs opacity-70">{t('alr.delaiSub')}</div>
                     </div>
                   </button>
 
@@ -133,30 +137,30 @@ export default function Alertes() {
                   <button
                     onClick={() => handleArbitrage(alerte.id, 'annuler_sans_penalite')}
                     disabled={isPending}
-                    className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium border-2 border-gray-200 text-gray-700 bg-gray-50 hover:bg-gray-100 transition-colors disabled:opacity-50"
+                    className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium border-2 border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
                   >
                     <span className="text-lg">🚫</span>
                     <div className="text-left">
-                      <div className="font-semibold">Annuler sans pénalité</div>
-                      <div className="text-xs opacity-70">Clôturer sans sanction</div>
+                      <div className="font-semibold">{t('alr.cancelTitle')}</div>
+                      <div className="text-xs opacity-70">{t('alr.cancelSub')}</div>
                     </div>
                   </button>
 
                   {/* 3 - Pénalité ambassadeur */}
-                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl border-2 border-orange-200 bg-orange-50">
+                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl border-2 border-orange-200 dark:border-orange-500/30 bg-orange-50 dark:bg-orange-500/10">
                     <span className="text-lg">⚡</span>
                     <div className="flex-1">
-                      <div className="text-sm font-semibold text-orange-800">Pénalité ambassadeur</div>
+                      <div className="text-sm font-semibold text-orange-800 dark:text-orange-300">{t('alr.penaliteTitle')}</div>
                       <div className="flex items-center gap-2 mt-1">
                         <input
                           type="number"
                           min="0"
-                          placeholder="Points"
+                          placeholder={t('alr.pointsPlaceholder')}
                           value={det.points ?? ''}
                           onChange={e => setDetail(alerte.id, 'points', e.target.value)}
-                          className="w-24 border border-orange-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-orange-400"
+                          className="w-24 border border-orange-200 dark:border-orange-500/40 dark:bg-[#101018] dark:text-gray-100 rounded-lg px-2 py-1 text-xs outline-none focus:border-orange-400"
                         />
-                        <span className="text-xs text-orange-700">pts</span>
+                        <span className="text-xs text-orange-700 dark:text-orange-300">{t('common.points')}</span>
                         <button
                           onClick={() => handleArbitrage(alerte.id, 'penalite', {
                             points_sanction: det.points ? parseInt(det.points) : 0
@@ -165,17 +169,17 @@ export default function Alertes() {
                           className="px-3 py-1 text-xs font-medium rounded-lg text-white transition-opacity hover:opacity-80 disabled:opacity-50"
                           style={{ backgroundColor: '#FF9A3C' }}
                         >
-                          Appliquer
+                          {t('alr.apply')}
                         </button>
                       </div>
                     </div>
                   </div>
 
                   {/* 4 - Indemniser chauffeur */}
-                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl border-2 border-green-200 bg-green-50">
+                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl border-2 border-green-200 dark:border-green-500/30 bg-green-50 dark:bg-green-500/10">
                     <span className="text-lg">💶</span>
                     <div className="flex-1">
-                      <div className="text-sm font-semibold text-green-800">Indemniser le chauffeur</div>
+                      <div className="text-sm font-semibold text-green-800 dark:text-green-300">{t('alr.indemTitle')}</div>
                       <div className="flex items-center gap-2 mt-1">
                         <input
                           type="number"
@@ -184,9 +188,9 @@ export default function Alertes() {
                           placeholder="5"
                           value={det.montant ?? ''}
                           onChange={e => setDetail(alerte.id, 'montant', e.target.value)}
-                          className="w-24 border border-green-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-green-400"
+                          className="w-24 border border-green-200 dark:border-green-500/40 dark:bg-[#101018] dark:text-gray-100 rounded-lg px-2 py-1 text-xs outline-none focus:border-green-400"
                         />
-                        <span className="text-xs text-green-700">€ (5€ défaut)</span>
+                        <span className="text-xs text-green-700 dark:text-green-300">{t('alr.indemUnit')}</span>
                         <button
                           onClick={() => handleArbitrage(alerte.id, 'indemnisation', {
                             montant_indemnisation: det.montant ? parseFloat(det.montant) : 5
@@ -195,7 +199,7 @@ export default function Alertes() {
                           className="px-3 py-1 text-xs font-medium rounded-lg text-white transition-opacity hover:opacity-80 disabled:opacity-50"
                           style={{ backgroundColor: '#4CAF82' }}
                         >
-                          Indemniser
+                          {t('alr.indemBtn')}
                         </button>
                       </div>
                     </div>
@@ -203,7 +207,7 @@ export default function Alertes() {
                 </div>
 
                 {isPending && (
-                  <div className="mt-3 text-center text-sm text-gray-400">Traitement en cours…</div>
+                  <div className="mt-3 text-center text-sm text-gray-400">{t('alr.processing')}</div>
                 )}
               </div>
             );

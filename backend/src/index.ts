@@ -387,72 +387,15 @@ async function runCommissionsMoraux() {
             `INSERT INTO commissions_moraux(ambassadeur_id, montant, ca_mois, taux, mois_reference, statut)
              VALUES ($1, $2, $3, $4, $5, 'en_attente')`,
             [moral.id, commission, moral.ca_mois, taux * 100, moisLabel]
-        ).catch(() => {}); // table créée via migration ci-dessous
+        ).catch(() => {}); // table commissions_moraux créée via migrations 001/002
     }
 }
 
 setInterval(() => runCommissionsMoraux().catch(() => {}), 30 * 60 * 1000);
 
-async function runMigrations() {
-    const migrations = [
-        `ALTER TABLE ambassadeurs ADD COLUMN IF NOT EXISTS note_interne text`,
-        `ALTER TABLE chauffeurs ADD COLUMN IF NOT EXISTS note_interne text`,
-        `ALTER TABLE ambassadeurs ADD COLUMN IF NOT EXISTS contrat_moral_signe boolean DEFAULT false`,
-        `ALTER TABLE ambassadeurs ADD COLUMN IF NOT EXISTS contrat_moral_signe_at timestamptz`,
-        `ALTER TABLE chauffeurs ADD COLUMN IF NOT EXISTS taux_commission_override numeric`,
-        `ALTER TABLE chauffeurs ADD COLUMN IF NOT EXISTS documents_valides boolean DEFAULT false`,
-        // Position temps réel du chauffeur (specs §7.2 + §9.2) — pour l'ETA live côté Ambassadeur
-        `ALTER TABLE chauffeurs ADD COLUMN IF NOT EXISTS derniere_lat double precision`,
-        `ALTER TABLE chauffeurs ADD COLUMN IF NOT EXISTS derniere_lon double precision`,
-        `ALTER TABLE chauffeurs ADD COLUMN IF NOT EXISTS position_maj_at timestamptz`,
-        `ALTER TABLE documents_chauffeur ADD COLUMN IF NOT EXISTS motif_refus text`,
-        `CREATE TABLE IF NOT EXISTS parrainage_paliers (
-            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-            filleul_id uuid REFERENCES ambassadeurs(id) ON DELETE CASCADE,
-            parrain_id uuid REFERENCES ambassadeurs(id) ON DELETE CASCADE,
-            cle varchar(20) NOT NULL,
-            created_at timestamptz NOT NULL DEFAULT now(),
-            UNIQUE(filleul_id, cle)
-        )`,
-        `CREATE TABLE IF NOT EXISTS blacklist_propositions (
-            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-            ambassadeur_id uuid REFERENCES ambassadeurs(id) ON DELETE CASCADE UNIQUE,
-            motif text NOT NULL,
-            nb_annulations integer NOT NULL DEFAULT 0,
-            statut varchar(30) NOT NULL DEFAULT 'en_attente_admin',
-            created_at timestamptz NOT NULL DEFAULT now(),
-            updated_at timestamptz NOT NULL DEFAULT now()
-        )`,
-        `CREATE TABLE IF NOT EXISTS commissions_moraux (
-            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-            ambassadeur_id uuid REFERENCES ambassadeurs(id) ON DELETE CASCADE,
-            montant numeric(10,2) NOT NULL,
-            ca_mois numeric(10,2) NOT NULL,
-            taux numeric(5,2) NOT NULL,
-            mois_reference varchar(50) NOT NULL,
-            statut varchar(20) NOT NULL DEFAULT 'en_attente',
-            created_at timestamptz NOT NULL DEFAULT now(),
-            vire_at timestamptz
-        )`,
-        // Suivi du paiement fournisseur (specs §6.1 onglet Historique) — PAS de table dédiée.
-        // 1 bon = 1 échange : on ajoute juste la date de règlement sur `echanges`.
-        // NULL = pas encore réglé. Le « à payer » se déduit de statut/remis_at + option_paiement.
-        `ALTER TABLE echanges ADD COLUMN IF NOT EXISTS paiement_paye_at timestamptz`,
-        // Date de demande de l'échange (≠ remis_at qui est la validation admin) — pour afficher
-        // « demandé le X / validé le Y » côté admin. now() pour les bons déjà créés.
-        `ALTER TABLE echanges ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now()`,
-        // Carte bancaire enregistrée (prélèvement auto des frais SÉSAME — specs §7.1).
-        // Flag de confort pour l'UI ; le verrou « passage en ligne » revérifie en direct chez Stripe.
-        `ALTER TABLE chauffeurs ADD COLUMN IF NOT EXISTS carte_enregistree boolean DEFAULT false`,
-    ];
-    for (const sql of migrations) {
-        await query(sql).catch(e => console.warn('[migration]', e.message));
-    }
-}
-
-runMigrations().then(() => {
-    server.listen(port, () => {
-        console.log(`SESAME backend running on http://localhost:${port}`);
-        console.log(`WebSocket available on ws://localhost:${port}/ws/chat/:courseId`);
-    });
+// Schéma géré entièrement par les migrations 001/002 (appliquées manuellement dans Supabase).
+// Plus de runner auto au démarrage : toutes les tables + colonnes y sont définies.
+server.listen(port, () => {
+    console.log(`SESAME backend running on http://localhost:${port}`);
+    console.log(`WebSocket available on ws://localhost:${port}/ws/chat/:courseId`);
 });

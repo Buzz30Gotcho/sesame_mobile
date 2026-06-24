@@ -5,6 +5,16 @@
 -- ============================================================
 
 -- ─── 1. SUPPRESSION (ordre inverse des dépendances) ─────────
+DROP TABLE IF EXISTS admins CASCADE;
+DROP TABLE IF EXISTS admin_securite CASCADE;
+DROP TABLE IF EXISTS ticket_messages CASCADE;
+DROP TABLE IF EXISTS tickets CASCADE;
+DROP TABLE IF EXISTS litiges CASCADE;
+DROP TABLE IF EXISTS controles_identite CASCADE;
+DROP TABLE IF EXISTS virements_commissions CASCADE;
+DROP TABLE IF EXISTS commissions_moraux CASCADE;
+DROP TABLE IF EXISTS blacklist_propositions CASCADE;
+DROP TABLE IF EXISTS parrainage_paliers CASCADE;
 DROP TABLE IF EXISTS messages_chat CASCADE;
 
 DROP TABLE IF EXISTS points_historique CASCADE;
@@ -219,7 +229,11 @@ CREATE TABLE chauffeurs (
     stripe_customer_id varchar(100),
     documents_valides boolean NOT NULL DEFAULT false,
     push_token varchar(200),
-    note_interne text
+    note_interne text,
+    derniere_lat double precision,
+    derniere_lon double precision,
+    position_maj_at timestamptz,
+    carte_enregistree boolean DEFAULT false
 );
 
 -- 3.5 documents_chauffeur
@@ -249,6 +263,7 @@ CREATE TABLE courses (
     adresse_destination text NOT NULL,
     vehicule_type vehicule_type,
     montant decimal(10, 2),
+    distance_km numeric(6, 1),
     taux_commission_applique decimal(5, 2),
     code_validation varchar(4),
     code_valide_at timestamptz,
@@ -256,10 +271,12 @@ CREATE TABLE courses (
     compensation boolean DEFAULT false,
     date_reservation timestamptz,
     date_acceptation timestamptz,
+    date_arrivee timestamptz,
     date_fin timestamptz,
     date_annulation timestamptz,
     annule_par annule_par_type,
-    note_interne text
+    note_interne text,
+    created_at timestamptz NOT NULL DEFAULT now()
 );
 
 -- 3.7 points_historique
@@ -345,6 +362,7 @@ CREATE TABLE echanges (
     expire_at timestamptz,
     utilise_at timestamptz,
     valide_par_admin_id uuid,
+    paiement_paye_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -429,7 +447,21 @@ VALUES (
         'commission_ambassadeur_moral_pct',
         '10',
         'Commission en % pour Ambassadeur Moral'
-    );
+    ),
+    -- Paramètres > Informations (specs §5.4)
+    ('plateforme_nom', 'SESAME', 'Nom de la plateforme'),
+    ('contact_email', 'contact@sesame-pro.com', 'Email de contact public'),
+    ('contact_telephone', '07 45 20 70 06', 'Téléphone de contact public'),
+    ('maintenance_active', 'false', 'Mode maintenance (true = app en pause)'),
+    ('maintenance_message', '', 'Message affiché pendant la maintenance'),
+    -- Paramètres > Notifications (specs §5.4)
+    ('notif_push_active', 'true', 'Canal push global activé'),
+    ('notif_email_active', 'true', 'Canal email global activé'),
+    ('notif_sms_active', 'false', 'Canal SMS global activé'),
+    ('alerte_doc_jours', '15,7,0', 'Jours avant expiration des alertes documents'),
+    -- Paramètres > Sécurité (specs §5.4)
+    ('session_duree_heures', '4', 'Durée de validité du token admin (heures)'),
+    ('admin_ip_whitelist', '', 'IPs autorisées pour l''admin (séparées par virgule ; vide = toutes)');
 
 -- ─── 6. ROW LEVEL SECURITY ───────────────────────────────────
 ALTER TABLE utilisateurs ENABLE ROW LEVEL SECURITY;
@@ -506,4 +538,83 @@ CREATE TABLE IF NOT EXISTS virements_commissions (
     date_versement timestamptz NOT NULL DEFAULT now(),
     created_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE(ambassadeur_id, mois)
+);
+
+-- Journal des contrôles d'identité chauffeur (specs §5.1 / §9.1 : « Log de chaque contrôle »).
+-- resultat = 'conforme' (course continue) ou 'non_conforme' (suspension immédiate du chauffeur).
+CREATE TABLE controles_identite (
+    id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    chauffeur_id uuid REFERENCES chauffeurs(id) ON DELETE CASCADE,
+    admin_id     uuid,
+    resultat     varchar(20) NOT NULL,
+    note         text,
+    created_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_controles_identite_chauffeur ON controles_identite(chauffeur_id, created_at DESC);
+
+-- Litiges / dossiers de contentieux (specs §9.2). Création manuelle ou automatique
+-- (annulation admin, suspension contrôle identité non conforme, Cas B course interrompue).
+-- type   : code_invalide | course_non_effectuee | comportement | paiement_conteste | annulation_litigieuse
+-- statut : ouvert | en_analyse | clos   |   origine : manuel | auto
+CREATE TABLE litiges (
+    id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    course_id      uuid REFERENCES courses(id) ON DELETE SET NULL,
+    ambassadeur_id uuid REFERENCES ambassadeurs(id) ON DELETE SET NULL,
+    chauffeur_id   uuid REFERENCES chauffeurs(id) ON DELETE SET NULL,
+    type           varchar(30) NOT NULL,
+    statut         varchar(20) NOT NULL DEFAULT 'ouvert',
+    origine        varchar(20) NOT NULL DEFAULT 'manuel',
+    description    text,
+    decision       text,
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    closed_at      timestamptz
+);
+CREATE INDEX idx_litiges_statut ON litiges(statut, created_at DESC);
+
+-- Tickets de support (specs §3.6 / §10). L'utilisateur (ambassadeur ou chauffeur) ouvre un ticket
+-- depuis l'app ; l'admin répond depuis le dashboard. categorie : probleme_course | paiement_points
+-- | document_refuse | question_compte | autre   ·   statut : ouvert | en_cours | resolu
+CREATE TABLE tickets (
+    id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    utilisateur_id uuid REFERENCES utilisateurs(id) ON DELETE CASCADE,
+    categorie      varchar(30) NOT NULL,
+    course_id      uuid REFERENCES courses(id) ON DELETE SET NULL,
+    sujet          varchar(200),
+    statut         varchar(20) NOT NULL DEFAULT 'ouvert',
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    updated_at     timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_tickets_statut ON tickets(statut, updated_at DESC);
+
+-- Messages d'un ticket (conversation). role : utilisateur | admin
+CREATE TABLE ticket_messages (
+    id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    ticket_id  uuid REFERENCES tickets(id) ON DELETE CASCADE,
+    role       varchar(20) NOT NULL,
+    contenu    text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_ticket_messages_ticket ON ticket_messages(ticket_id, created_at);
+
+-- Sécurité admin (specs §5.4) — 2FA TOTP. Table mono-ligne (id=1) pour ne PAS exposer
+-- le secret via /parametres. totp_enabled=false tant que l'admin n'a pas validé un 1er code.
+CREATE TABLE admin_securite (
+    id           integer PRIMARY KEY DEFAULT 1,
+    totp_secret  text,
+    totp_enabled boolean NOT NULL DEFAULT false,
+    updated_at   timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT admin_securite_single_row CHECK (id = 1)
+);
+INSERT INTO admin_securite (id) VALUES (1);
+
+-- Comptes admin & rôles (specs §5.4) — Super admin / Opérateur / Lecteur.
+-- Le compte fondateur reste défini via .env (bootstrap anti-lockout) ; cette table = comptes additionnels.
+CREATE TABLE admins (
+    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    email         varchar(255) UNIQUE NOT NULL,
+    password_hash text NOT NULL,
+    nom           varchar(120),
+    role          varchar(20) NOT NULL DEFAULT 'operateur',  -- super_admin | operateur | lecteur
+    actif         boolean NOT NULL DEFAULT true,
+    created_at    timestamptz NOT NULL DEFAULT now()
 );

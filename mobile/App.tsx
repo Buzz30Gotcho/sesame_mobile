@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, AppState } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 
@@ -33,6 +33,8 @@ import ChauffeurProfileScreen from './src/screens/ChauffeurProfileScreen';
 import ChauffeurRevenusScreen from './src/screens/ChauffeurRevenusScreen';
 
 import ChatScreen from './src/screens/ChatScreen';
+import TicketsScreen from './src/screens/TicketsScreen';
+import TicketDetailScreen from './src/screens/TicketDetailScreen';
 
 import type { RootStackParamList } from './src/types';
 
@@ -54,15 +56,27 @@ export default function App() {
             }),
         });
 
-        // Listener pour les notifications reçues en foreground
-        notificationListener.current = Notifications.addNotificationReceivedListener((_notification) => {
-            // Notification reçue — pas d'action supplémentaire par défaut
+        // Badge rouge sur l'icône de l'app (specs §6.1 + §7.3) : +1 à chaque notification reçue.
+        notificationListener.current = Notifications.addNotificationReceivedListener(async () => {
+            try {
+                const current = await Notifications.getBadgeCountAsync();
+                await Notifications.setBadgeCountAsync(current + 1);
+            } catch { /* badge non critique */ }
         });
 
-        // Listener pour quand l'utilisateur appuie sur une notification
-        responseListener.current = Notifications.addNotificationResponseReceivedListener((_response) => {
-            // L'utilisateur a appuyé sur la notification — navigation possible ici si besoin
+        // L'utilisateur a appuyé sur une notification → considérée lue, on efface le badge.
+        responseListener.current = Notifications.addNotificationResponseReceivedListener(() => {
+            Notifications.setBadgeCountAsync(0).catch(() => {});
         });
+
+        // Badge effacé dès que l'app repasse au premier plan (notifications « lues »).
+        const appStateSub = AppState.addEventListener('change', (state) => {
+            if (state === 'active') {
+                Notifications.setBadgeCountAsync(0).catch(() => {});
+            }
+        });
+        // Effacer aussi au démarrage à froid.
+        Notifications.setBadgeCountAsync(0).catch(() => {});
 
         return () => {
             if (notificationListener.current) {
@@ -71,6 +85,7 @@ export default function App() {
             if (responseListener.current) {
                 responseListener.current.remove();
             }
+            appStateSub.remove();
         };
     }, []);
 
@@ -107,6 +122,10 @@ export default function App() {
 
                                 {/* Chat */}
                                 <Stack.Screen name="Chat" component={ChatScreen} />
+
+                                {/* Support / Tickets */}
+                                <Stack.Screen name="Tickets" component={TicketsScreen} />
+                                <Stack.Screen name="TicketDetail" component={TicketDetailScreen} />
                             </Stack.Navigator>
                         </View>
                     </NavigationContainer>

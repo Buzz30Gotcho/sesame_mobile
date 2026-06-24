@@ -22,19 +22,19 @@ export default function Table<T extends Record<string, unknown>>({
 }: TableProps<T>) {
   if (loading) {
     return (
-      <div className="bg-white rounded-xl shadow-sm p-8 text-center text-gray-400">
-        <div className="w-8 h-8 rounded-full border-2 border-gray-200 animate-spin mx-auto mb-2" style={{ borderTopColor: '#C9A84C' }} />
+      <div className="bg-white dark:bg-[#161624] rounded-xl shadow-sm p-8 text-center text-gray-400">
+        <div className="w-8 h-8 rounded-full border-2 border-gray-200 dark:border-white/10 animate-spin mx-auto mb-2" style={{ borderTopColor: '#C9A84C' }} />
         Chargement...
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+    <div className="bg-white dark:bg-[#161624] rounded-xl shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-100">
+            <tr className="border-b border-gray-100 dark:border-white/10">
               {columns.map((col) => (
                 <th
                   key={col.key}
@@ -57,10 +57,10 @@ export default function Table<T extends Record<string, unknown>>({
               data.map((row, idx) => (
                 <tr
                   key={String(row[keyField] ?? idx)}
-                  className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
+                  className="border-b border-gray-50 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
                 >
                   {columns.map((col) => (
-                    <td key={col.key} className="px-4 py-3 text-gray-700">
+                    <td key={col.key} className="px-4 py-3 text-gray-700 dark:text-gray-200">
                       {col.render ? col.render(row) : String(row[col.key] ?? '—')}
                     </td>
                   ))}

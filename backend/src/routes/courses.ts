@@ -110,14 +110,15 @@ router.post('/creer', async (req, res) => {
     const kmFinal = kmServeur ?? Number(kilometrage);
 
     const montant = calculateVehiclePrice(vehicule_type, kmFinal, pricingParams);
+    const distanceKm = Number.isFinite(kmFinal) ? Math.round(kmFinal * 10) / 10 : null;
     const reference = makeReference('CRS');
     const points_attribues = calculatePoints(montant);
 
     const tauxGlobal = Number(sysParams.taux_commission_global ?? 20);
 
     const result = await query(
-        'INSERT INTO courses(reference, ambassadeur_id, statut, type_course, adresse_depart, adresse_destination, vehicule_type, montant, points_attribues, taux_commission_applique) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
-        [reference, ambassadeur_id, 'recherche', courseType, adresse_depart, adresse_destination, vehicule_type, montant, points_attribues, tauxGlobal]
+        'INSERT INTO courses(reference, ambassadeur_id, statut, type_course, adresse_depart, adresse_destination, vehicule_type, montant, distance_km, points_attribues, taux_commission_applique) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',
+        [reference, ambassadeur_id, 'recherche', courseType, adresse_depart, adresse_destination, vehicule_type, montant, distanceKm, points_attribues, tauxGlobal]
     );
 
     notifyChauffeursDisponibles(vehicule_type, adresse_depart, adresse_destination, montant).catch(() => {});
@@ -309,12 +310,13 @@ router.post('/reserver', async (req, res) => {
     const kmFinal = kmServeur ?? Number(kilometrage);
 
     const montant = calculateVehiclePrice(vehicule_type, kmFinal, pricingParams);
+    const distanceKm = Number.isFinite(kmFinal) ? Math.round(kmFinal * 10) / 10 : null;
     const reference = makeReference('CRS');
     const points_attribues = calculatePoints(montant);
 
     const result = await query(
-        'INSERT INTO courses(reference, ambassadeur_id, statut, type_course, adresse_depart, adresse_destination, vehicule_type, montant, points_attribues, date_reservation) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
-        [reference, ambassadeur_id, 'recherche', 'reservation', adresse_depart, adresse_destination, vehicule_type, montant, points_attribues, date_reservation]
+        'INSERT INTO courses(reference, ambassadeur_id, statut, type_course, adresse_depart, adresse_destination, vehicule_type, montant, distance_km, points_attribues, date_reservation) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',
+        [reference, ambassadeur_id, 'recherche', 'reservation', adresse_depart, adresse_destination, vehicule_type, montant, distanceKm, points_attribues, date_reservation]
     );
 
     notifyChauffeursDisponibles(vehicule_type, adresse_depart, adresse_destination, montant).catch(() => {});

@@ -11,10 +11,10 @@ interface KpiCardProps {
 
 export default function KpiCard({ label, value, sub, color = '#C9A84C', icon, badge }: KpiCardProps) {
   return (
-    <div className="bg-white rounded-xl shadow-sm p-5 flex flex-col gap-2 relative overflow-hidden">
+    <div className="bg-white dark:bg-[#161624] rounded-xl shadow-sm p-5 flex flex-col gap-2 relative overflow-hidden">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm text-gray-500 font-medium">{label}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">{label}</p>
           <p className="text-3xl font-bold mt-1" style={{ color }}>{value}</p>
           {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
         </div>

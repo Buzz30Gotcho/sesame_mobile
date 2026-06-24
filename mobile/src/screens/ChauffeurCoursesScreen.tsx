@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
@@ -20,30 +20,33 @@ export default function ChauffeurCoursesScreen() {
 
     const styles = useMemo(() => makeStyles(colors), [colors]);
 
-    useEffect(() => {
-        async function loadCourses() {
-            if (!chauffeurId) {
-                setError(t('erreur'));
-                setLoading(false);
-                return;
-            }
-            try {
-                const response = await getChauffeurCourses(chauffeurId);
-                setCourses(response.data);
-            } catch {
-                setError('Impossible de charger les courses.');
-            } finally {
-                setLoading(false);
-            }
+    const loadCourses = useCallback(async () => {
+        if (!chauffeurId) {
+            setError(t('erreur'));
+            setLoading(false);
+            return;
         }
+        try {
+            const response = await getChauffeurCourses(chauffeurId);
+            setCourses(response.data);
+            setError(null);
+        } catch {
+            setError('Impossible de charger les courses.');
+        } finally {
+            setLoading(false);
+        }
+    }, [chauffeurId, t]);
+
+    useEffect(() => {
         loadCourses();
-    }, [chauffeurId]);
+    }, [loadCourses]);
 
     const handleAccept = async (courseId: string) => {
         if (!chauffeurId) return;
         try {
             await acceptChauffeurCourse(chauffeurId, courseId);
             Alert.alert('Accepté', 'Vous avez accepté la course.');
+            await loadCourses();
         } catch {
             Alert.alert(t('erreur'), "Impossible d'accepter la course.");
         }
@@ -65,6 +68,7 @@ export default function ChauffeurCoursesScreen() {
         try {
             await finishChauffeurCourse(chauffeurId, courseId, coords);
             Alert.alert('Terminé', 'Course marquée comme terminée.');
+            await loadCourses();
         } catch (err: any) {
             Alert.alert(t('erreur'), err.response?.data?.error || 'Impossible de terminer la course.');
         }

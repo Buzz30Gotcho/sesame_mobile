@@ -376,6 +376,11 @@ export default function ChauffeurProfileScreen() {
                         </View>
                     </View>
                 )}
+
+                {/* Support / Mes tickets (specs §3.6) */}
+                <TouchableOpacity style={styles.supportBtn} onPress={() => navigation.navigate('Tickets')}>
+                    <Text style={styles.supportBtnText}>🎫  Support / Mes tickets</Text>
+                </TouchableOpacity>
             </ScrollView>
             <BottomNav role="chauffeur" />
         </SafeAreaView>
@@ -384,6 +389,21 @@ export default function ChauffeurProfileScreen() {
 
 function makeStyles(colors: typeof Colors.nocturne) {
     return StyleSheet.create({
+        supportBtn: {
+            marginHorizontal: 20,
+            marginTop: 20,
+            backgroundColor: colors.card,
+            borderRadius: 14,
+            paddingVertical: 16,
+            alignItems: 'center',
+            borderWidth: 1,
+            borderColor: 'rgba(201,168,76,0.4)',
+        },
+        supportBtnText: {
+            color: Colors.brand.gold,
+            fontSize: Typography.sizes.sub,
+            fontWeight: Typography.weights.semiBold as any,
+        },
         safeArea: {
             flex: 1,
             backgroundColor: colors.background,

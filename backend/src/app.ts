@@ -14,6 +14,7 @@ import echangesRoutes from './routes/echanges';
 import fournisseursRoutes from './routes/fournisseurs';
 import chatRoutes from './routes/chat';
 import chauffeursRoutes from './routes/chauffeurs';
+import ticketsRoutes from './routes/tickets';
 import adminRoutes from './routes/admin';
 import stripeWebhookRoutes from './routes/stripeWebhook';
 import yousignWebhookRoutes from './routes/yousignWebhook';
@@ -100,6 +101,7 @@ app.use('/api/echanges', echangesRoutes);
 app.use('/api/fournisseurs', fournisseursRoutes);
 app.use('/api/chat', requireAuth, chatRoutes);
 app.use('/api/chauffeurs', requireAuth, chauffeursRoutes);
+app.use('/api/tickets', requireAuth, ticketsRoutes);
 app.use('/api/admin', adminRoutes);
 
 // Paramètres publics lisibles par l'app mobile (sans auth admin)

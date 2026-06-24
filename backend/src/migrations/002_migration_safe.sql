@@ -269,6 +269,12 @@ ALTER TABLE chauffeurs ADD COLUMN IF NOT EXISTS iban                     varchar
 ALTER TABLE chauffeurs ADD COLUMN IF NOT EXISTS siret                    varchar(14);
 ALTER TABLE chauffeurs ADD COLUMN IF NOT EXISTS stripe_customer_id       varchar(100);
 ALTER TABLE chauffeurs ADD COLUMN IF NOT EXISTS push_token               varchar(200);
+ALTER TABLE chauffeurs ADD COLUMN IF NOT EXISTS documents_valides         boolean DEFAULT false;
+ALTER TABLE chauffeurs ADD COLUMN IF NOT EXISTS note_interne              text;
+ALTER TABLE chauffeurs ADD COLUMN IF NOT EXISTS derniere_lat              double precision;
+ALTER TABLE chauffeurs ADD COLUMN IF NOT EXISTS derniere_lon              double precision;
+ALTER TABLE chauffeurs ADD COLUMN IF NOT EXISTS position_maj_at           timestamptz;
+ALTER TABLE chauffeurs ADD COLUMN IF NOT EXISTS carte_enregistree         boolean DEFAULT false;
 
 -- courses
 ALTER TABLE courses ADD COLUMN IF NOT EXISTS reference                varchar(20);
@@ -279,10 +285,13 @@ ALTER TABLE courses ADD COLUMN IF NOT EXISTS points_attribues         integer DE
 ALTER TABLE courses ADD COLUMN IF NOT EXISTS compensation             boolean DEFAULT false;
 ALTER TABLE courses ADD COLUMN IF NOT EXISTS date_reservation         timestamptz;
 ALTER TABLE courses ADD COLUMN IF NOT EXISTS date_acceptation         timestamptz;
+ALTER TABLE courses ADD COLUMN IF NOT EXISTS date_arrivee             timestamptz;
 ALTER TABLE courses ADD COLUMN IF NOT EXISTS date_fin                 timestamptz;
 ALTER TABLE courses ADD COLUMN IF NOT EXISTS date_annulation          timestamptz;
 ALTER TABLE courses ADD COLUMN IF NOT EXISTS annule_par               annule_par_type;
 ALTER TABLE courses ADD COLUMN IF NOT EXISTS note_interne             text;
+ALTER TABLE courses ADD COLUMN IF NOT EXISTS distance_km              numeric(6,1);
+ALTER TABLE courses ADD COLUMN IF NOT EXISTS created_at               timestamptz NOT NULL DEFAULT now();
 
 -- echanges
 ALTER TABLE echanges ADD COLUMN IF NOT EXISTS reference           varchar(20);
@@ -292,6 +301,8 @@ ALTER TABLE echanges ADD COLUMN IF NOT EXISTS remis_at            timestamptz;
 ALTER TABLE echanges ADD COLUMN IF NOT EXISTS expire_at           timestamptz;
 ALTER TABLE echanges ADD COLUMN IF NOT EXISTS utilise_at          timestamptz;
 ALTER TABLE echanges ADD COLUMN IF NOT EXISTS valide_par_admin_id uuid;
+ALTER TABLE echanges ADD COLUMN IF NOT EXISTS paiement_paye_at    timestamptz;
+ALTER TABLE echanges ADD COLUMN IF NOT EXISTS created_at          timestamptz NOT NULL DEFAULT now();
 
 -- blacklist
 ALTER TABLE blacklist ADD COLUMN IF NOT EXISTS tentatives_reinscription jsonb NOT NULL DEFAULT '[]';
@@ -389,4 +400,78 @@ CREATE TABLE IF NOT EXISTS virements_commissions (
     date_versement timestamptz NOT NULL DEFAULT now(),
     created_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE(ambassadeur_id, mois)
+);
+
+-- Journal des contrôles d'identité chauffeur (specs §5.1 / §9.1 : « Log de chaque contrôle »).
+-- resultat = 'conforme' (course continue) ou 'non_conforme' (suspension immédiate du chauffeur).
+CREATE TABLE IF NOT EXISTS controles_identite (
+    id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    chauffeur_id uuid REFERENCES chauffeurs(id) ON DELETE CASCADE,
+    admin_id     uuid,
+    resultat     varchar(20) NOT NULL,
+    note         text,
+    created_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_controles_identite_chauffeur ON controles_identite(chauffeur_id, created_at DESC);
+
+-- Litiges / dossiers de contentieux (specs §9.2). Création manuelle ou automatique
+-- (annulation admin, suspension contrôle identité non conforme, Cas B course interrompue).
+-- type   : code_invalide | course_non_effectuee | comportement | paiement_conteste | annulation_litigieuse
+-- statut : ouvert | en_analyse | clos   |   origine : manuel | auto
+CREATE TABLE IF NOT EXISTS litiges (
+    id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    course_id      uuid REFERENCES courses(id) ON DELETE SET NULL,
+    ambassadeur_id uuid REFERENCES ambassadeurs(id) ON DELETE SET NULL,
+    chauffeur_id   uuid REFERENCES chauffeurs(id) ON DELETE SET NULL,
+    type           varchar(30) NOT NULL,
+    statut         varchar(20) NOT NULL DEFAULT 'ouvert',
+    origine        varchar(20) NOT NULL DEFAULT 'manuel',
+    description    text,
+    decision       text,
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    closed_at      timestamptz
+);
+CREATE INDEX IF NOT EXISTS idx_litiges_statut ON litiges(statut, created_at DESC);
+
+-- Tickets de support (specs §3.6 / §10) — messagerie in-app utilisateur ↔ SESAME.
+CREATE TABLE IF NOT EXISTS tickets (
+    id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    utilisateur_id uuid REFERENCES utilisateurs(id) ON DELETE CASCADE,
+    categorie      varchar(30) NOT NULL,
+    course_id      uuid REFERENCES courses(id) ON DELETE SET NULL,
+    sujet          varchar(200),
+    statut         varchar(20) NOT NULL DEFAULT 'ouvert',
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    updated_at     timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_tickets_statut ON tickets(statut, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS ticket_messages (
+    id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    ticket_id  uuid REFERENCES tickets(id) ON DELETE CASCADE,
+    role       varchar(20) NOT NULL,
+    contenu    text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ticket_messages_ticket ON ticket_messages(ticket_id, created_at);
+
+-- Sécurité admin (specs §5.4) — 2FA TOTP (table mono-ligne, secret non exposé via /parametres).
+CREATE TABLE IF NOT EXISTS admin_securite (
+    id           integer PRIMARY KEY DEFAULT 1,
+    totp_secret  text,
+    totp_enabled boolean NOT NULL DEFAULT false,
+    updated_at   timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT admin_securite_single_row CHECK (id = 1)
+);
+INSERT INTO admin_securite (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+-- Comptes admin & rôles (specs §5.4) — Super admin / Opérateur / Lecteur.
+CREATE TABLE IF NOT EXISTS admins (
+    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    email         varchar(255) UNIQUE NOT NULL,
+    password_hash text NOT NULL,
+    nom           varchar(120),
+    role          varchar(20) NOT NULL DEFAULT 'operateur',
+    actif         boolean NOT NULL DEFAULT true,
+    created_at    timestamptz NOT NULL DEFAULT now()
 );

@@ -10,7 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import {
     getChauffeurDashboard, setChauffeurAvailability,
     validateCourseCode, finishChauffeurCourse,
-    getCoursesDisponibles, acceptChauffeurCourse,
+    getCoursesDisponibles, acceptChauffeurCourse, markChauffeurArrived,
     signalerClientAbsent, getChauffeurDocuments,
     updateChauffeurPosition, getChauffeurSetupCard,
 } from '../services/api';
@@ -58,10 +58,13 @@ export default function ChauffeurHomeScreen() {
     const refusedIds = useRef<Set<string>>(new Set());
 
     // Récap fin de course
-    const [completedCourse, setCompletedCourse] = useState<{ montant: number; dureeMin: number } | null>(null);
+    const [completedCourse, setCompletedCourse] = useState<{ montant: number; dureeMin: number; distanceKm: number | null } | null>(null);
 
     // KYC
     const [kycStatus, setKycStatus] = useState<'ok' | 'manquant' | 'en_attente' | 'refuse'>('ok');
+
+    // Timer d'attente client (specs §6.2) — décompte visible pendant la phase avant validation du code
+    const [waitSec, setWaitSec] = useState(0);
 
     // Géofencing
     const [distanceToDestination, setDistanceToDestination] = useState<number | null>(null);
@@ -84,7 +87,11 @@ export default function ChauffeurHomeScreen() {
             ]);
             setDashboard(dashRes.data);
 
-            const requis = ['carte_identite', 'permis', 'carte_vtc', 'carte_grise'];
+            // Les 11 documents obligatoires (specs §2.4 + catalogue §4.1 : « 0 document manquant = 0 course »)
+            const requis = [
+                'carte_identite', 'carte_vtc', 'revtc', 'kbis', 'permis', 'rir',
+                'rc_pro', 'rc_circulation', 'carte_grise', 'certificat_medical', 'photo_profil',
+            ];
             const docs = docsRes.data;
             const hasRefuse = docs.some(d => d.statut === 'refuse');
             const allPresent = requis.every(t => docs.find(d => d.type === t));
@@ -154,6 +161,42 @@ export default function ChauffeurHomeScreen() {
     // Arrêt du suivi de fond au démontage de l'écran
     useEffect(() => () => { stopBackgroundLocation().catch(() => {}); }, []);
 
+    // Timer d'attente visible (specs §6.2/§8.1) — démarre à l'arrivée du chauffeur (statut en_route).
+    useEffect(() => {
+        const course = dashboard?.current_course;
+        const waiting = !!course && course.statut === 'en_route';
+        if (!waiting || !course?.date_arrivee) {
+            setWaitSec(0);
+            return;
+        }
+        const start = new Date(course.date_arrivee).getTime();
+        const tick = () => setWaitSec(Math.max(0, Math.floor((Date.now() - start) / 1000)));
+        tick();
+        const iv = setInterval(tick, 1000);
+        return () => clearInterval(iv);
+    }, [dashboard?.current_course?.statut, dashboard?.current_course?.date_arrivee]);
+
+    // Position envoyée quand le chauffeur est en ligne sans course active : permet à l'ETA
+    // « à ~X min du client » d'être frais sur la course entrante (specs §6.2). Faible fréquence.
+    useEffect(() => {
+        const idleOnline = !!dashboard?.disponible && !dashboard?.current_course;
+        if (!idleOnline || !chauffeurId) return;
+        let cancelled = false;
+        const pushOnce = async () => {
+            try {
+                const { status } = await Location.getForegroundPermissionsAsync();
+                if (status !== 'granted') return;
+                const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+                if (!cancelled) {
+                    await updateChauffeurPosition(chauffeurId, { lat: loc.coords.latitude, lon: loc.coords.longitude }).catch(() => {});
+                }
+            } catch { /* silencieux */ }
+        };
+        pushOnce();
+        const iv = setInterval(pushOnce, 25000);
+        return () => { cancelled = true; clearInterval(iv); };
+    }, [dashboard?.disponible, dashboard?.current_course, chauffeurId]);
+
     // Géofencing (specs §7.2) — au premier plan : distance à la destination + position pour
     // la clôture. Sert AUSSI de repli pour pousser la position si le suivi de fond est refusé.
     useEffect(() => {
@@ -210,7 +253,7 @@ export default function ChauffeurHomeScreen() {
         if (!chauffeurId) return;
         Alert.alert(
             'Carte bancaire requise',
-            'Pour passer en ligne, enregistrez une carte bancaire. Les frais SÉSAME (commission sur vos courses) seront prélevés automatiquement chaque semaine.',
+            'Pour passer en ligne, vous devez enregistrer une carte bancaire. C\'est une étape obligatoire pour activer votre compte chauffeur.',
             [
                 { text: 'Plus tard', style: 'cancel' },
                 {
@@ -271,6 +314,16 @@ export default function ChauffeurHomeScreen() {
         }
     };
 
+    const handleArrived = async () => {
+        if (!chauffeurId || !dashboard?.current_course) return;
+        try {
+            await markChauffeurArrived(chauffeurId, dashboard.current_course.id);
+            loadDashboard();
+        } catch (err: any) {
+            Alert.alert('Erreur', err.response?.data?.error || 'Impossible de signaler votre arrivée.');
+        }
+    };
+
     const handleValidateCode = async () => {
         if (!chauffeurId || !dashboard?.current_course) return;
         const code = codeDigits.join('');
@@ -291,6 +344,7 @@ export default function ChauffeurHomeScreen() {
         const montant = Number(course.montant || 0);
         const acceptedAt = course.date_acceptation ? new Date(course.date_acceptation) : new Date();
         const dureeMin = Math.round((Date.now() - acceptedAt.getTime()) / 60000);
+        const distanceKm = course.distance_km != null ? Number(course.distance_km) : null;
 
         try {
             await finishChauffeurCourse(chauffeurId, course.id, lastPosRef.current);
@@ -302,7 +356,7 @@ export default function ChauffeurHomeScreen() {
         destCoordsRef.current = null;
         lastPosRef.current = null;
         setDistanceToDestination(null);
-        setCompletedCourse({ montant, dureeMin });
+        setCompletedCourse({ montant, dureeMin, distanceKm });
         loadDashboard();
     };
 
@@ -317,7 +371,8 @@ export default function ChauffeurHomeScreen() {
                     text: 'Signaler à SÉSAME',
                     style: 'destructive',
                     onPress: async () => {
-                        await signalerClientAbsent(chauffeurId, dashboard.current_course!.id).catch(() => {});
+                        const minutes = Math.max(1, Math.floor(waitSec / 60));
+                        await signalerClientAbsent(chauffeurId, dashboard.current_course!.id, minutes).catch(() => {});
                         Alert.alert('Signalement envoyé', "L'équipe SÉSAME a été alertée. Un opérateur vous contacte.");
                     },
                 },
@@ -438,6 +493,12 @@ export default function ChauffeurHomeScreen() {
                             <Text style={styles.recapLabel}>DURÉE</Text>
                             <Text style={styles.recapValue}>{completedCourse.dureeMin} min</Text>
                         </View>
+                        {completedCourse.distanceKm != null && (
+                            <View style={styles.recapRow}>
+                                <Text style={styles.recapLabel}>DISTANCE</Text>
+                                <Text style={styles.recapValue}>{completedCourse.distanceKm.toFixed(1)} km</Text>
+                            </View>
+                        )}
                         <View style={styles.recapButtons}>
                             <TouchableOpacity
                                 style={styles.continuerBtn}
@@ -516,13 +577,32 @@ export default function ChauffeurHomeScreen() {
                             <Text style={styles.stepRef}>{currentCourse.reference}</Text>
                         </View>
 
-                        {/* Saisie code pivot */}
-                        {['acceptee', 'en_route'].includes(currentCourse.statut || '') && (
+                        {/* En route vers le client → bouton "Je suis arrivé" (specs §8.1) */}
+                        {currentCourse.statut === 'acceptee' && (
+                            <View style={styles.arrivedCard}>
+                                <View style={styles.infoBlock}>
+                                    <Text style={styles.infoLabel}>PRISE EN CHARGE</Text>
+                                    <Text style={styles.infoValue}>{currentCourse.adresse_depart}</Text>
+                                </View>
+                                <TouchableOpacity style={styles.arrivedBtn} onPress={handleArrived}>
+                                    <Text style={styles.arrivedBtnText}>📍 JE SUIS ARRIVÉ</Text>
+                                </TouchableOpacity>
+                            </View>
+                        )}
+
+                        {/* Saisie code pivot — uniquement une fois arrivé sur place */}
+                        {currentCourse.statut === 'en_route' && (
                             <View style={styles.pivotCard}>
                                 <Text style={styles.pivotTitle}>CODE CLIENT SÉSAME</Text>
                                 <Text style={styles.pivotSub}>
                                     Demandez au client son code à 4 chiffres
                                 </Text>
+
+                                <View style={styles.waitTimerBadge}>
+                                    <Text style={styles.waitTimerText}>
+                                        ⏱ Attente client : {Math.floor(waitSec / 60)}m {String(waitSec % 60).padStart(2, '0')}s
+                                    </Text>
+                                </View>
 
                                 <View style={styles.codeRow}>
                                     {codeDigits.map((d, i) => (
@@ -748,11 +828,19 @@ function makeStyles(colors: typeof Colors.nocturne) {
         },
         stepTitle: { color: Colors.brand.info, fontSize: Typography.sizes.small, fontWeight: Typography.weights.black as any, marginBottom: 2 },
         stepRef: { color: colors.textSecondary, fontSize: Typography.sizes.tiny, fontFamily: 'monospace' },
+        arrivedCard: { backgroundColor: colors.card, borderRadius: 18, padding: 20 },
+        arrivedBtn: { backgroundColor: Colors.brand.info, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
+        arrivedBtnText: { color: '#09090F', fontSize: Typography.sizes.body, fontWeight: Typography.weights.black as any },
         pivotCard: {
             backgroundColor: colors.card, borderRadius: 20, padding: 18, alignItems: 'center',
         },
         pivotTitle: { color: colors.textPrimary, fontSize: Typography.sizes.body, fontWeight: Typography.weights.black as any, marginBottom: 6 },
-        pivotSub: { color: colors.textSecondary, fontSize: Typography.sizes.tiny, marginBottom: 16, textAlign: 'center' },
+        pivotSub: { color: colors.textSecondary, fontSize: Typography.sizes.tiny, marginBottom: 12, textAlign: 'center' },
+        waitTimerBadge: {
+            backgroundColor: 'rgba(255,154,60,0.1)', borderRadius: 10,
+            paddingHorizontal: 12, paddingVertical: 6, marginBottom: 16, alignSelf: 'center',
+        },
+        waitTimerText: { color: Colors.brand.warning, fontSize: Typography.sizes.tiny, fontWeight: Typography.weights.bold as any },
         codeRow: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 16 },
         codeBox: {
             width: 52, height: 60,
