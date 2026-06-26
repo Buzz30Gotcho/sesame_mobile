@@ -220,7 +220,7 @@ export async function executerSanctionsEnAttente(ambassadeurId: string) {
             const pushToken = current.rows[0]?.push_token;
             if (pushToken) {
                 const date = new Date(sanction.decide_at).toLocaleDateString('fr-FR');
-                await sendPushNotification(pushToken, `-${sanction.points} points prélevés`, `Suite à l'absence de votre client le ${date}.`).catch(() => {});
+                await sendPushNotification(pushToken, `-${sanction.points} points prélevés`, `Suite à l'absence de votre client le ${date}.`, { type: 'SANCTION_POINTS', sanction_id: sanction.id }).catch(() => {});
             }
         }
     }

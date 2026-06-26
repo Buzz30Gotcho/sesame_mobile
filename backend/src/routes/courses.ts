@@ -16,7 +16,7 @@ async function notifyChauffeursDisponibles(vehicule_type: string, adresse_depart
     );
     const body = `${adresse_depart} → ${adresse_destination} · ${Number(montant).toFixed(2)} €`;
     for (const row of result.rows) {
-        await sendPushNotification(row.push_token, 'Nouvelle course', body).catch(() => {});
+        await sendPushNotification(row.push_token, 'Nouvelle course', body, { type: 'NOUVELLE_COURSE' }).catch(() => {});
     }
 }
 
@@ -222,7 +222,7 @@ router.put('/:id/annuler', async (req, res) => {
             const ambTokenResult = await query('SELECT push_token FROM ambassadeurs WHERE id = $1', [course.ambassadeur_id]);
             const ambToken = ambTokenResult.rows[0]?.push_token;
             if (ambToken) {
-                await sendPushNotification(ambToken, 'Chauffeur annulé', 'Relance automatique en cours...', { course_id: req.params.id });
+                await sendPushNotification(ambToken, 'Chauffeur annulé', 'Relance automatique en cours...', { type: 'CHAUFFEUR_ANNULE', course_id: req.params.id });
             }
         } catch { /* Non bloquant */ }
     }

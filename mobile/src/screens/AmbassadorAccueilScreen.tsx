@@ -88,6 +88,13 @@ export default function AmbassadorAccueilScreen() {
     }
 
     const isMoral = typeAmbassadeur === 'moral';
+    // Ambassadeur physique indépendant : accueil non scrollable, tout visible d'un seul écran.
+    // Les variantes Moral / Employé gardent le scroll (contenu plus long : carte établissement, guide…).
+    const isPhysiqueIndep = !isMoral && !isSousCompte;
+    const Body: React.ComponentType<any> = isPhysiqueIndep ? View : ScrollView;
+    const bodyProps: any = isPhysiqueIndep
+        ? { style: styles.staticContent }
+        : { contentContainerStyle: styles.scrollContent, showsVerticalScrollIndicator: false };
 
     return (
         <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -97,7 +104,7 @@ export default function AmbassadorAccueilScreen() {
                 <TouchableOpacity style={styles.activeBanner} onPress={() => navigation.navigate('AmbassadorHome')}>
                     <View>
                         <Text style={styles.bannerTitle}>{t('en_cours_label')}</Text>
-                        <Text style={styles.bannerSub}>{activeCourse.reference} • {activeCourse.statut?.toUpperCase()}</Text>
+                        <Text style={styles.bannerSub}>{activeCourse.statut?.toUpperCase()}</Text>
                     </View>
                     <View style={styles.bannerCode}>
                         <Text style={styles.bannerCodeText}>{t('code_client_pivot')}</Text>
@@ -106,10 +113,10 @@ export default function AmbassadorAccueilScreen() {
                 </TouchableOpacity>
             )}
 
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            <Body {...bodyProps}>
 
                 {/* Header */}
-                <View style={styles.header}>
+                <View style={[styles.header, isPhysiqueIndep && styles.headerCompact]}>
                     <Text style={styles.welcomeText}>{t('bonjour')}{dashboard?.prenom ? `, ${dashboard.prenom}` : ''} !</Text>
                     {!isMoral && !isSousCompte && (
                         <View style={styles.pointsBadge}>
@@ -125,7 +132,7 @@ export default function AmbassadorAccueilScreen() {
 
                 {/* Carte principale — pas d'anneau de points ni de commission pour un employé (specs : il prescrit seulement) */}
                 {!isSousCompte && (
-                    <View style={[styles.ringCard, isMoral ? styles.ringCardMoral : styles.ringCardPhysique]}>
+                    <View style={[styles.ringCard, isMoral ? styles.ringCardMoral : styles.ringCardPhysique, isPhysiqueIndep && styles.ringCardCompact]}>
                         {isMoral ? (
                             <>
                                 <Text style={styles.commissionLabel}>{t('commission_du_mois')}</Text>
@@ -140,7 +147,7 @@ export default function AmbassadorAccueilScreen() {
                                     points={dashboard?.points_solde || 0}
                                     level={dashboard?.niveau || 'starter'}
                                     nextLevelPoints={dashboard?.next_level_target || 500}
-                                    size={130}
+                                    size={isPhysiqueIndep ? 120 : 130}
                                 />
                                 <Text style={styles.levelLabel}>{t('niveau_label')} {dashboard?.niveau?.toUpperCase()}</Text>
                                 {dashboard?.next_level && dashboard?.points_to_next_level > 0 && (
@@ -169,38 +176,53 @@ export default function AmbassadorAccueilScreen() {
                     </View>
                 )}
 
-                {/* Badge mode */}
-                <View style={isImmediateEnabled ? styles.modeBadgeGreen : styles.modeBadgeBlue}>
-                    <Text style={styles.modeBadgeText}>
-                        {isImmediateEnabled ? t('deux_modes_actifs') : t('reservation_seul')}
-                    </Text>
-                </View>
+                {/* Badge mode — masqué pour le physique (accueil épuré façon maquette) */}
+                {!isPhysiqueIndep && (
+                    <View style={isImmediateEnabled ? styles.modeBadgeGreen : styles.modeBadgeBlue}>
+                        <Text style={styles.modeBadgeText}>
+                            {isImmediateEnabled ? t('deux_modes_actifs') : t('reservation_seul')}
+                        </Text>
+                    </View>
+                )}
 
                 {/* Boutons */}
-                <View style={styles.buttonsGroup}>
-                    {isImmediateEnabled && (
-                        <TouchableOpacity style={styles.mainButton} onPress={() => navigation.navigate('AmbassadorCommander', { defaultType: 'immediate' })}>
-                            <Text style={styles.mainButtonText}>{t('commander_maintenant')}</Text>
-                        </TouchableOpacity>
-                    )}
-                    <TouchableOpacity style={styles.reservationButton} onPress={() => navigation.navigate('AmbassadorCommander', { defaultType: 'reservation' })}>
-                        <Text style={styles.reservationButtonText}>{t('reserver_avance')}</Text>
+                {isPhysiqueIndep ? (
+                    // Maquette : un seul bouton doré « Commander un véhicule ».
+                    <TouchableOpacity
+                        style={[styles.mainButton, styles.commanderPhysique]}
+                        onPress={() => navigation.navigate('AmbassadorCommander', { defaultType: isImmediateEnabled ? 'immediate' : 'reservation' })}
+                    >
+                        <Text style={styles.mainButtonText}>🚗  {t('commander_vehicule')}</Text>
                     </TouchableOpacity>
-                    {!isImmediateEnabled && (
-                        <View style={styles.disabledButton}>
-                            <Text style={styles.disabledButtonText}>{t('course_immediate_bientot')}</Text>
-                        </View>
-                    )}
-                </View>
+                ) : (
+                    <View style={styles.buttonsGroup}>
+                        {isImmediateEnabled && (
+                            <TouchableOpacity style={styles.mainButton} onPress={() => navigation.navigate('AmbassadorCommander', { defaultType: 'immediate' })}>
+                                <Text style={styles.mainButtonText}>{t('commander_maintenant')}</Text>
+                            </TouchableOpacity>
+                        )}
+                        <TouchableOpacity style={styles.reservationButton} onPress={() => navigation.navigate('AmbassadorCommander', { defaultType: 'reservation' })}>
+                            <Text style={styles.reservationButtonText}>{t('reserver_avance')}</Text>
+                        </TouchableOpacity>
+                        {!isImmediateEnabled && (
+                            <View style={styles.disabledButton}>
+                                <Text style={styles.disabledButtonText}>{t('course_immediate_bientot')}</Text>
+                            </View>
+                        )}
+                    </View>
+                )}
 
                 {/* Stats */}
-                <View style={styles.statsCard}>
-                    <Text style={styles.statsTitle}>{isMoral ? 'ACTIVITÉ' : isSousCompte ? 'MON ACTIVITÉ' : t('mon_compte')}</Text>
+                <View style={[styles.statsCard, isPhysiqueIndep && styles.statsCardCompact]}>
+                    <Text style={[styles.statsTitle, isPhysiqueIndep && styles.statsTitleCompact]}>{isMoral ? 'ACTIVITÉ' : isSousCompte ? 'MON ACTIVITÉ' : isPhysiqueIndep ? 'CETTE SEMAINE' : t('mon_compte')}</Text>
                     <View style={styles.statsGrid}>
-                        <View style={styles.statItem}>
-                            <Text style={styles.statValue}>{dashboard?.active_course_count || 0}</Text>
-                            <Text style={styles.statLabel}>{t('en_cours_label')}</Text>
-                        </View>
+                        {/* « En cours » masqué pour le physique (le bandeau doré en haut suffit) */}
+                        {!isPhysiqueIndep && (
+                            <View style={styles.statItem}>
+                                <Text style={styles.statValue}>{dashboard?.active_course_count || 0}</Text>
+                                <Text style={styles.statLabel}>{t('en_cours_label')}</Text>
+                            </View>
+                        )}
                         {isMoral ? (
                             <View style={styles.statItem}>
                                 <Text style={[styles.statValue, { color: Colors.brand.info }]}>
@@ -223,15 +245,11 @@ export default function AmbassadorAccueilScreen() {
                             <>
                                 <View style={styles.statItem}>
                                     <Text style={[styles.statValue, { color: Colors.brand.gold }]}>{dashboard?.courses_semaine || 0}</Text>
-                                    <Text style={styles.statLabel}>CETTE SEMAINE</Text>
+                                    <Text style={styles.statLabel}>Courses</Text>
                                 </View>
                                 <View style={styles.statItem}>
                                     <Text style={[styles.statValue, { color: Colors.brand.gold }]}>+{dashboard?.points_semaine || 0}</Text>
-                                    <Text style={styles.statLabel}>PTS / 7 JOURS</Text>
-                                </View>
-                                <View style={styles.statItem}>
-                                    <Text style={[styles.statValue, { color: Colors.brand.warning }]}>{dashboard?.pending_bons_count || 0}</Text>
-                                    <Text style={styles.statLabel}>{t('bons_attente_label')}</Text>
+                                    <Text style={styles.statLabel}>Points</Text>
                                 </View>
                             </>
                         )}
@@ -261,9 +279,9 @@ export default function AmbassadorAccueilScreen() {
                     </View>
                 )}
 
-                {/* Liens rapides — masqués pour les employés (specs : ni boutique, ni parrainage, ni niveaux) */}
+                {/* Liens rapides — Physique (4 cartes) + Moral (commissions/équipe/profil). Employé : rien. */}
                 {!isSousCompte && (
-                <View style={styles.quickLinks}>
+                <View style={[styles.quickLinks, isPhysiqueIndep && styles.quickLinksCompact]}>
                     {isMoral ? (
                         <>
                             <TouchableOpacity style={styles.linkCard} onPress={() => navigation.navigate('AmbassadorCommissions')}>
@@ -308,7 +326,7 @@ export default function AmbassadorAccueilScreen() {
                 </View>
                 )}
 
-            </ScrollView>
+            </Body>
 
             <BottomNav role="ambassadeur" />
         </SafeAreaView>
@@ -336,6 +354,14 @@ function makeStyles(colors: typeof Colors.nocturne) {
         bannerCodeText: { color: colors.textSecondary, fontSize: Typography.sizes.tiny, fontWeight: Typography.weights.bold as any },
         bannerCodeValue: { color: Colors.brand.gold, fontSize: Typography.sizes.body, fontWeight: Typography.weights.black as any, fontFamily: 'monospace' },
         scrollContent: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 100 },
+        // Accueil physique non scrollable : anneau + bouton Commander + stats + 4 cartes, serrés en haut.
+        staticContent: { flex: 1, paddingHorizontal: 18, paddingTop: 10 },
+        headerCompact: { marginBottom: 10 },
+        ringCardCompact: { paddingVertical: 12, marginBottom: 10 },
+        commanderPhysique: { paddingVertical: 14, marginBottom: 10 },
+        statsCardCompact: { paddingVertical: 10, marginBottom: 10 },
+        statsTitleCompact: { marginBottom: 8 },
+        quickLinksCompact: { marginTop: 0, rowGap: 8 },
         header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
         buttonsGroup: { gap: 8, marginBottom: 14 },
         welcomeText: { color: colors.textPrimary, fontSize: Typography.sizes.header, fontWeight: Typography.weights.bold as any },

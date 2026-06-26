@@ -351,7 +351,7 @@ router.put('/echanges/:id/valider', async (req, res) => {
         );
         const row = tokenResult.rows[0];
         if (row?.push_token) {
-            await sendPushNotification(row.push_token, 'Bon cadeau disponible !', 'Votre QR code est prêt.', { echange_id: id });
+            await sendPushNotification(row.push_token, 'Bon cadeau disponible !', 'Votre QR code est prêt.', { type: 'BON_VALIDE', echange_id: id });
         }
     } catch { /* Non bloquant */ }
 
@@ -463,7 +463,7 @@ router.post('/alertes/:id/arbitrer', async (req, res) => {
             await query("UPDATE sanctions_en_attente SET statut = 'execute', execute_at = now() WHERE id = $1", [id]);
             if (sanction.push_token) {
                 const date = new Date(sanction.decide_at).toLocaleDateString('fr-FR');
-                await sendPushNotification(sanction.push_token, `-${pts} points prélevés`, `Suite à l'absence de votre client le ${date}.`, { sanction_id: id }).catch(() => {});
+                await sendPushNotification(sanction.push_token, `-${pts} points prélevés`, `Suite à l'absence de votre client le ${date}.`, { type: 'SANCTION_POINTS', sanction_id: id }).catch(() => {});
             }
         } else {
             // Solde insuffisant : différé silencieux, aucune notification (§3.6).
@@ -488,7 +488,7 @@ router.post('/alertes/:id/arbitrer', async (req, res) => {
             );
             const token = row.rows[0]?.push_token;
             if (token) {
-                await sendPushNotification(token, `+${Number(indemnisation).toFixed(2)} EUR crédités`, 'Indemnisation attente injustifiée.', { sanction_id: id });
+                await sendPushNotification(token, `+${Number(indemnisation).toFixed(2)} EUR crédités`, 'Indemnisation attente injustifiée.', { type: 'INDEMNISATION', sanction_id: id });
             }
         } catch { /* Non bloquant */ }
     }

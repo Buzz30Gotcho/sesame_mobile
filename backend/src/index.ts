@@ -93,7 +93,7 @@ async function checkExpiringBons() {
     for (const bon of j7.rows) {
         const dateStr = new Date(bon.expire_at).toLocaleDateString('fr-FR');
         const heureStr = new Date(bon.expire_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-        await sendPushNotification(bon.push_token, 'Bon expire dans 7 jours', `${bon.nom_offre} expire le ${dateStr} à ${heureStr}.`).catch(() => {});
+        await sendPushNotification(bon.push_token, 'Bon expire dans 7 jours', `${bon.nom_offre} expire le ${dateStr} à ${heureStr}.`, { type: 'BON_EXPIRE_J7' }).catch(() => {});
     }
 
     const j1 = await query(`
@@ -107,7 +107,7 @@ async function checkExpiringBons() {
     `);
     for (const bon of j1.rows) {
         const heureStr = new Date(bon.expire_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-        await sendPushNotification(bon.push_token, 'Bon expire DEMAIN', `${bon.nom_offre} expire demain à ${heureStr} exactement !`).catch(() => {});
+        await sendPushNotification(bon.push_token, 'Bon expire DEMAIN', `${bon.nom_offre} expire demain à ${heureStr} exactement !`, { type: 'BON_EXPIRE_J1' }).catch(() => {});
     }
 }
 

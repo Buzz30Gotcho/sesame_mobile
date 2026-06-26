@@ -332,7 +332,7 @@ router.post('/:id/validate-code', codeLimiter, async (req, res) => {
         );
         const ambToken = ambTokenResult.rows[0]?.push_token;
         if (ambToken) {
-            await sendPushNotification(ambToken, 'Course démarrée', 'Votre client est à bord.', { course_id });
+            await sendPushNotification(ambToken, 'Course démarrée', 'Votre client est à bord.', { type: 'CODE_VALIDE', course_id });
         }
     } catch { /* Non bloquant */ }
 
@@ -590,7 +590,7 @@ router.post('/:id/refuse-course', async (req, res) => {
         );
         const body = `${adresse_depart} → ${adresse_destination} · ${Number(montant).toFixed(2)} €`;
         for (const ch of chauffeurs.rows) {
-            await sendPushNotification(ch.push_token, 'Nouvelle course', body, { course_id }).catch(() => {});
+            await sendPushNotification(ch.push_token, 'Nouvelle course', body, { type: 'NOUVELLE_COURSE', course_id }).catch(() => {});
         }
     }
 
@@ -625,7 +625,7 @@ router.post('/:id/client-absent', async (req, res) => {
         const ambTokenResult = await query('SELECT push_token FROM ambassadeurs WHERE id = $1', [course.ambassadeur_id]);
         const ambToken = ambTokenResult.rows[0]?.push_token;
         if (ambToken) {
-            await sendPushNotification(ambToken, 'Votre chauffeur vous attend !', `Il attend depuis ${minutes} min. Contactez-le.`, { course_id });
+            await sendPushNotification(ambToken, 'Votre chauffeur vous attend !', `Il attend depuis ${minutes} min. Contactez-le.`, { type: 'CHAUFFEUR_ATTEND', course_id });
         }
     } catch { /* Non bloquant */ }
 
