@@ -13,6 +13,10 @@ yarn-error.log*
 */.expo-shared
 *.log
 
+# Couverture de tests
+coverage
+**/coverage
+
 # Fichiers de verrou temporaires LibreOffice/OpenOffice (.~lock.*.docx#)
 .~lock.*#
 
