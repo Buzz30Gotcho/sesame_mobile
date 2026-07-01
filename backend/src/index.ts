@@ -112,8 +112,11 @@ const DOC_LABELS: Record<string, string> = {
     photo_profil: 'Photo de profil',
 };
 
-// Docs dont l'expiration bloque le chauffeur (documents_valides = false)
-const DOCS_OBLIGATOIRES = ['carte_identite', 'carte_vtc', 'permis', 'carte_grise'];
+// Docs dont l'expiration bloque le chauffeur (documents_valides = false).
+// = les 7 documents à cycle d'expiration J-15/J-7/J-0 (specs Interfaces Catalogue v4 §2).
+// Exclus : kbis (suspension MANUELLE admin à J-30), carte_grise / photo_profil (sans expiration),
+// rir (renouvellement à la demande admin).
+const DOCS_OBLIGATOIRES = ['carte_identite', 'carte_vtc', 'revtc', 'permis', 'rc_pro', 'rc_circulation', 'certificat_medical'];
 
 // Alertes J-15, J-7, J-0 — documents chauffeur (specs Interfaces Catalogue v4 §2)
 // Kbis géré séparément : alerte admin à J-30 via dashboard (pas de notif chauffeur)

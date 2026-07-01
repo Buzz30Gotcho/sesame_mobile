@@ -227,6 +227,31 @@ router.put('/:id/annuler', async (req, res) => {
         } catch { /* Non bloquant */ }
     }
 
+    // Cas B (specs §9 « Annulation chauffeur ») : le chauffeur annule alors que le CLIENT EST À BORD
+    // (code pivot déjà validé) → abandon en pleine course → SUSPENSION IMMÉDIATE du chauffeur.
+    // (Cas A, avant validation du code, reste sans sanction — refus/relance.)
+    if (annulePar === 'chauffeur' && course.code_valide_at && course.chauffeur_id) {
+        await query(
+            `UPDATE utilisateurs SET statut = 'suspendu'
+             FROM chauffeurs c
+             WHERE c.utilisateur_id = utilisateurs.id AND c.id = $1`,
+            [course.chauffeur_id]
+        );
+        try {
+            const chRow = await query('SELECT push_token FROM chauffeurs WHERE id = $1', [course.chauffeur_id]);
+            const chToken = chRow.rows[0]?.push_token;
+            if (chToken) {
+                await sendPushNotification(
+                    chToken,
+                    'Compte suspendu',
+                    'Annulation avec client à bord. Contactez SÉSAME au 07 45 20 70 06.',
+                    { type: 'account_suspended', course_id: req.params.id }
+                );
+            }
+        } catch { /* Non bloquant */ }
+        return res.json({ success: true, sanction: 'suspension_chauffeur' });
+    }
+
     // Sanctions ambassadeur si annulation par l'ambassadeur
     if (annulePar === 'ambassadeur' && course.ambassadeur_id) {
         const countResult = await query(

@@ -117,6 +117,30 @@ describe('PUT /:id/annuler — annulation chauffeur (compensation + notifs)', ()
         const comp = await db().query('SELECT compensation FROM courses WHERE id=$1', [course.id]);
         expect(comp.rows[0].compensation).toBe(true);
     });
+
+    it('Cas B : annulation avec client à bord (code validé) → suspension immédiate du chauffeur', async () => {
+        const amb = await registerAmbassadeur();
+        const chf = await registerChauffeur();
+        const course = await createCourse(amb);
+        await db().query("UPDATE courses SET chauffeur_id=$1, statut='code_valide', code_valide_at=now(), montant=100 WHERE id=$2", [chf.chauffeur_id, course.id]);
+        const res = await request(app).put(`/api/courses/${course.id}/annuler`).set(chf.auth).send({ raison: 'chauffeur' });
+        expect(res.status).toBe(200);
+        expect(res.body.sanction).toBe('suspension_chauffeur');
+        const u = await db().query('SELECT statut FROM utilisateurs WHERE id=$1', [chf.userId]);
+        expect(u.rows[0].statut).toBe('suspendu');
+    });
+
+    it('Cas A : annulation AVANT validation du code → pas de suspension', async () => {
+        const amb = await registerAmbassadeur();
+        const chf = await registerChauffeur();
+        const course = await createCourse(amb);
+        await db().query("UPDATE courses SET chauffeur_id=$1, statut='acceptee' WHERE id=$2", [chf.chauffeur_id, course.id]);
+        const res = await request(app).put(`/api/courses/${course.id}/annuler`).set(chf.auth).send({ raison: 'chauffeur' });
+        expect(res.status).toBe(200);
+        expect(res.body.sanction).toBeUndefined();
+        const u = await db().query('SELECT statut FROM utilisateurs WHERE id=$1', [chf.userId]);
+        expect(u.rows[0].statut).toBe('actif');
+    });
 });
 
 describe('POST /reserver — validations', () => {

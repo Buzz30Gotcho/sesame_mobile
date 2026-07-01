@@ -229,7 +229,9 @@ export async function executerSanctionsEnAttente(ambassadeurId: string) {
 // Vérifie si un doc obligatoire est expiré et suspend le chauffeur (specs §9.1)
 export async function checkAndSuspendExpiredDocsChauffeur(chauffeurId: string) {
     if (!chauffeurId) return;
-    const DOCS_OBLIGATOIRES = ['carte_identite', 'carte_vtc', 'permis', 'carte_grise'];
+    // Les 7 documents à cycle d'expiration J-15/J-7/J-0 (specs Interfaces Catalogue v4 §2).
+    // kbis = suspension manuelle admin ; carte_grise/photo_profil = sans expiration ; rir = à la demande admin.
+    const DOCS_OBLIGATOIRES = ['carte_identite', 'carte_vtc', 'revtc', 'permis', 'rc_pro', 'rc_circulation', 'certificat_medical'];
     const expired = await query(
         `SELECT id FROM documents_chauffeur WHERE chauffeur_id = $1 AND statut = 'expire' AND type = ANY($2)`,
         [chauffeurId, DOCS_OBLIGATOIRES]

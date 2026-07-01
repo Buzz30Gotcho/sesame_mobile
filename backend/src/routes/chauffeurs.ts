@@ -577,8 +577,17 @@ router.put('/:id/push-token', async (req, res) => {
 router.post('/:id/refuse-course', async (req, res) => {
     const { course_id } = req.body;
     if (!course_id) return res.status(400).json({ error: 'course_id requis' });
-    // 0 sanction pour refus (specs §9 — règle juridique absolue)
-    await query('UPDATE courses SET chauffeur_id = NULL, statut = $1, date_acceptation = NULL, code_validation = NULL WHERE id = $2 AND chauffeur_id = $3', ['recherche', course_id, req.params.id]);
+    // 0 sanction pour refus (specs §9 — règle juridique absolue).
+    // Garde-fou : on ne peut PAS « refuser » une course dont le code est déjà validé
+    // (client à bord) — ce serait un abandon en cours de course, qui relève de l'annulation
+    // Cas B (suspension). Le refus sans conséquence est réservé à AVANT la prise en charge.
+    const refus = await query(
+        "UPDATE courses SET chauffeur_id = NULL, statut = $1, date_acceptation = NULL, code_validation = NULL WHERE id = $2 AND chauffeur_id = $3 AND code_valide_at IS NULL",
+        ['recherche', course_id, req.params.id]
+    );
+    if (refus.rowCount === 0) {
+        return res.status(400).json({ error: 'Course introuvable ou déjà démarrée (code validé) — le refus sans conséquence n\'est plus possible.' });
+    }
 
     // Relance automatique vers les autres chauffeurs disponibles (specs §1.5)
     const course = await query('SELECT vehicule_type, adresse_depart, adresse_destination, montant FROM courses WHERE id = $1', [course_id]);

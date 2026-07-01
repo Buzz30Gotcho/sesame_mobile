@@ -68,7 +68,7 @@ describe('Écrans — lot 2', () => {
 
     it('AmbassadorQRCodeScreen charge les bons', async () => {
         authValue.current = physique;
-        const { toJSON } = render(<AmbassadorQRCodeScreen route={{ params: { bonId: 'b1' } } as any} />);
+        const { toJSON } = render(<AmbassadorQRCodeScreen {...({ route: { params: { bonId: 'b1' } }, navigation: {} } as any)} />);
         await waitFor(() => expect(getBonList).toHaveBeenCalled());
         expect(toJSON()).toBeTruthy();
     });

@@ -2,6 +2,7 @@ import request from 'supertest';
 import { stripe } from '../../src/lib/stripeClient';
 import { sendPushNotification } from '../../src/lib/pushNotifications';
 import { app, registerAmbassadeur, registerChauffeur, createCourse, db } from '../helpers/api';
+import { checkAndSuspendExpiredDocsChauffeur } from '../../src/lib/courseHelpers';
 
 // Compléments de couverture route chauffeurs : profil (PUT), courses, courses
 // disponibles + ETA, position GPS, documents (upload/list Supabase), push-token,
@@ -214,6 +215,60 @@ describe('refuse-course — relance vers les autres chauffeurs', () => {
         expect(res.status).toBe(200);
         expect((sendPushNotification as jest.Mock).mock.calls.some((c: any[]) => c[0] === 'ExpoAutre')).toBe(true);
     });
+});
+
+describe('refuse-course — garde-fou code validé', () => {
+    it('refuse un refus après validation du code (400, anti-contournement suspension)', async () => {
+        const amb = await registerAmbassadeur();
+        const chf = await registerChauffeur();
+        const course = await createCourse(amb);
+        await db().query("UPDATE courses SET chauffeur_id=$1, statut='code_valide', code_valide_at=now() WHERE id=$2", [chf.chauffeur_id, course.id]);
+        const res = await request(app).post(`/api/chauffeurs/${chf.chauffeur_id}/refuse-course`).set(chf.auth)
+            .send({ course_id: course.id });
+        expect(res.status).toBe(400);
+        // La course n'a PAS été remise en recherche (le chauffeur reste assigné)
+        const c = await db().query('SELECT statut, chauffeur_id FROM courses WHERE id=$1', [course.id]);
+        expect(c.rows[0].statut).toBe('code_valide');
+        expect(c.rows[0].chauffeur_id).toBe(chf.chauffeur_id);
+    });
+});
+
+describe('checkAndSuspendExpiredDocsChauffeur — blocage sur doc expiré (specs §2 / §9.1)', () => {
+    async function setDocValide(chauffeurId: string) {
+        await db().query('UPDATE chauffeurs SET documents_valides = true WHERE id = $1', [chauffeurId]);
+    }
+    async function insertDocExpire(chauffeurId: string, type: string) {
+        await db().query(
+            "INSERT INTO documents_chauffeur(chauffeur_id, type, fichier_recto_url, statut) VALUES ($1,$2,'x.jpg','expire')",
+            [chauffeurId, type]
+        );
+    }
+
+    it.each(['rc_pro', 'rc_circulation', 'revtc', 'certificat_medical', 'carte_identite', 'carte_vtc', 'permis'])(
+        'bloque le chauffeur (documents_valides=false) quand %s est expiré',
+        async (type) => {
+            const chf = await registerChauffeur();
+            const id = chf.chauffeur_id!;
+            await setDocValide(id);
+            await insertDocExpire(id, type);
+            await checkAndSuspendExpiredDocsChauffeur(id);
+            const c = await db().query('SELECT documents_valides FROM chauffeurs WHERE id=$1', [id]);
+            expect(c.rows[0].documents_valides).toBe(false);
+        }
+    );
+
+    it.each(['carte_grise', 'photo_profil', 'rir', 'kbis'])(
+        'NE bloque PAS quand %s est expiré (hors cycle d\'expiration auto)',
+        async (type) => {
+            const chf = await registerChauffeur();
+            const id = chf.chauffeur_id!;
+            await setDocValide(id);
+            await insertDocExpire(id, type);
+            await checkAndSuspendExpiredDocsChauffeur(id);
+            const c = await db().query('SELECT documents_valides FROM chauffeurs WHERE id=$1', [id]);
+            expect(c.rows[0].documents_valides).toBe(true);
+        }
+    );
 });
 
 describe('client-absent — minutes calculées & notification', () => {
