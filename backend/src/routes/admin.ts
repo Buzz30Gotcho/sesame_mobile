@@ -501,7 +501,8 @@ router.post('/chat/:courseId/intervenir', async (req, res) => {
     const { contenu } = req.body;
     if (!contenu || typeof contenu !== 'string' || !contenu.trim()) return res.status(400).json({ error: 'Contenu requis' });
     const texte = contenu.slice(0, 2000);
-    const result = await query('INSERT INTO messages_chat(course_id, expediteur_type, expediteur_id, contenu) VALUES ($1,$2,$3,$4) RETURNING *', [courseId, 'admin', null, texte]);
+    // expediteur_id est NOT NULL : on attribue les messages admin au sentinelle admin partagé.
+    const result = await query('INSERT INTO messages_chat(course_id, expediteur_type, expediteur_id, contenu) VALUES ($1,$2,$3,$4) RETURNING *', [courseId, 'admin', ADMIN_ACTOR_ID, texte]);
     res.status(201).json(result.rows[0]);
 });
 
@@ -639,7 +640,7 @@ router.post('/chauffeurs/:id/controle-identite', async (req, res) => {
         return res.status(400).json({ error: 'Résultat invalide (conforme | non_conforme).' });
     }
     const ch = await query(
-        `SELECT c.utilisateur_id, u.push_token FROM chauffeurs c
+        `SELECT c.utilisateur_id, c.push_token FROM chauffeurs c
          JOIN utilisateurs u ON u.id = c.utilisateur_id WHERE c.id = $1`,
         [req.params.id]
     );
@@ -975,9 +976,9 @@ router.get('/export/chauffeurs', async (req, res) => {
 
 router.get('/export/paiements', async (req, res) => {
     const result = await query(
-        `SELECT c.reference, u.prenom, u.nom,
+        `SELECT co.reference, u.prenom, u.nom,
                 co.montant, co.code_valide_at, co.date_fin,
-                co.taux_commission_override
+                co.taux_commission_applique AS taux_commission_override
          FROM courses co
          JOIN chauffeurs c ON c.id = co.chauffeur_id
          JOIN utilisateurs u ON u.id = c.utilisateur_id
@@ -1097,7 +1098,9 @@ router.delete('/chauffeurs/:chauffeur_id', async (req, res) => {
     const utilisateur_id = ch.rows[0].utilisateur_id;
     // Nullifie chauffeur_id dans les courses pour conserver l'historique
     await query('UPDATE courses SET chauffeur_id = NULL WHERE chauffeur_id = $1', [chauffeur_id]);
-    // Supprime l'utilisateur (CASCADE supprime chauffeurs + documents_chauffeur)
+    // La FK chauffeurs.utilisateur_id n'est pas ON DELETE CASCADE : on supprime d'abord la
+    // ligne chauffeur (documents_chauffeur casca­de depuis chauffeurs), puis l'utilisateur.
+    await query('DELETE FROM chauffeurs WHERE id = $1', [chauffeur_id]);
     await query('DELETE FROM utilisateurs WHERE id = $1', [utilisateur_id]);
     res.json({ success: true });
 });
@@ -1777,7 +1780,12 @@ router.post('/support/tickets/:id/messages', async (req, res) => {
         return res.status(400).json({ error: 'Message vide' });
     }
     const t = await query(
-        `SELECT t.id, u.push_token FROM tickets t JOIN utilisateurs u ON u.id = t.utilisateur_id WHERE t.id = $1`,
+        `SELECT t.id, COALESCE(a.push_token, c.push_token) AS push_token
+         FROM tickets t
+         JOIN utilisateurs u ON u.id = t.utilisateur_id
+         LEFT JOIN ambassadeurs a ON a.utilisateur_id = u.id
+         LEFT JOIN chauffeurs  c ON c.utilisateur_id = u.id
+         WHERE t.id = $1`,
         [req.params.id]
     );
     if (!t.rows.length) return res.status(404).json({ error: 'Ticket introuvable' });

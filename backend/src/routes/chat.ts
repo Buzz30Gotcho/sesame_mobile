@@ -1,6 +1,6 @@
 import express from 'express';
 import { query } from '../db';
-import { broadcastChatMessage } from '../index';
+import { broadcastChatMessage } from '../ws/chatHub';
 import { sendPushNotification } from '../lib/pushNotifications';
 import { ownCourseParam, resolveIdentity, AuthedRequest } from '../middleware/auth';
 
@@ -8,6 +8,10 @@ const router = express.Router();
 
 // Longueur maximale d'un message (anti-DoS stockage / abus).
 const MAX_MESSAGE_LENGTH = 2000;
+
+// Sentinelle pour les messages émis par l'admin (compte partagé, pas d'id par opérateur).
+// messages_chat.expediteur_id est NOT NULL → on ne peut pas y mettre null.
+const ADMIN_ACTOR_ID = '00000000-0000-0000-0000-000000000000';
 
 // Propriété : seul un participant de la course (ambassadeur ou chauffeur) peut lire/écrire le chat.
 router.param('courseId', ownCourseParam);
@@ -27,10 +31,10 @@ router.post('/:courseId/messages', async (req, res) => {
 
     // L'identité de l'expéditeur est dérivée du token, JAMAIS du body (anti-usurpation).
     let expediteur_type: string;
-    let expediteur_id: string | null;
+    let expediteur_id: string;
     if (r.isAdmin) {
         expediteur_type = 'admin';
-        expediteur_id = null;
+        expediteur_id = ADMIN_ACTOR_ID;
     } else {
         const ident = await resolveIdentity(r);
         const courseRow = await query('SELECT ambassadeur_id, chauffeur_id FROM courses WHERE id = $1', [req.params.courseId]);

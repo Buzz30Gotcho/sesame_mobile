@@ -75,7 +75,10 @@ export async function ownCourseParam(req: express.Request, res: express.Response
         const result = await query('SELECT ambassadeur_id, chauffeur_id FROM courses WHERE id = $1', [courseId]);
         const c = result.rows[0];
         if (!c) return res.status(404).json({ error: 'Course introuvable' });
-        if (c.ambassadeur_id === ident.ambassadeurId || c.chauffeur_id === ident.chauffeurId) return next();
+        // Gardes non-null : sur une course sans chauffeur, c.chauffeur_id ET ident.chauffeurId
+        // valent null → sans cette garde, `null === null` autoriserait un tiers (faille).
+        if ((ident.ambassadeurId && c.ambassadeur_id === ident.ambassadeurId)
+            || (ident.chauffeurId && c.chauffeur_id === ident.chauffeurId)) return next();
         return res.status(403).json({ error: 'Accès refusé' });
     } catch {
         return res.status(500).json({ error: 'Erreur de vérification' });

@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const BASE_URL = 'http://localhost:4001/api';
+// URL de l'API : configurable au build via VITE_API_URL (prod), défaut localhost (dev).
+const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4001/api';
 
 const api = axios.create({
   baseURL: BASE_URL,
