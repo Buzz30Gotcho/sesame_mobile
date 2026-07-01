@@ -24,6 +24,9 @@ jobs:
       - name: Install
         working-directory: backend
         run: npm install
+      - name: Typecheck
+        working-directory: backend
+        run: npx tsc --noEmit
       - name: Test
         working-directory: backend
         run: npm test
@@ -42,6 +45,9 @@ jobs:
       - name: Install
         working-directory: mobile
         run: npm install
+      - name: Typecheck
+        working-directory: mobile
+        run: npx tsc --noEmit
       - name: Test
         working-directory: mobile
         run: npm test
